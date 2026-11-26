@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>路徑模型原型</title>
+<style>
+  :root { --bg:#f6f5f2; --panel:#fff; --ink:#222; --muted:#777; --accent:#2f6fde; --line:#e2e0da; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.55 -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:1100px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .lead { color:var(--muted); margin:0 0 16px; }
+  .tag { display:inline-block; font-size:12px; background:#fde9c8; color:#8a5a00; padding:1px 8px; border-radius:10px; margin-left:8px; vertical-align:middle; }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+  .tabs button { border:1px solid var(--line); background:var(--panel); padding:8px 14px; border-radius:8px; cursor:pointer; font:inherit; }
+  .tabs button.on { border-color:var(--accent); color:var(--accent); font-weight:600; }
+  .layout { display:grid; grid-template-columns: auto 1fr; gap:16px; align-items:start; }
+  @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  canvas { display:block; max-width:100%; border-radius:6px; cursor:crosshair; }
+  .controls { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .controls button, .steps button { font:inherit; padding:7px 12px; border-radius:7px; border:1px solid var(--line); background:#fafafa; cursor:pointer; }
+  .controls button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .hint { color:var(--muted); font-size:13px; margin-top:8px; }
+  dl { display:grid; grid-template-columns: auto 1fr; gap:4px 14px; margin:0; }
+  dt { color:var(--muted); }
+  dd { margin:0; font-variant-numeric: tabular-nums; }
+  dd.changed { color:var(--accent); font-weight:600; }
+  .msg { margin-top:10px; padding:8px 10px; background:#f1f5fd; border-radius:6px; min-height:2.2em; }
+  .msg.bad { background:#fdeeee; color:#a12; }
+  h2 { font-size:15px; margin:16px 0 6px; }
+  .steps { display:flex; flex-direction:column; gap:6px; }
+  .steps button { text-align:left; }
+  .steps button:disabled { opacity:.45; cursor:default; }
+  .side > .card + .card { margin-top:12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Crownfall 路徑模型比較<span class="tag">PROTOTYPE・用完即丟</span></h1>
+  <p class="lead">要回答的問題：Vertical Slice 該用<b>固定路徑</b>（塔放在路旁）、<b>自由迷宮</b>（塔就是牆，敵人重新尋路），還是<b>混合</b>（一條較寬的車道，塔可放在車道上當路障）？三種模式用同一種塔、同一種敵人、同樣 8 波，玩過後比較哪一種的「決策」最有意思。</p>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="layout">
+    <div class="card">
+      <canvas id="board"></canvas>
+      <div class="controls">
+        <button class="primary" id="btnWave">開始下一波</button>
+        <button id="btnSpeed">速度 ×1</button>
+        <button id="btnReset">重新開始本模式</button>
+      </div>
+      <div class="hint">左鍵放塔（10 金）・右鍵賣塔（退 5 金）・滑過塔可看射程。黃色虛線是敵人目前的路線。</div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <dl id="state"></dl>
+        <div class="msg" id="msg"></div>
+      </div>
+      <div class="card">
+        <div id="modeDesc"></div>
+        <h2>引導情境</h2>
+        <div class="steps" id="steps"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ===== 可抽出的模擬核心：不碰 DOM =====
+const W = 18, H = 11;
+const TOWER = { cost: 10, refund: 5, range: 2.5, damage: 1, rate: 2 };
+const ENEMY = { baseHp: 3, hpGrowth: 1.18, speed: 1.8, bounty: 2 };
+const WAVES = 8, START_GOLD = 60, START_LIVES = 20;
+
+function polylineCells(points) {
+  const cells = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    let [x, y] = points[i]; const [tx, ty] = points[i + 1];
+    const dx = Math.sign(tx - x), dy = Math.sign(ty - y);
+    cells.push([x, y]);
+    while (x !== tx || y !== ty) { x += dx; y += dy; cells.push([x, y]); }
+  }
+  return cells;
+}
+
+// 每格兩個屬性：walk（敵人可走）與 build（可放塔）。塔放在可走格上就成了牆。
+const MAPS = {
+  fixed: (() => {
+    const pts = [[0,5],[4,5],[4,1],[9,1],[9,9],[13,9],[13,5],[17,5]];
+    const path = new Set(polylineCells(pts).map(([x,y]) => y*W+x));
+    return { name: '固定路徑', spawn: [0,5], goal: [17,5],
+      cell: (x,y) => path.has(y*W+x) ? { walk:true, build:false } : { walk:false, build:true } };
+  })(),
+  maze: { name: '自由迷宮', spawn: [0,5], goal: [17,5], cell: () => ({ walk:true, build:true }) },
+  hybrid: (() => {
+    const pts = [[0,5],[5,5],[5,2],[12,2],[12,8],[17,8]];
+    const center = polylineCells(pts);
+    const lane = new Set();
+    for (const [cx,cy] of center) for (let dx=-1; dx<=1; dx++) for (let dy=-1; dy<=1; dy++) {
+      const x = cx+dx, y = cy+dy; if (x>=0 && x<W && y>=0 && y<H) lane.add(y*W+x);
+    }
+    return { name: '混合', spawn: [0,5], goal: [17,8],
+      cell: (x,y) => lane.has(y*W+x) ? { walk:true, build:true } : { walk:false, build:true } };
+  })(),
+};
+
+class Sim {
+  constructor(modeId) {
+    this.modeId = modeId;
+    this.map = MAPS[modeId];
+    this.grid = [];
+    for (let y=0; y<H; y++) for (let x=0; x<W; x++) this.grid.push(this.map.cell(x,y));
+    this.towers = new Map();       // idx -> { cd }
+    this.enemies = [];
+    this.shots = [];
+    this.gold = START_GOLD; this.lives = START_LIVES;
+    this.wave = 0; this.waveActive = false; this.toSpawn = 0; this.spawnTimer = 0;
+    this.kills = 0; this.leaks = 0; this.outcome = null; this.nextId = 1;
+    this.dist = this.flowField(this.towers);
+  }
+  idx(x,y) { return y*W+x; }
+  isSpawnOrGoal(x,y) { const [sx,sy]=this.map.spawn, [gx,gy]=this.map.goal; return (x===sx&&y===sy)||(x===gx&&y===gy); }
+
+  flowField(towers) {
+    const dist = new Array(W*H).fill(Infinity);
+    const [gx,gy] = this.map.goal; const q = [[gx,gy]]; dist[this.idx(gx,gy)] = 0;
+    while (q.length) {
+      const [x,y] = q.shift(); const d = dist[this.idx(x,y)];
+      for (const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]) {
+        if (nx<0||ny<0||nx>=W||ny>=H) continue;
+        const i = this.idx(nx,ny);
+        if (!this.grid[i].walk || towers.has(i) || dist[i] !== Infinity) continue;
+        dist[i] = d+1; q.push([nx,ny]);
+      }
+    }
+    return dist;
+  }
+
+  routeLength() { const [sx,sy]=this.map.spawn; return this.dist[this.idx(sx,sy)]; }
+
+  route() {
+    let [x,y] = this.map.spawn; const pts = [[x,y]];
+    if (this.dist[this.idx(x,y)] === Infinity) return pts;
+    while (this.dist[this.idx(x,y)] > 0) { [x,y] = this.stepFrom(x,y, this.dist); pts.push([x,y]); }
+    return pts;
+  }
+
+  stepFrom(x,y, dist) {
+    const d = dist[this.idx(x,y)];
+    for (const [nx,ny] of [[x+1,y],[x,y-1],[x,y+1],[x-1,y]]) {
+      if (nx<0||ny<0||nx>=W||ny>=H) continue;
+      if (dist[this.idx(nx,ny)] === d-1) return [nx,ny];
+    }
+    return [x,y];
+  }
+
+  // 回傳 { ok, reason }
+  place(x, y, { free = false } = {}) {
+    if (this.outcome) return { ok:false, reason:'這局已經結束了。' };
+    const i = this.idx(x,y), c = this.grid[i];
+    if (!c.build) return { ok:false, reason:'這格是固定路徑，不能放塔。' };
+    if (this.towers.has(i)) return { ok:false, reason:'這格已經有塔。' };
+    if (this.isSpawnOrGoal(x,y)) return { ok:false, reason:'入口與終點不能放塔。' };
+    if (!free && this.gold < TOWER.cost) return { ok:false, reason:`金錢不足（需要 ${TOWER.cost}）。` };
+    if (c.walk) {
+      if (this.enemies.some(e => (e.cx===x&&e.cy===y) || (e.nx===x&&e.ny===y)))
+        return { ok:false, reason:'有敵人正在這格上，不能蓋。' };
+      const trial = new Map(this.towers); trial.set(i, {});
+      const d = this.flowField(trial);
+      const [sx,sy] = this.map.spawn;
+      if (d[this.idx(sx,sy)] === Infinity) return { ok:false, reason:'不能放：會把入口到終點的路完全堵死。' };
+      if (this.enemies.some(e => d[this.idx(e.nx,e.ny)] === Infinity))
+        return { ok:false, reason:'不能放：會把場上某個敵人困住。' };
+      this.towers.set(i, { cd:0 }); this.dist = d;
+    } else {
+      this.towers.set(i, { cd:0 });
+    }
+    if (!free) this.gold -= TOWER.cost;
+    return { ok:true, reason: c.walk ? `放了一座塔當路障，路線變成 ${this.routeLength()} 格。` : '在路旁放了一座塔。' };
+  }
+
+  sell(x, y) {
+    const i = this.idx(x,y);
+    if (!this.towers.has(i)) return { ok:false, reason:'這格沒有塔。' };
+    this.towers.delete(i); this.gold += TOWER.refund;
+    this.dist = this.flowField(this.towers);
+    return { ok:true, reason:`賣掉一座塔，退回 ${TOWER.refund} 金。路線 ${this.routeLength()} 格。` };
+  }
+
+  startWave() {
+    if (this.outcome) return { ok:false, reason:'這局已經結束了。' };
+    if (this.waveActive) return { ok:false, reason:'這一波還沒結束。' };
+    this.wave += 1; this.waveActive = true; this.toSpawn = 8 + this.wave*2; this.spawnTimer = 0;
+    return { ok:true, reason:`第 ${this.wave} 波開始：${this.toSpawn} 隻，每隻 ${this.waveHp().toFixed(1)} 血。` };
+  }
+  waveHp() { return ENEMY.baseHp * ENEMY.hpGrowth ** (this.wave-1); }
+
+  spawnEnemy() {
+    const [sx,sy] = this.map.spawn; const [nx,ny] = this.stepFrom(sx,sy,this.dist);
+    const hp = this.waveHp();
+    this.enemies.push({ id:this.nextId++, x:sx+.5, y:sy+.5, cx:sx, cy:sy, nx, ny, hp, maxHp:hp });
+  }
+
+  progressKey(e) { // 越小代表越接近終點
+    return this.dist[this.idx(e.nx,e.ny)] + Math.hypot(e.nx+.5-e.x, e.ny+.5-e.y);
+  }
+
+  step(dt) {
+    const events = [];
+    if (this.outcome) return events;
+    if (this.waveActive && this.toSpawn > 0) {
+      this.spawnTimer -= dt;
+      if (this.spawnTimer <= 0) { this.spawnEnemy(); this.toSpawn--; this.spawnTimer = 0.7; }
+    }
+    const [gx,gy] = this.map.goal;
+    for (const e of this.enemies) {
+      let move = ENEMY.speed * dt;
+      while (move > 0 && !e.leaked) {
+        const tx = e.nx+.5, ty = e.ny+.5, d = Math.hypot(tx-e.x, ty-e.y);
+        if (d > move) { e.x += (tx-e.x)/d*move; e.y += (ty-e.y)/d*move; move = 0; break; }
+        e.x = tx; e.y = ty; move -= d; e.cx = e.nx; e.cy = e.ny;
+        if (e.cx===gx && e.cy===gy) { e.leaked = true; break; }
+        [e.nx, e.ny] = this.stepFrom(e.cx, e.cy, this.dist);
+      }
+    }
+    for (const e of this.enemies.filter(e => e.leaked)) { this.lives--; this.leaks++; }
+    this.enemies = this.enemies.filter(e => !e.leaked);
+
+    for (const [i,t] of this.towers) {
+      t.cd -= dt; if (t.cd > 0) continue;
+      const tx = i%W+.5, ty = Math.floor(i/W)+.5;
+      let best = null, bestKey = Infinity;
+      for (const e of this.enemies) {
+        if (e.hp <= 0 || Math.hypot(e.x-tx, e.y-ty) > TOWER.range) continue;
+        const k = this.progressKey(e); if (k < bestKey) { bestKey = k; best = e; }
+      }
+      if (!best) continue;
+      best.hp -= TOWER.damage; t.cd = 1/TOWER.rate;
+      this.shots.push({ x1:tx, y1:ty, x2:best.x, y2:best.y, ttl:.08 });
+    }
+    const dead = this.enemies.filter(e => e.hp <= 0);
+    this.kills += dead.length; this.gold += dead.length * ENEMY.bounty;
+    this.enemies = this.enemies.filter(e => e.hp > 0);
+    this.shots = this.shots.map(s => ({ ...s, ttl:s.ttl-dt })).filter(s => s.ttl > 0);
+
+    if (this.lives <= 0) { this.lives = 0; this.outcome = 'lose'; events.push('第 ' + this.wave + ' 波失守，遊戲結束。'); }
+    else if (this.waveActive && this.toSpawn === 0 && this.enemies.length === 0) {
+      this.waveActive = false; const bonus = 5 + this.wave; this.gold += bonus;
+      if (this.wave >= WAVES) { this.outcome = 'win'; events.push(`守住全部 ${WAVES} 波，勝利！`); }
+      else events.push(`第 ${this.wave} 波清空，波次獎勵 ${bonus} 金。`);
+    }
+    return events;
+  }
+}
+
+// ===== 以下是頁面外殼：用完即丟 =====
+const CELL = 36;
+const canvas = document.getElementById('board');
+canvas.width = W*CELL; canvas.height = H*CELL;
+const ctx = canvas.getContext('2d');
+
+const MODE_INFO = {
+  fixed: {
+    desc: '<b>固定路徑</b>：敵人走一條寫死的單線道（沙色），塔只能放在路旁。決策集中在「哪個位置射程覆蓋路線最多」，例如彎道內側。路線長度永遠不變。',
+    scenarios: [
+      { label: '① 在三個彎道內側各放一座塔', run: s => [[5,2],[8,2],[8,8],[12,8],[12,6]].map(([x,y]) => s.place(x,y)) },
+      { label: '② 開始第 1 波，看塔的覆蓋', run: s => [s.startWave()] },
+      { label: '③ 試著把塔放在路上（應該被拒絕）', run: s => [s.place(6,1)] },
+    ],
+  },
+  maze: {
+    desc: '<b>自由迷宮</b>：整片地都能走，塔本身就是牆。決策變成「用塔把路拉長」，同時不能把路完全堵死；拉長的路線讓每座塔打得更久。',
+    scenarios: [
+      { label: '① 免費蓋一座蛇形迷宮（示範用）', run: s => {
+          const out = [];
+          [3,6,9,12,15].forEach((x,k) => { for (let y=0; y<H; y++) { if ((k%2===0 && y===H-1) || (k%2===1 && y===0)) continue; out.push(s.place(x,y,{free:true})); } });
+          return [out.filter(r=>r.ok).length ? { ok:true, reason:`迷宮完成，路線變成 ${s.routeLength()} 格（原本 17 格）。` } : out[0]];
+        } },
+      { label: '② 開始第 1 波，看敵人繞路', run: s => [s.startWave()] },
+      { label: '③ 試著把出口那條縫堵住（應該被拒絕）', run: s => [s.place(15,10,{free:true})] },
+    ],
+  },
+  hybrid: {
+    desc: '<b>混合</b>：敵人只能在三格寬的車道（淺色）裡走，車道外放塔只負責輸出，車道內放塔就成了路障，可以在車道裡迂迴、但繞不出整體路線。路線能拉長的幅度有上限。',
+    scenarios: [
+      { label: '① 免費在第一段車道上放交錯路障', run: s => {
+          [[2,4],[2,5],[4,6],[4,5]].forEach(([x,y]) => s.place(x,y,{free:true}));
+          return [{ ok:true, reason:`路障完成，路線變成 ${s.routeLength()} 格。` }];
+        } },
+      { label: '② 在車道外放兩座輸出塔', run: s => [s.place(3,3), s.place(3,7)] },
+      { label: '③ 開始第 1 波', run: s => [s.startWave()] },
+      { label: '④ 試著把車道整段封死（應該被拒絕）', run: s => [1,2,3].map(y => s.place(8,y,{free:true})) },
+    ],
+  },
+};
+
+let sim, speed = 1, prevState = {}, stepIndex = 0, hover = null;
+let message = { text:'選一個模式，左鍵放塔、按「開始下一波」。', bad:false };
+
+function setMsg(r) { if (r) message = { text:r.reason ?? r, bad: r.ok === false }; }
+
+function resetMode(modeId) {
+  sim = new Sim(modeId); stepIndex = 0; prevState = {};
+  setMsg({ ok:true, reason:`切換到「${MAPS[modeId].name}」。目前路線 ${sim.routeLength()} 格。` });
+  renderTabs(); renderSteps();
+}
+
+function renderTabs() {
+  const el = document.getElementById('tabs'); el.innerHTML = '';
+  for (const id of Object.keys(MAPS)) {
+    const b = document.createElement('button'); b.textContent = MAPS[id].name;
+    if (id === sim.modeId) b.className = 'on';
+    b.onclick = () => resetMode(id); el.appendChild(b);
+  }
+  document.getElementById('modeDesc').innerHTML = MODE_INFO[sim.modeId].desc;
+}
+
+function renderSteps() {
+  const el = document.getElementById('steps'); el.innerHTML = '';
+  MODE_INFO[sim.modeId].scenarios.forEach((sc, k) => {
+    const b = document.createElement('button'); b.textContent = sc.label;
+    b.disabled = k !== stepIndex;
+    b.onclick = () => { const rs = sc.run(sim); setMsg(rs.find(r => !r.ok) ?? rs[rs.length-1]); stepIndex++; renderSteps(); };
+    el.appendChild(b);
+  });
+  const r = document.createElement('button'); r.textContent = '↺ 從頭重跑這組情境';
+  r.onclick = () => resetMode(sim.modeId); el.appendChild(r);
+}
+
+function renderState() {
+  const st = {
+    '模式': MAPS[sim.modeId].name,
+    '波次': `${sim.wave} / ${WAVES}${sim.waveActive ? '（進行中）' : ''}`,
+    '生命': sim.lives, '金錢': sim.gold, '塔數': sim.towers.size,
+    '場上敵人': sim.enemies.length + sim.toSpawn,
+    '路線長度': `${sim.routeLength()} 格`,
+    '擊殺 / 漏怪': `${sim.kills} / ${sim.leaks}`,
+    '結果': sim.outcome === 'win' ? '勝利' : sim.outcome === 'lose' ? '失敗' : '—',
+  };
+  document.getElementById('state').innerHTML = Object.entries(st).map(([k,v]) =>
+    `<dt>${k}</dt><dd class="${prevState[k] !== undefined && prevState[k] !== v ? 'changed' : ''}">${v}</dd>`).join('');
+  prevState = st;
+  const m = document.getElementById('msg'); m.textContent = message.text; m.className = 'msg' + (message.bad ? ' bad' : '');
+  document.getElementById('btnWave').disabled = sim.waveActive || !!sim.outcome;
+}
+
+function draw() {
+  for (let y=0; y<H; y++) for (let x=0; x<W; x++) {
+    const c = sim.grid[sim.idx(x,y)];
+    ctx.fillStyle = sim.modeId === 'fixed' && c.walk ? '#e8d6a8' : c.walk ? '#eef0f3' : '#cfd3d8';
+    ctx.fillRect(x*CELL, y*CELL, CELL, CELL);
+    ctx.strokeStyle = '#ffffff55'; ctx.strokeRect(x*CELL+.5, y*CELL+.5, CELL-1, CELL-1);
+  }
+  const mark = ([x,y], col) => { ctx.fillStyle = col; ctx.fillRect(x*CELL+4, y*CELL+4, CELL-8, CELL-8); };
+  mark(sim.map.spawn, '#5bbf72'); mark(sim.map.goal, '#e06060');
+
+  const route = sim.route();
+  ctx.setLineDash([6,5]); ctx.strokeStyle = '#d9a400'; ctx.lineWidth = 2; ctx.beginPath();
+  route.forEach(([x,y],k) => k ? ctx.lineTo(x*CELL+CELL/2, y*CELL+CELL/2) : ctx.moveTo(x*CELL+CELL/2, y*CELL+CELL/2));
+  ctx.stroke(); ctx.setLineDash([]);
+
+  for (const [i] of sim.towers) {
+    const x = i%W, y = Math.floor(i/W);
+    ctx.fillStyle = '#2f6fde'; ctx.fillRect(x*CELL+5, y*CELL+5, CELL-10, CELL-10);
+  }
+  if (hover) {
+    const i = sim.idx(hover[0], hover[1]);
+    const cx = (hover[0]+.5)*CELL, cy = (hover[1]+.5)*CELL;
+    ctx.strokeStyle = sim.towers.has(i) ? '#2f6fde' : '#2f6fde66';
+    ctx.beginPath(); ctx.arc(cx, cy, TOWER.range*CELL, 0, Math.PI*2); ctx.stroke();
+  }
+  ctx.strokeStyle = '#ffcc33'; ctx.lineWidth = 2;
+  for (const s of sim.shots) { ctx.beginPath(); ctx.moveTo(s.x1*CELL, s.y1*CELL); ctx.lineTo(s.x2*CELL, s.y2*CELL); ctx.stroke(); }
+  for (const e of sim.enemies) {
+    ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.arc(e.x*CELL, e.y*CELL, CELL*.28, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#222'; ctx.fillRect(e.x*CELL-12, e.y*CELL-17, 24, 3);
+    ctx.fillStyle = '#5bbf72'; ctx.fillRect(e.x*CELL-12, e.y*CELL-17, 24*Math.max(0,e.hp/e.maxHp), 3);
+  }
+  ctx.lineWidth = 1;
+}
+
+function cellAt(ev) {
+  const r = canvas.getBoundingClientRect();
+  const x = Math.floor((ev.clientX - r.left) / r.width * W), y = Math.floor((ev.clientY - r.top) / r.height * H);
+  return x>=0 && y>=0 && x<W && y<H ? [x,y] : null;
+}
+canvas.addEventListener('click', ev => { const c = cellAt(ev); if (c) setMsg(sim.place(...c)); });
+canvas.addEventListener('contextmenu', ev => { ev.preventDefault(); const c = cellAt(ev); if (c) setMsg(sim.sell(...c)); });
+canvas.addEventListener('mousemove', ev => { hover = cellAt(ev); });
+canvas.addEventListener('mouseleave', () => { hover = null; });
+document.getElementById('btnWave').onclick = () => setMsg(sim.startWave());
+document.getElementById('btnSpeed').onclick = ev => { speed = speed === 1 ? 3 : 1; ev.target.textContent = `速度 ×${speed}`; };
+document.getElementById('btnReset').onclick = () => resetMode(sim.modeId);
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  for (let k=0; k<speed; k++) { const ev = sim.step(dt); if (ev.length) setMsg({ ok: sim.outcome !== 'lose', reason: ev[ev.length-1] }); }
+  draw(); renderState();
+  requestAnimationFrame(frame);
+}
+resetMode('fixed');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
