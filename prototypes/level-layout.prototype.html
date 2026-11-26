@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>關卡佈局原型</title>
+<style>
+  :root { --bg:#f6f5f2; --panel:#fff; --ink:#222; --muted:#777; --accent:#2f6fde; --line:#e2e0da; --bad:#b3261e; --good:#1d7a3a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.55 -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:1180px; margin:0 auto; padding:20px 16px 96px; }
+  h1 { font-size:21px; margin:0 0 4px; }
+  .lead { color:var(--muted); margin:0 0 14px; max-width:900px; }
+  .tag { display:inline-block; font-size:12px; background:#fde9c8; color:#8a5a00; padding:1px 8px; border-radius:10px; margin-left:8px; vertical-align:middle; }
+  .layout { display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:start; }
+  @media (max-width:1060px) { .layout { grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .side > .card + .card { margin-top:10px; }
+  canvas { display:block; max-width:100%; border-radius:6px; cursor:crosshair; }
+  .controls { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center; }
+  button { font:inherit; padding:6px 12px; border-radius:7px; border:1px solid var(--line); background:#fafafa; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.on { border-color:var(--accent); color:var(--accent); font-weight:600; background:#eef3fd; }
+  .hint { color:var(--muted); font-size:13px; margin-top:8px; }
+  dl { display:grid; grid-template-columns:auto 1fr; gap:2px 14px; margin:0; }
+  dt { color:var(--muted); }
+  dd { margin:0; font-variant-numeric:tabular-nums; }
+  h2 { font-size:14px; margin:0 0 6px; }
+  .probe { min-height:5.5em; }
+  .probe .ok { color:var(--good); font-weight:600; }
+  .probe .no { color:var(--bad); font-weight:600; }
+  .msg { margin-top:8px; padding:6px 10px; background:#f1f5fd; border-radius:6px; min-height:2em; }
+  .legend { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:13px; color:var(--muted); margin-top:8px; }
+  .legend i { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; margin-right:4px; border:1px solid #0002; }
+  .switcher { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); display:flex; align-items:center; gap:10px; background:#111; color:#fff; padding:8px 12px; border-radius:999px; box-shadow:0 6px 24px #0005; z-index:10; font-size:14px; }
+  .switcher button { background:#333; color:#fff; border-color:#444; border-radius:999px; padding:4px 12px; }
+  .switcher span { min-width:220px; text-align:center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Crownfall 關卡佈局比較<span class="tag">PROTOTYPE・用完即丟</span></h1>
+  <p class="lead">要回答的問題：slice 唯一那張 20×14 關卡怎麼排車道、寬區、入口終點、兩個高度層與坡道，才能在前三波內逼出「同一筆錢該蓋高台還是蓋路障」？四種佈局結構完全不同，用下方黑色切換列（或 ← →）切換。數值都是臨時的，只為了感受取捨；平衡交給「波次設計與調參方法」。畫面是 2D 俯視示意，不代表最終的 3D 鏡頭。</p>
+
+  <div class="layout">
+    <div class="card">
+      <canvas id="board"></canvas>
+      <div class="controls" id="towerPicker"></div>
+      <div class="controls">
+        <button class="primary" id="btnWave">開始下一波</button>
+        <button id="btnSpeed">速度 ×1</button>
+        <button id="btnReset">重來這張佈局</button>
+      </div>
+      <div class="hint">左鍵放塔・右鍵賣塔（還沒開波全額退，之後退 70%）・數字鍵 1/2/3 選塔。黃色虛線是敵人目前的路線；滑過任何格子看「放這裡會怎樣」。</div>
+      <div class="legend">
+        <span><i style="background:#cfd8c4"></i>低地（層 0）</span>
+        <span><i style="background:#a98f6a"></i>高地（層 1）</span>
+        <span><i style="background:#ecd9a8"></i>車道・層 0</span>
+        <span><i style="background:#cdb27a"></i>車道・層 1</span>
+        <span><i style="background:repeating-linear-gradient(45deg,#ecd9a8 0 3px,#8a6d3b 3px 5px)"></i>坡道</span>
+        <span><i style="background:#3a2a18"></i>粗黑線 = 峭壁</span>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card"><h2 id="vTitle"></h2><div id="vDesc"></div></div>
+      <div class="card"><h2>滑鼠所在格</h2><div class="probe" id="probe">把滑鼠移到地圖上。</div></div>
+      <div class="card"><dl id="state"></dl><div class="msg" id="msg"></div></div>
+      <div class="card"><h2>這張佈局的靜態量測（沒有塔時）</h2><dl id="metrics"></dl></div>
+    </div>
+  </div>
+</main>
+
+<div class="switcher">
+  <button id="prevV" aria-label="上一個">←</button>
+  <span id="vLabel"></span>
+  <button id="nextV" aria-label="下一個">→</button>
+</div>
+
+<script id="sim">
+// ===== 模擬核心：不碰 DOM，Node 也能跑 =====
+const W = 20, H = 14;
+const HEIGHT_BONUS = 1.5;          // 每高出一層加的射程（格）
+const START_GOLD = 100, START_LIVES = 20, CLEAR_BONUS = 30, SELL_RATE = 0.7;
+const TOWERS = {
+  basic:  { key: '1', name: '基本塔', short: '基', cost: 50,  range: 2.5, damage: 4,  rate: 2.0, splash: 0,   color: '#2f6fde' },
+  sniper: { key: '2', name: '狙擊塔', short: '狙', cost: 100, range: 4.5, damage: 20, rate: 0.6, splash: 0,   color: '#7b3fbf' },
+  splash: { key: '3', name: '範圍塔', short: '範', cost: 80,  range: 2.0, damage: 6,  rate: 1.0, splash: 1.1, color: '#d4622a' },
+};
+const ENEMIES = {
+  grunt:  { name: '雜兵', hp: 22, speed: 1.6, bounty: 5,  leak: 1, color: '#555', r: 0.22 },
+  runner: { name: '快兵', hp: 12, speed: 2.9, bounty: 4,  leak: 1, color: '#2a9d8f', r: 0.17 },
+  tank:   { name: '坦克', hp: 95, speed: 0.9, bounty: 15, leak: 2, color: '#8b1e1e', r: 0.3 },
+};
+// 臨時波次：[種類, 數量, 間隔秒]
+const WAVES = [
+  [['grunt', 10, 0.8]],
+  [['grunt', 8, 0.7], ['runner', 8, 0.35]],
+  [['grunt', 6, 0.7], ['tank', 3, 2.2]],
+  [['runner', 14, 0.3], ['tank', 3, 1.8]],
+  [['grunt', 12, 0.5], ['tank', 5, 1.6], ['runner', 10, 0.3]],
+];
+
+const LEGEND = {
+  '.': { level: 0, walk: false, build: true },
+  '#': { level: 1, walk: false, build: true },
+  '=': { level: 0, walk: true,  build: true },
+  '+': { level: 1, walk: true,  build: true },
+  '^': { level: 0, walk: true,  build: false, ramp: true },
+  'S': { level: 0, walk: true,  build: false, spawn: true },
+  's': { level: 1, walk: true,  build: false, spawn: true },
+  'G': { level: 0, walk: true,  build: false, goal: true },
+  'g': { level: 1, walk: true,  build: false, goal: true },
+};
+
+const VARIANTS = {
+  A: {
+    name: '前庭寬區',
+    desc: '入口後立刻是一大塊 6×5 的低地寬區，正下方緊貼一座高台，高台東緣同時看得到往南的窄道。之後低地窄道經坡道爬上右半邊的高地，在高地上繞一大圈到終點。<br><b>想看的事</b>：開局 100 金（2 座基本塔）要放寬區排迷宮，還是放高台同時壓寬區和窄道？後半段車道在高處，高台優勢在那裡消失，取捨集中在前半。',
+    rows: [
+      '............########',
+      '.======.....########',
+      '.======.....#+++++##',
+      'S=========..#+###+##',
+      '.======..=..#+###+##',
+      '.======..=..#+###+##',
+      '...######=..#+###+##',
+      '...######=..#+###++g',
+      '...######=..#+######',
+      '.........=..#+######',
+      '.........===^+######',
+      '............########',
+      '............########',
+      '............########',
+    ],
+  },
+  B: {
+    name: '中央高台島',
+    desc: '全程低地車道繞著中央一座 6×6 的高台島走三面（上、右、下），入口端是 5×4 的寬區，最後經坡道上高地進終點。<br><b>想看的事</b>：島上一座狙擊塔能打到三段路線，強到讓路障失去意義嗎？還是寬區的繞路（尤其對快兵）仍值得？',
+    rows: [
+      '.=====..........####',
+      'S=====..........####',
+      '.=====..........####',
+      '.=============..####',
+      '.......######=..####',
+      '.......######=..####',
+      '.......######=..####',
+      '.......######=..####',
+      '.......######=..####',
+      '.......######=..####',
+      '.....=========..####',
+      '.....=..........####',
+      '.....==========^+++g',
+      '................####',
+    ],
+  },
+  C: {
+    name: '峽谷',
+    desc: '入口在高地，先下坡進 5×5 的低地盆地（寬區），之後是夾在兩側山脊之間的單格峽谷，U 形繞過一塊脊島，最後上坡到高地終點。盆地南側有一小塊低地平台。<br><b>想看的事</b>：幾乎整條峽谷兩側都是高台，路障只在盆地有用；高台到處都是時，「蓋高台」還算是選擇嗎？',
+    rows: [
+      '####################',
+      '####=====###########',
+      's++^=====###########',
+      '####===========#####',
+      '####=====#####=#####',
+      '####=====#####=#####',
+      '####.....#=====#####',
+      '####.....#=#########',
+      '####.....#=#########',
+      '##########=#########',
+      '##########=======^+g',
+      '####################',
+      '####################',
+      '####################',
+    ],
+  },
+  D: {
+    name: '折返寬區',
+    desc: '寬區（7×5）的入口與出口都在西側，自然路線貼著西緣直下；在寬區裡排東西向的橫牆，能逼敵人往東折返。緊貼自然路線西南側有一座 6×2 高台，之後低地車道往東經坡道上高地。<br><b>想看的事</b>：路障和高台在這裡互相拆台：牆把敵人拉長路線的同時，也把敵人拉離高台的射程。這個取捨比 A–C 的「各自為政」更尖銳嗎？',
+    rows: [
+      '...............#####',
+      '...=======.....#####',
+      'S=========.....#+++g',
+      '...=======.....#+###',
+      '...=======.....#+###',
+      '...=======.....#+###',
+      '...=...........#+###',
+      '...=######.....#+###',
+      '...=######.....#+###',
+      '...=...........#+###',
+      '...============^+###',
+      '...............#####',
+      '...............#####',
+      '...............#####',
+    ],
+  },
+};
+
+const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+const cx = (i) => (i % W) + 0.5;
+const cy = (i) => Math.floor(i / W) + 0.5;
+const dist2 = (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2;
+
+function parseLayout(rows) {
+  if (rows.length !== H) throw new Error(`rows=${rows.length}`);
+  const cells = [];
+  let spawn = -1, goal = -1;
+  rows.forEach((row, y) => {
+    if (row.length !== W) throw new Error(`row ${y} len=${row.length}`);
+    [...row].forEach((ch, x) => {
+      const c = LEGEND[ch];
+      if (!c) throw new Error(`bad char ${ch}`);
+      const i = y * W + x;
+      if (c.spawn) spawn = i;
+      if (c.goal) goal = i;
+      cells.push({ ...c, ch });
+    });
+  });
+  return { cells, spawn, goal };
+}
+
+function neighbors(i) {
+  const x = i % W, y = Math.floor(i / W), out = [];
+  for (const [dx, dy] of DIRS) {
+    const nx = x + dx, ny = y + dy;
+    if (nx >= 0 && nx < W && ny >= 0 && ny < H) out.push(ny * W + nx);
+  }
+  return out;
+}
+
+// 同層可走；不同層只有其中一格是坡道時可走，否則是峭壁。
+function canStep(cells, a, b) {
+  const A = cells[a], B = cells[b];
+  if (!A.walk || !B.walk) return false;
+  return A.level === B.level || A.ramp || B.ramp;
+}
+
+function isCliff(cells, a, b) {
+  return cells[a].level !== cells[b].level && !(cells[a].walk && cells[b].walk && (cells[a].ramp || cells[b].ramp));
+}
+
+function flowField(map, blocked) {
+  const d = new Array(W * H).fill(Infinity);
+  d[map.goal] = 0;
+  const q = [map.goal];
+  for (let h = 0; h < q.length; h++) {
+    const i = q[h];
+    for (const n of neighbors(i)) {
+      if (d[n] !== Infinity || blocked.has(n) || !canStep(map.cells, i, n)) continue;
+      d[n] = d[i] + 1;
+      q.push(n);
+    }
+  }
+  return d;
+}
+
+function nextCell(dist, i) {
+  let best = -1;
+  for (const n of neighbors(i)) if (dist[n] < dist[i] && (best < 0 || dist[n] < dist[best])) best = n;
+  return best;
+}
+
+function routeFrom(dist, start) {
+  if (dist[start] === Infinity) return [];
+  const r = [start];
+  let i = start;
+  while (dist[i] > 0) { i = nextCell(dist, i); r.push(i); }
+  return r;
+}
+
+function rangeAgainst(tower, towerLevel, targetLevel) {
+  return TOWERS[tower].range + Math.max(0, towerLevel - targetLevel) * HEIGHT_BONUS;
+}
+
+function coverage(map, route, idx, type) {
+  const lvl = map.cells[idx].level;
+  return route.filter((c) => dist2(cx(idx), cy(idx), cx(c), cy(c)) <= rangeAgainst(type, lvl, map.cells[c].level) ** 2).length;
+}
+
+function isPlateau(map, i) {
+  const c = map.cells[i];
+  return !c.walk && c.build && neighbors(i).some((n) => map.cells[n].walk && map.cells[n].level < c.level);
+}
+
+function isWide(map, i) {
+  const x = i % W, y = Math.floor(i / W);
+  const lane = (xx, yy) => xx >= 0 && yy >= 0 && xx < W && yy < H && map.cells[yy * W + xx].walk;
+  for (const [ox, oy] of [[0, 0], [-1, 0], [0, -1], [-1, -1]])
+    if (lane(x + ox, y + oy) && lane(x + ox + 1, y + oy) && lane(x + ox, y + oy + 1) && lane(x + ox + 1, y + oy + 1)) return true;
+  return false;
+}
+
+function staticMetrics(map) {
+  const d0 = flowField(map, new Set());
+  const route = routeFrom(d0, map.spawn);
+  const all = [...map.cells.keys()];
+  const plateau = all.filter((i) => isPlateau(map, i));
+  const wide = all.filter((i) => map.cells[i].walk && map.cells[i].build && isWide(map, i));
+  const ramps = all.filter((i) => map.cells[i].ramp).length;
+  const best = (cands, type) => cands.reduce((b, i) => {
+    const v = coverage(map, route, i, type);
+    return v > b.v ? { v, i } : b;
+  }, { v: 0, i: -1 });
+  const legalLen = (blocked) => { const d = flowField(map, blocked); return d[map.spawn]; };
+  let bestTwo = 0;
+  for (const a of wide) for (const b of wide) {
+    if (b <= a) continue;
+    const l2 = legalLen(new Set([a, b]));
+    if (l2 !== Infinity) bestTwo = Math.max(bestTwo, l2 - d0[map.spawn]);
+  }
+  // 4 座的窮舉太慢，改成兩輪「挑最佳的一對」：是下界，不是最佳解。
+  let placed = new Set(), len = d0[map.spawn];
+  for (let round = 0; round < 2; round++) {
+    let pick = null, pickLen = -1;
+    for (const a of wide) for (const b of wide) {
+      if (b <= a || placed.has(a) || placed.has(b)) continue;
+      const s = new Set([...placed, a, b]);
+      const l = legalLen(s);
+      if (l !== Infinity && l > pickLen) { pick = s; pickLen = l; }
+    }
+    if (!pick) break;
+    placed = pick; len = pickLen;
+  }
+  const bestFour = len - d0[map.spawn];
+  const firstIdx = (pred) => route.findIndex(pred);
+  return {
+    routeLen: route.length - 1,
+    laneCells: all.filter((i) => map.cells[i].walk).length,
+    wideCells: wide.length,
+    plateauCells: plateau.length,
+    ramps,
+    firstWide: firstIdx((c) => wide.includes(c)),
+    firstPlateau: firstIdx((c) => neighbors(c).some((n) => plateau.includes(n))),
+    bestPlateauBasic: best(plateau, 'basic'),
+    bestPlateauSniper: best(plateau, 'sniper'),
+    bestLowOffLaneBasic: best(all.filter((i) => !map.cells[i].walk && map.cells[i].level === 0), 'basic'),
+    bestBlockTwo: bestTwo,
+    bestBlockFour: bestFour,
+  };
+}
+
+class Sim {
+  constructor(variantKey) {
+    this.variantKey = variantKey;
+    this.map = parseLayout(VARIANTS[variantKey].rows);
+    this.towers = new Map();
+    this.enemies = [];
+    this.shots = [];
+    this.gold = START_GOLD; this.lives = START_LIVES;
+    this.wave = 0; this.waveActive = false; this.everStarted = false;
+    this.queue = []; this.spawnT = 0; this.over = null; this.leaked = 0; this.killed = 0;
+    this.nextId = 1;
+    this.recompute();
+  }
+  blockedSet(extra) {
+    const s = new Set([...this.towers.keys()].filter((i) => this.map.cells[i].walk));
+    if (extra !== undefined) s.add(extra);
+    return s;
+  }
+  recompute() {
+    this.dist = flowField(this.map, this.blockedSet());
+    this.route = routeFrom(this.dist, this.map.spawn);
+  }
+  check(idx, type, ignoreGold = false) {
+    const c = this.map.cells[idx];
+    if (!c.build) return { ok: false, reason: c.ramp ? '坡道不能建塔' : '入口／終點不能建塔' };
+    if (this.towers.has(idx)) return { ok: false, reason: '已經有塔' };
+    if (!ignoreGold && this.gold < TOWERS[type].cost) return { ok: false, reason: `金錢不足（要 ${TOWERS[type].cost}）` };
+    if (!c.walk) return { ok: true, blocker: false, route: this.route };
+    if (this.enemies.some((e) => e.cell === idx || e.next === idx)) return { ok: false, reason: '敵人正在這格或下一步要走這格' };
+    const d = flowField(this.map, this.blockedSet(idx));
+    if (d[this.map.spawn] === Infinity) return { ok: false, reason: '會讓入口到終點斷線' };
+    if (this.enemies.some((e) => d[e.cell] === Infinity)) return { ok: false, reason: '會困住場上的敵人' };
+    return { ok: true, blocker: true, dist: d, route: routeFrom(d, this.map.spawn) };
+  }
+  place(idx, type) {
+    const r = this.check(idx, type);
+    if (!r.ok) return r;
+    this.gold -= TOWERS[type].cost;
+    this.towers.set(idx, { type, cd: 0, level: this.map.cells[idx].level, paid: TOWERS[type].cost });
+    this.recompute();
+    for (const e of this.enemies) e.next = -1;
+    return r;
+  }
+  sell(idx) {
+    const t = this.towers.get(idx);
+    if (!t) return 0;
+    const refund = this.everStarted ? Math.floor(t.paid * SELL_RATE) : t.paid;
+    this.gold += refund;
+    this.towers.delete(idx);
+    this.recompute();
+    for (const e of this.enemies) e.next = -1;
+    return refund;
+  }
+  startWave() {
+    if (this.waveActive || this.over || this.wave >= WAVES.length) return false;
+    this.queue = [];
+    let t = 0;
+    for (const [type, n, gap] of WAVES[this.wave]) for (let k = 0; k < n; k++) { this.queue.push({ type, t }); t += gap; }
+    this.spawnT = 0; this.waveActive = true; this.everStarted = true; this.wave++;
+    return true;
+  }
+  step(dt) {
+    if (this.over) return;
+    if (this.waveActive) {
+      this.spawnT += dt;
+      while (this.queue.length && this.queue[0].t <= this.spawnT) {
+        const { type } = this.queue.shift();
+        const s = this.map.spawn;
+        this.enemies.push({ id: this.nextId++, type, hp: ENEMIES[type].hp, x: cx(s), y: cy(s), cell: s, next: -1 });
+      }
+    }
+    for (const e of this.enemies) this.moveEnemy(e, dt);
+    this.enemies = this.enemies.filter((e) => {
+      if (e.leaked) { this.lives -= ENEMIES[e.type].leak; this.leaked++; return false; }
+      return true;
+    });
+    for (const [idx, t] of this.towers) this.fire(idx, t, dt);
+    this.enemies = this.enemies.filter((e) => {
+      if (e.hp <= 0) { this.gold += ENEMIES[e.type].bounty; this.killed++; return false; }
+      return true;
+    });
+    this.shots = this.shots.filter((s) => (s.ttl -= dt) > 0);
+    if (this.lives <= 0) { this.lives = 0; this.over = 'lost'; return; }
+    if (this.waveActive && !this.queue.length && !this.enemies.length) {
+      this.waveActive = false; this.gold += CLEAR_BONUS;
+      if (this.wave >= WAVES.length) this.over = 'won';
+    }
+  }
+  moveEnemy(e, dt) {
+    let left = ENEMIES[e.type].speed * dt;
+    while (left > 0) {
+      if (e.cell === this.map.goal) { e.leaked = true; return; }
+      if (e.next < 0) e.next = nextCell(this.dist, e.cell);
+      const tx = cx(e.next), ty = cy(e.next);
+      const d = Math.hypot(tx - e.x, ty - e.y);
+      if (d > left) { e.x += (tx - e.x) / d * left; e.y += (ty - e.y) / d * left; return; }
+      e.x = tx; e.y = ty; left -= d; e.cell = e.next; e.next = -1;
+    }
+  }
+  remaining(e) {
+    const n = e.next >= 0 ? e.next : e.cell;
+    return this.dist[n] + Math.hypot(cx(n) - e.x, cy(n) - e.y);
+  }
+  fire(idx, t, dt) {
+    t.cd -= dt;
+    if (t.cd > 0) return;
+    const spec = TOWERS[t.type];
+    const tx = cx(idx), ty = cy(idx);
+    let target = null, bestRem = Infinity;
+    for (const e of this.enemies) {
+      if (e.hp <= 0) continue;
+      const r = rangeAgainst(t.type, t.level, this.map.cells[e.cell].level);
+      if (dist2(tx, ty, e.x, e.y) > r * r) continue;
+      const rem = this.remaining(e);
+      if (rem < bestRem) { bestRem = rem; target = e; }
+    }
+    if (!target) return;
+    t.cd = 1 / spec.rate;
+    if (spec.splash) {
+      for (const e of this.enemies) if (dist2(e.x, e.y, target.x, target.y) <= spec.splash ** 2) e.hp -= spec.damage;
+    } else target.hp -= spec.damage;
+    this.shots.push({ x1: tx, y1: ty, x2: target.x, y2: target.y, color: spec.color, splash: spec.splash, ttl: 0.08 });
+  }
+}
+if (typeof module !== 'undefined') module.exports = { Sim, VARIANTS, TOWERS, WAVES, parseLayout, staticMetrics, flowField, routeFrom, coverage };
+</script>
+
+<script>
+// ===== 畫面與輸入 =====
+const CELL = 34;
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+canvas.width = W * CELL; canvas.height = H * CELL;
+const KEYS = Object.keys(VARIANTS);
+let variant = new URLSearchParams(location.search).get('variant');
+if (!KEYS.includes(variant)) variant = 'A';
+let sim, metrics, towerType = 'basic', speed = 1, hover = -1, msg = '';
+
+const COLORS = { '.': '#cfd8c4', '#': '#a98f6a', '=': '#ecd9a8', '+': '#cdb27a', '^': '#ecd9a8', S: '#ecd9a8', s: '#cdb27a', G: '#ecd9a8', g: '#cdb27a' };
+
+function loadVariant(k) {
+  variant = k;
+  const url = new URL(location.href); url.searchParams.set('variant', k); history.replaceState(null, '', url);
+  sim = new Sim(k);
+  metrics = staticMetrics(sim.map);
+  msg = '';
+  document.getElementById('vLabel').textContent = `${k}（${VARIANTS[k].name}）`;
+  document.getElementById('vTitle').textContent = `佈局 ${k}：${VARIANTS[k].name}`;
+  document.getElementById('vDesc').innerHTML = VARIANTS[k].desc;
+  renderMetrics();
+}
+
+function renderMetrics() {
+  const m = metrics;
+  const rows = [
+    ['路線長度', `${m.routeLen} 格`],
+    ['車道格數', `${m.laneCells}（寬區可建格 ${m.wideCells}）`],
+    ['高台格數', `${m.plateauCells}`],
+    ['坡道', `${m.ramps}`],
+    ['寬區出現在', `路線第 ${m.firstWide} 格`],
+    ['首次緊鄰高台', `路線第 ${m.firstPlateau} 格`],
+    ['最佳高台・基本塔', `覆蓋 ${m.bestPlateauBasic.v} 格路線`],
+    ['最佳高台・狙擊塔', `覆蓋 ${m.bestPlateauSniper.v} 格路線`],
+    ['最佳低地車道外・基本塔', `覆蓋 ${m.bestLowOffLaneBasic.v} 格`],
+    ['寬區 2 座路障', `路線最多 +${m.bestBlockTwo} 格`],
+    ['寬區 4 座路障', `路線至少能 +${m.bestBlockFour} 格`],
+  ];
+  document.getElementById('metrics').innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
+}
+
+function renderState() {
+  const live = sim.enemies.length, queued = sim.queue.length;
+  const status = sim.over === 'won' ? '原型的 5 波全部撐過' : sim.over === 'lost' ? '失敗' : sim.waveActive ? `第 ${sim.wave} 波進行中（場上 ${live}，待出 ${queued}）` : `準備中（下一波：第 ${sim.wave + 1} 波）`;
+  const next = WAVES[sim.wave];
+  const preview = next ? next.map(([t, n]) => `${ENEMIES[t].name}×${n}`).join('、') : '—';
+  const rows = [
+    ['狀態', status], ['金錢', sim.gold], ['生命', sim.lives],
+    ['目前路線', `${sim.route.length - 1} 格（原始 ${metrics.routeLen}）`],
+    ['下一波', preview], ['擊殺／漏怪', `${sim.killed}／${sim.leaked}`],
+  ];
+  document.getElementById('state').innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
+  const m = document.getElementById('msg'); m.textContent = msg || ' ';
+}
+
+function renderProbe() {
+  const el = document.getElementById('probe');
+  if (hover < 0) { el.textContent = '把滑鼠移到地圖上。'; return; }
+  const c = sim.map.cells[hover];
+  const kind = c.ramp ? '坡道' : c.spawn ? '入口' : c.goal ? '終點' : c.walk ? `車道（層 ${c.level}）` : isPlateau(sim.map, hover) ? `高台（層 ${c.level}）` : `車道外（層 ${c.level}）`;
+  const tower = sim.towers.get(hover);
+  if (tower) {
+    const refund = sim.everStarted ? Math.floor(tower.paid * SELL_RATE) : tower.paid;
+    el.innerHTML = `${kind}・已有${TOWERS[tower.type].name}<br>覆蓋目前路線 ${coverage(sim.map, sim.route, hover, tower.type)} 格・右鍵賣出退 ${refund}`;
+    return;
+  }
+  const r = sim.check(hover, towerType, true);
+  if (!r.ok) { el.innerHTML = `${kind}<br><span class="no">不能放：${r.reason}</span>`; return; }
+  const spec = TOWERS[towerType];
+  const circle = rangeAgainst(towerType, c.level, 0);
+  const cov = coverage(sim.map, r.route, hover, towerType);
+  let line = `${kind}<br><span class="ok">放${spec.name}（${spec.cost} 金）</span>：射程圈 ${circle.toFixed(1)} 格（以層 0 為基準），覆蓋路線 ${cov} 格`;
+  if (r.blocker) line += `<br>當路障：路線 ${sim.route.length - 1} → ${r.route.length - 1} 格（${r.route.length - sim.route.length >= 0 ? '+' : ''}${r.route.length - sim.route.length}）`;
+  if (sim.gold < spec.cost) line += `<br><span class="no">目前金錢不足</span>`;
+  el.innerHTML = line;
+}
+
+function draw() {
+  const { cells } = sim.map;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (let i = 0; i < W * H; i++) {
+    const x = (i % W) * CELL, y = Math.floor(i / W) * CELL, c = cells[i];
+    ctx.fillStyle = COLORS[c.ch];
+    ctx.fillRect(x, y, CELL, CELL);
+    if (c.level === 1 && !c.walk) { ctx.fillStyle = '#ffffff22'; ctx.fillRect(x + 3, y + 3, CELL - 6, CELL - 6); }
+    if (c.ramp) {
+      ctx.strokeStyle = '#8a6d3b'; ctx.lineWidth = 2;
+      for (let k = 6; k < CELL; k += 7) { ctx.beginPath(); ctx.moveTo(x + k, y + 2); ctx.lineTo(x + k, y + CELL - 2); ctx.stroke(); }
+    }
+    ctx.strokeStyle = '#00000012'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
+  }
+  ctx.strokeStyle = '#3a2a18'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+  for (let i = 0; i < W * H; i++) {
+    const x = i % W, y = Math.floor(i / W);
+    if (x + 1 < W && isCliff(cells, i, i + 1)) { ctx.beginPath(); ctx.moveTo((x + 1) * CELL, y * CELL); ctx.lineTo((x + 1) * CELL, (y + 1) * CELL); ctx.stroke(); }
+    if (y + 1 < H && isCliff(cells, i, i + W)) { ctx.beginPath(); ctx.moveTo(x * CELL, (y + 1) * CELL); ctx.lineTo((x + 1) * CELL, (y + 1) * CELL); ctx.stroke(); }
+  }
+  ctx.lineCap = 'butt';
+  ctx.strokeStyle = '#f2b705'; ctx.lineWidth = 3; ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  sim.route.forEach((c, k) => { const px = cx(c) * CELL, py = cy(c) * CELL; k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+  ctx.stroke(); ctx.setLineDash([]);
+  for (const [i, label] of [[sim.map.spawn, '入'], [sim.map.goal, '終']]) {
+    ctx.fillStyle = label === '入' ? '#1d7a3a' : '#b3261e';
+    ctx.beginPath(); ctx.arc(cx(i) * CELL, cy(i) * CELL, CELL * 0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx(i) * CELL, cy(i) * CELL + 1);
+  }
+  for (const [i, t] of sim.towers) {
+    const spec = TOWERS[t.type];
+    ctx.fillStyle = spec.color;
+    ctx.beginPath(); ctx.roundRect((i % W) * CELL + 4, Math.floor(i / W) * CELL + 4, CELL - 8, CELL - 8, 6); ctx.fill();
+    if (sim.map.cells[i].walk) { ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.stroke(); }
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(spec.short, cx(i) * CELL, cy(i) * CELL + 1);
+  }
+  for (const e of sim.enemies) {
+    const spec = ENEMIES[e.type];
+    ctx.fillStyle = spec.color;
+    ctx.beginPath(); ctx.arc(e.x * CELL, e.y * CELL, spec.r * CELL, 0, Math.PI * 2); ctx.fill();
+    const w = CELL * 0.6, frac = Math.max(0, e.hp / spec.hp);
+    ctx.fillStyle = '#0006'; ctx.fillRect(e.x * CELL - w / 2, e.y * CELL - spec.r * CELL - 6, w, 3);
+    ctx.fillStyle = '#3c3'; ctx.fillRect(e.x * CELL - w / 2, e.y * CELL - spec.r * CELL - 6, w * frac, 3);
+  }
+  for (const s of sim.shots) {
+    ctx.strokeStyle = s.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(s.x1 * CELL, s.y1 * CELL); ctx.lineTo(s.x2 * CELL, s.y2 * CELL); ctx.stroke();
+    if (s.splash) { ctx.beginPath(); ctx.arc(s.x2 * CELL, s.y2 * CELL, s.splash * CELL, 0, Math.PI * 2); ctx.stroke(); }
+  }
+  if (hover >= 0) {
+    const t = sim.towers.get(hover);
+    const type = t ? t.type : towerType;
+    const r = t ? { ok: true } : sim.check(hover, towerType, true);
+    const lvl = sim.map.cells[hover].level;
+    ctx.strokeStyle = r.ok ? '#1d7a3a' : '#b3261e'; ctx.lineWidth = 2.5;
+    ctx.strokeRect((hover % W) * CELL + 1.5, Math.floor(hover / W) * CELL + 1.5, CELL - 3, CELL - 3);
+    if (r.ok) {
+      if (r.route && r.blocker) {
+        ctx.strokeStyle = '#d43a3a'; ctx.lineWidth = 2; ctx.setLineDash([3, 4]); ctx.beginPath();
+        r.route.forEach((c, k) => { const px = cx(c) * CELL, py = cy(c) * CELL; k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.fillStyle = TOWERS[type].color + '22'; ctx.strokeStyle = TOWERS[type].color; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(cx(hover) * CELL, cy(hover) * CELL, rangeAgainst(type, lvl, 0) * CELL, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+  }
+}
+
+function buildPicker() {
+  const el = document.getElementById('towerPicker');
+  el.innerHTML = Object.entries(TOWERS).map(([k, t]) => `<button data-t="${k}">${t.key}・${t.name} ${t.cost} 金</button>`).join('');
+  el.querySelectorAll('button').forEach((b) => b.onclick = () => { towerType = b.dataset.t; syncPicker(); });
+  syncPicker();
+}
+function syncPicker() { document.querySelectorAll('#towerPicker button').forEach((b) => b.classList.toggle('on', b.dataset.t === towerType)); }
+
+function cellAt(ev) {
+  const r = canvas.getBoundingClientRect();
+  const x = Math.floor((ev.clientX - r.left) / r.width * W), y = Math.floor((ev.clientY - r.top) / r.height * H);
+  return x >= 0 && x < W && y >= 0 && y < H ? y * W + x : -1;
+}
+canvas.addEventListener('mousemove', (ev) => { hover = cellAt(ev); });
+canvas.addEventListener('mouseleave', () => { hover = -1; });
+canvas.addEventListener('click', (ev) => {
+  const i = cellAt(ev); if (i < 0) return;
+  const r = sim.place(i, towerType);
+  msg = r.ok ? `放下${TOWERS[towerType].name}${r.blocker ? '（路障）' : ''}` : `不能放：${r.reason}`;
+});
+canvas.addEventListener('contextmenu', (ev) => {
+  ev.preventDefault();
+  const i = cellAt(ev); if (i < 0) return;
+  const refund = sim.sell(i);
+  msg = refund ? `賣塔，退 ${refund} 金` : '';
+});
+document.getElementById('btnWave').onclick = () => { if (!sim.startWave()) msg = sim.waveActive ? '這波還沒結束' : '已經沒有下一波'; };
+document.getElementById('btnSpeed').onclick = (ev) => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; ev.target.textContent = `速度 ×${speed}`; };
+document.getElementById('btnReset').onclick = () => loadVariant(variant);
+const cycle = (d) => loadVariant(KEYS[(KEYS.indexOf(variant) + d + KEYS.length) % KEYS.length]);
+document.getElementById('prevV').onclick = () => cycle(-1);
+document.getElementById('nextV').onclick = () => cycle(1);
+document.addEventListener('keydown', (ev) => {
+  if (ev.target.closest('input, textarea, [contenteditable]')) return;
+  if (ev.key === 'ArrowLeft') cycle(-1);
+  else if (ev.key === 'ArrowRight') cycle(1);
+  else for (const [k, t] of Object.entries(TOWERS)) if (ev.key === t.key) { towerType = k; syncPicker(); }
+});
+
+let last = performance.now(), acc = 0;
+function frame(now) {
+  acc += Math.min(0.25, (now - last) / 1000) * speed; last = now;
+  while (acc >= 1 / 30) { sim.step(1 / 30); acc -= 1 / 30; }
+  draw(); renderState(); renderProbe();
+  requestAnimationFrame(frame);
+}
+buildPicker();
+loadVariant(variant);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
