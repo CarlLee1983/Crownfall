@@ -12,6 +12,7 @@ import {
   type RejectionReason,
   samePlacementPreviewInputs,
 } from '../core';
+import { towerStructure } from './build-layer';
 import { cellProjection, element, isGameDialogOpen, updateText } from './hud-dom';
 import { LAYER_HEIGHT } from './terrain';
 
@@ -38,7 +39,6 @@ type TowerAction = 'upgradeTower' | 'sellTower';
 interface BuildActions {
   placeTower(cell: CellIndex, kind: string): void;
   manageTower(cell: CellIndex, action: TowerAction): void;
-  pickTower(raycaster: Raycaster): CellIndex | undefined;
 }
 
 function towerActionButton(label: string, shortcut: string) {
@@ -248,12 +248,14 @@ export function createBuildHud(
     );
     raycaster.setFromCamera(pointer, camera);
     const { origin, direction } = raycaster.ray;
-    const cell =
-      actions.pickTower(raycaster) ??
-      pickCell(state.level, {
+    const cell = pickCell(
+      state.level,
+      {
         origin: { x: origin.x, y: origin.y / LAYER_HEIGHT, z: origin.z },
         direction: { x: direction.x, y: direction.y / LAYER_HEIGHT, z: direction.z },
-      });
+      },
+      new Map(state.towers.map((tower) => [tower.cell, towerStructure(tower)])),
+    );
     const tower = cell === undefined ? null : queryTower(state, cell);
     if (chosen !== undefined && (tower === null || chosen === cell)) {
       close();
