@@ -1,6 +1,7 @@
-import type { Document } from '@gltf-transform/core';
+import type { Document, NodeIO } from '@gltf-transform/core';
 import { simplify } from '@gltf-transform/functions';
 import { MeshoptSimplifier } from 'meshoptimizer';
+import manifest from '../docs/art/asset-manifest.json';
 import { prepareHexagonModel } from './build-hexagon-model';
 
 // Castle masonry has split vertices at UV seams. Permit collapses across those seams
@@ -17,7 +18,7 @@ const castleSimplifier = {
   },
 };
 
-export async function prepareSceneryModel(document: Document, id: string): Promise<void> {
+async function prepareSceneryModel(document: Document, id: string): Promise<void> {
   if (id === 'prop-entrance') {
     const nodes = document.getRoot().listNodes();
     const left = nodes.find((node) => node.getName() === 'wall_straight_gate_door_left');
@@ -31,4 +32,17 @@ export async function prepareSceneryModel(document: Document, id: string): Promi
     await document.transform(simplify({ simplifier: castleSimplifier, ratio: 0.26, error: 0.12 }));
   }
   await prepareHexagonModel(document);
+}
+
+export async function buildSceneryModels(io: NodeIO): Promise<void> {
+  for (const asset of manifest.assets.filter(({ id }) => id.startsWith('prop-'))) {
+    const { id, source, path } = asset;
+    if (source.commit === undefined) throw new Error(`缺少 ${id} 的來源版本`);
+    const upstream = new URL(source.url_or_tool);
+    const input = `https://raw.githubusercontent.com${upstream.pathname}/${source.commit}/${source.prompt_or_source_record}`;
+    const document = await io.read(input);
+    await prepareSceneryModel(document, id);
+    await io.write(path, document);
+    console.log(`${path} (${io.lastWriteBytes} bytes)`);
+  }
 }
