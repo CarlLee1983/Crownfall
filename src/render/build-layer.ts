@@ -27,9 +27,14 @@ import {
   type Structure,
   type Tower,
 } from '../core';
+import { nextCell } from '../core/pathing';
+import { type EnemyMotion, enemyMotion, sampleEnemyMotion } from './enemy-motion';
+import { sampleRoute } from './route-curve';
 import { LAYER_HEIGHT } from './terrain';
 
 const SOLID_ROUTE_LIFT = 0.035;
+// 每格取八段，包含邊中點，讓圓弧與坡面轉折都有取樣點。
+const ROUTE_STEPS_PER_CELL = 8;
 
 function towerModel(geometry: BufferGeometry, height: number, halfWidth: number, color: number) {
   return {
@@ -94,29 +99,28 @@ interface BuildPreview {
 
 interface BuildLayer {
   readonly group: Group;
-  update(previous: GameState, state: GameState, alpha: number, preview?: BuildPreview): void;
+  update(
+    previous: GameState,
+    state: GameState,
+    alpha: number,
+    preview?: BuildPreview,
+    motions?: Iterable<EnemyMotion>,
+  ): void;
 }
 
 function routePoint(level: Level, point: GridPoint, lift: number): [number, number, number] {
   return [point.x, groundHeight(level, point) * LAYER_HEIGHT + lift, point.y];
 }
 
-// 在格子邊緣開始爬坡，避免連線切進坡面。
-function edgeMidpoint(from: GridPoint, to: GridPoint): GridPoint {
-  return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
-}
-
 function drawRoute(line: Line2, level: Level, route: readonly CellIndex[], lift: number): void {
   line.visible = route.length > 1;
   if (!line.visible) return;
 
+  const points = route.map((cell) => cellPoint(level, cell));
+  const steps = (points.length - 1) * ROUTE_STEPS_PER_CELL;
   const positions: number[] = [];
-  for (const [i, cell] of route.entries()) {
-    const point = cellPoint(level, cell);
-    positions.push(...routePoint(level, point, lift));
-    const next = route[i + 1];
-    if (next === undefined) continue;
-    positions.push(...routePoint(level, edgeMidpoint(point, cellPoint(level, next)), lift));
+  for (let i = 0; i <= steps; i++) {
+    positions.push(...routePoint(level, sampleRoute(points, i / steps), lift));
   }
 
   line.geometry.dispose();
@@ -124,19 +128,134 @@ function drawRoute(line: Line2, level: Level, route: readonly CellIndex[], lift:
   if (line.material.dashed) line.computeLineDistances();
 }
 
-function drawBranches(line: LineSegments2, level: Level, segments: readonly RouteSegment[]): void {
+type RouteTurn = readonly [from: CellIndex, corner: CellIndex, to: CellIndex];
+
+function edgeKey(from: CellIndex, to: CellIndex): string {
+  return `${Math.min(from, to)}:${Math.max(from, to)}`;
+}
+
+function turnKey(from: CellIndex, corner: CellIndex, to: CellIndex): string {
+  return `${corner}:${edgeKey(from, to)}`;
+}
+
+function activeBranchTurns(
+  motions: Iterable<EnemyMotion>,
+  mainEdges: ReadonlySet<string>,
+  segments: readonly RouteSegment[],
+  interpolating: boolean,
+): ReadonlyMap<string, RouteTurn> {
+  const turns = new Map<string, RouteTurn>();
+  const branchEdges = new Set(segments.map(({ from, to }) => edgeKey(from, to)));
+  for (const { route, start, end } of motions) {
+    // 移動進度以格為單位，轉角涵蓋格心前後各半格。
+    const progress = interpolating ? start : end;
+    const first = Math.max(1, Math.floor(progress));
+    const nearest = Math.floor(progress + 0.5);
+    const last = Math.min(route.cells.length - 2, Math.floor(end + 0.5));
+    for (let i = first; i <= last; i++) {
+      const from = route.cells[i - 1];
+      const corner = route.cells[i];
+      const to = route.cells[i + 1];
+      if (from === undefined || corner === undefined || to === undefined) continue;
+      const fromMain = mainEdges.has(edgeKey(from, corner));
+      const outgoing = edgeKey(corner, to);
+      if (fromMain && mainEdges.has(outgoing)) continue;
+      // 敵人已越過岔口的中點時，只要分支仍經過這條邊，就保留接回主線的入口。
+      if (i < nearest && !(fromMain && branchEdges.has(outgoing))) continue;
+      if (from !== to) turns.set(turnKey(from, corner, to), [from, corner, to]);
+    }
+  }
+  return turns;
+}
+
+function appendMotionTransition(positions: number[], state: GameState, motion: EnemyMotion): void {
+  const { level } = state;
+  let point = sampleEnemyMotion(motion, 0);
+  const append = (next: GridPoint) => {
+    if (point.x === next.x && point.y === next.y) return;
+    positions.push(
+      ...routePoint(level, point, SOLID_ROUTE_LIFT),
+      ...routePoint(level, next, SOLID_ROUTE_LIFT),
+    );
+    point = next;
+  };
+  for (let i = 1; i <= ROUTE_STEPS_PER_CELL; i++) {
+    append(sampleEnemyMotion(motion, i / ROUTE_STEPS_PER_CELL));
+  }
+  // 暫停改道時畫面仍沿用上一 tick 的動線，補到新路線上的同一個移動進度。
+  if (motion.distance !== state.distance) {
+    append(sampleEnemyMotion(enemyMotion(state, motion.enemy, motion), 1));
+  }
+}
+
+function drawBranches(
+  line: LineSegments2,
+  state: GameState,
+  segments: readonly RouteSegment[],
+  activeTurns: Iterable<RouteTurn>,
+  transitions: readonly EnemyMotion[],
+): void {
+  const { level, distance } = state;
   const positions: number[] = [];
+  const drawnHalves = new Set<string>();
+  const reversingHalves = new Set<string>();
+  const drawnTurns = new Set<string>();
+
+  // 已補繪的半邊共用邊中點，折返的半邊仍畫到格心。
+  const drawTurn = (from: CellIndex, corner: CellIndex, to: CellIndex) => {
+    const start = cellPoint(level, from);
+    const turn = cellPoint(level, corner);
+    const end = cellPoint(level, to);
+    const incomingHalf = `${corner}:${from}`;
+    const outgoingHalf = `${corner}:${to}`;
+    if (from === to) {
+      reversingHalves.add(incomingHalf);
+      return;
+    }
+    const key = turnKey(from, corner, to);
+    if (drawnTurns.has(key)) return;
+    drawnTurns.add(key);
+
+    const points = [start, turn, end];
+    const steps = start.x === end.x || start.y === end.y ? 2 : ROUTE_STEPS_PER_CELL;
+    let point = routePoint(level, sampleRoute(points, 0.25), SOLID_ROUTE_LIFT);
+    for (let i = 1; i <= steps; i++) {
+      const progress = 0.25 + i / (2 * steps);
+      const next = routePoint(level, sampleRoute(points, progress), SOLID_ROUTE_LIFT);
+      positions.push(...point, ...next);
+      point = next;
+    }
+    drawnHalves.add(incomingHalf);
+    drawnHalves.add(outgoingHalf);
+  };
+
+  for (const { from, to } of segments) {
+    const next = nextCell(level, distance, to);
+    if (next !== undefined) drawTurn(from, to, next);
+    if (next === from) {
+      const afterReversal = nextCell(level, distance, from);
+      if (afterReversal !== undefined) drawTurn(to, from, afterReversal);
+    }
+  }
+  // 模擬已移出分支時，保留還在內插中的轉角，直到敵人到達出口邊中點。
+  for (const turn of activeTurns) drawTurn(...turn);
+
+  const retainHalf = (from: CellIndex, to: CellIndex) => {
+    const key = `${from}:${to}`;
+    return !drawnHalves.has(key) || reversingHalves.has(key);
+  };
   for (const { from, to } of segments) {
     const start = cellPoint(level, from);
     const end = cellPoint(level, to);
-    const middle = routePoint(level, edgeMidpoint(start, end), SOLID_ROUTE_LIFT);
-    positions.push(
-      ...routePoint(level, start, SOLID_ROUTE_LIFT),
-      ...middle,
-      ...middle,
-      ...routePoint(level, end, SOLID_ROUTE_LIFT),
-    );
+    const middle = routePoint(level, sampleRoute([start, end], 0.5), SOLID_ROUTE_LIFT);
+    if (retainHalf(from, to)) {
+      positions.push(...routePoint(level, start, SOLID_ROUTE_LIFT), ...middle);
+    }
+    if (retainHalf(to, from)) {
+      positions.push(...middle, ...routePoint(level, end, SOLID_ROUTE_LIFT));
+    }
   }
+  for (const motion of transitions) appendMotionTransition(positions, state, motion);
   line.geometry.dispose();
   line.geometry = new LineSegmentsGeometry();
   line.visible = positions.length > 0;
@@ -145,6 +264,17 @@ function drawBranches(line: LineSegments2, level: Level, segments: readonly Rout
 
 function sameRoute(a: readonly CellIndex[], b: readonly CellIndex[]): boolean {
   return a === b || (a.length === b.length && a.every((cell, i) => cell === b[i]));
+}
+
+function sameTurnKeys(
+  a: ReadonlyMap<string, RouteTurn>,
+  b: ReadonlyMap<string, RouteTurn>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const key of a.keys()) {
+    if (!b.has(key)) return false;
+  }
+  return true;
 }
 
 function sameTowerLayout(
@@ -200,7 +330,10 @@ export function createBuildLayer(): BuildLayer {
 
   let lastState: GameState | undefined;
   let lastInterpolationState: GameState | undefined;
+  const mainEdges = new Set<string>();
   let previousBranches: readonly RouteSegment[] = [];
+  let previousTurns: ReadonlyMap<string, RouteTurn> = new Map();
+  let previousTransitions: readonly EnemyMotion[] = [];
   let previousProposal: readonly CellIndex[] | undefined;
 
   const update = (
@@ -208,30 +341,52 @@ export function createBuildLayer(): BuildLayer {
     state: GameState,
     alpha: number,
     preview?: BuildPreview,
+    motions: Iterable<EnemyMotion> = [],
   ): void => {
     const levelChanged = lastState?.level !== state.level;
     if (levelChanged || !sameTowerLayout(lastState?.towers, state.towers)) {
       towers.clear();
       for (const tower of state.towers) towers.add(towerMesh(tower, state.level));
     }
-    if (levelChanged || lastState?.distance !== state.distance) {
-      drawRoute(solid, state.level, currentRoute(state), SOLID_ROUTE_LIFT);
+    const routeChanged = levelChanged || lastState?.distance !== state.distance;
+    if (routeChanged) {
+      const route = currentRoute(state);
+      drawRoute(solid, state.level, route, SOLID_ROUTE_LIFT);
+      mainEdges.clear();
+      let from: CellIndex | undefined;
+      for (const to of route) {
+        if (from !== undefined) mainEdges.add(edgeKey(from, to));
+        from = to;
+      }
     }
     const interpolationState = alpha < 1 ? previous : undefined;
     if (lastState !== state || lastInterpolationState !== interpolationState) {
       const segments = enemyRouteSegments(state, interpolationState);
+      const frameMotions = [...motions];
+      const interpolating = interpolationState !== undefined;
+      // 暫停時舊動線只用來畫銜接線，分支仍走新路線。
+      const currentMotions = frameMotions.map((motion) =>
+        motion.distance === state.distance ? motion : enemyMotion(state, motion.enemy, motion),
+      );
+      const turns = activeBranchTurns(currentMotions, mainEdges, segments, interpolating);
+      const transitions = frameMotions.filter(
+        (motion) =>
+          motion.distance !== state.distance || (interpolating && motion.reroute !== undefined),
+      );
       const changed =
         segments.length !== previousBranches.length ||
-        segments.some(({ from, to }, i) => {
-          const prior = previousBranches[i];
-          return !(
-            (prior?.from === from && prior.to === to) ||
-            (prior?.from === to && prior.to === from)
-          );
-        });
-      if (changed || (levelChanged && segments.length > 0)) {
-        drawBranches(branches, state.level, segments);
+        segments.some(
+          ({ from, to }, i) => previousBranches[i]?.from !== from || previousBranches[i]?.to !== to,
+        ) ||
+        !sameTurnKeys(turns, previousTurns) ||
+        transitions.length !== previousTransitions.length ||
+        transitions.some((motion, i) => previousTransitions[i] !== motion);
+      const hasBranches = segments.length > 0 || turns.size > 0 || transitions.length > 0;
+      if (changed || (routeChanged && hasBranches)) {
+        drawBranches(branches, state, segments, turns.values(), transitions);
         previousBranches = segments;
+        previousTurns = turns;
+        previousTransitions = transitions;
       }
     }
     const proposal = preview?.route;

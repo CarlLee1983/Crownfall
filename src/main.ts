@@ -25,7 +25,7 @@ const { camera, resize } = cameraView;
 connectCameraControls(canvas, cameraView);
 const enemies = createEnemyLayer(camera);
 const builds = createBuildLayer();
-const shots = createShotLayer();
+const shots = createShotLayer(enemies);
 
 const scene = new Scene();
 const sun = new DirectionalLight(0xffffff, 1.6);
@@ -59,6 +59,7 @@ const waveHud = createWaveHud(canvas, camera, {
   restart: () => {
     hud.reset();
     shots.reset();
+    enemies.reset();
     loop.reset(createGame(content, level));
   },
 });
@@ -68,11 +69,12 @@ const loop = startLoop({
     hud.onEvents(events);
     waveHud.onEvents(events, frameTime);
     shots.onEvents(events, current, frameTime);
+    enemies.observe(current);
   },
   draw: (previous, current, alpha, frameTime) => {
-    builds.update(previous, current, alpha, hud.update(current));
-    waveHud.update(current, frameTime);
     enemies.update(previous, current, alpha);
+    builds.update(previous, current, alpha, hud.update(current), enemies.routeMotions());
+    waveHud.update(current, frameTime);
     shots.update(frameTime);
     renderer.render(scene, camera);
   },
