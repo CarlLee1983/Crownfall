@@ -1,5 +1,5 @@
 import { PerspectiveCamera } from 'three';
-import { expect, it, vi } from 'vitest';
+import { expect, it, onTestFinished, vi } from 'vitest';
 import { type Content, createGame, type EnemyId, parseLevel, step } from '../core';
 import { cellIndex } from '../core/level';
 import { createCombatFeedback } from './combat-feedback';
@@ -11,11 +11,12 @@ function fixture({
   count = 1,
   damage = 12,
   immediate = false,
+  hp = 12,
   speed = 15,
   shotsPerSecond = 1,
 } = {}) {
   const content = {
-    enemies: { grunt: { speed, hp: 12, bounty, leakDamage: 1 } },
+    enemies: { grunt: { speed, hp, bounty, leakDamage: 1 } },
     waves: [{ groups: [{ enemy: 'grunt', count, interval: 0, delay: immediate ? 0 : 1 / 30 }] }],
     towers: {
       splash: { name: 'Splash', cost: 10, range: 3, damage, shotsPerSecond, splashRadius: 1 },
@@ -129,8 +130,7 @@ it('keeps feedback fixed at the same game time and removes it after its lifetime
   expect(feedback.group.children).toHaveLength(0);
 });
 
-it('shows a hit after a late 2× frame, freezes it on pause, and fades it in game time', () => {
-  const initial = fixture({ damage: 4, immediate: true, speed: 1 });
+function setupLoop(initial: ReturnType<typeof fixture>) {
   const feedback = createCombatFeedback(createEnemyLayer(new PerspectiveCamera()));
   let nextFrame: FrameRequestCallback = () => {
     throw new Error('No animation frame was scheduled');
@@ -139,44 +139,65 @@ it('shows a hit after a late 2× frame, freezes it on pause, and fades it in gam
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     nextFrame = callback;
   });
-  try {
-    const loop = startLoop({
-      initial,
-      onEvents: (events, previous, _current, time) => {
-        feedback.onEvents(events, previous, time.gameMs);
-      },
-      draw: (_previous, _current, _alpha, time) => {
-        flash = feedback.update(time.gameMs, false).hitFlash(initial.nextEnemyId);
-      },
-    });
-    loop.enqueue((tick) => ({
-      type: 'placeTower',
-      cell: cellIndex(3, 0, 1),
-      kind: 'splash',
-      tick,
-    }));
-    loop.enqueue((tick) => ({ type: 'startWave', tick }));
-    loop.setSpeed(2);
-    nextFrame(0);
-    nextFrame(70);
-    expect(flash).toBeGreaterThan(0);
-    const firstFlash = flash;
-
-    loop.setSpeed(0);
-    nextFrame(80);
-    nextFrame(280);
-    expect(flash).toBe(firstFlash);
-
-    loop.setSpeed(2);
-    nextFrame(290);
-    nextFrame(315);
-    expect(flash).toBeGreaterThan(0);
-    expect(flash).toBeLessThan(firstFlash);
-    nextFrame(341);
-    expect(flash).toBe(0);
-  } finally {
+  onTestFinished(() => {
     vi.unstubAllGlobals();
-  }
+  });
+  const loop = startLoop({
+    initial,
+    onEvents: (events, previous, _current, time) => {
+      feedback.onEvents(events, previous, time.gameMs);
+    },
+    draw: (_previous, _current, _alpha, time) => {
+      flash = feedback.update(time.gameMs, false).hitFlash(initial.nextEnemyId);
+    },
+  });
+  loop.enqueue((tick) => ({
+    type: 'placeTower',
+    cell: cellIndex(3, 0, 1),
+    kind: 'splash',
+    tick,
+  }));
+  loop.enqueue((tick) => ({ type: 'startWave', tick }));
+  return {
+    setSpeed: loop.setSpeed,
+    draw(wallMs: number) {
+      nextFrame(wallMs);
+      return flash;
+    },
+  };
+}
+
+it('shows a hit after a late 2× frame, freezes it on pause, and fades it in game time', () => {
+  const { draw, setSpeed } = setupLoop(fixture({ damage: 4, immediate: true, speed: 1 }));
+  setSpeed(2);
+  draw(0);
+  const firstFlash = draw(70);
+  expect(firstFlash).toBeGreaterThan(0);
+
+  setSpeed(0);
+  draw(80);
+  expect(draw(280)).toBe(firstFlash);
+
+  setSpeed(2);
+  draw(290);
+  const resumedFlash = draw(315);
+  expect(resumedFlash).toBeGreaterThan(0);
+  expect(resumedFlash).toBeLessThan(firstFlash);
+  expect(draw(341)).toBe(0);
+});
+
+it('draws the original target color between repeated hits at 2× with slow frames', () => {
+  const { draw, setSpeed } = setupLoop(
+    fixture({ damage: 1, immediate: true, hp: 100, speed: 1, shotsPerSecond: 15 }),
+  );
+  setSpeed(2);
+  draw(0);
+  expect(draw(100)).toBeGreaterThan(0);
+  expect(draw(200)).toBe(0);
+  expect(draw(300)).toBeGreaterThan(0);
+  expect(draw(400)).toBe(0);
+  expect(draw(500)).toBeGreaterThan(0);
+  expect(draw(600)).toBe(0);
 });
 
 it('preserves the target color and leaves a gap even when towers keep hitting it', () => {

@@ -25,8 +25,7 @@ export function createCombatFeedback(
     readonly heading: number;
     readonly start: number;
   }>();
-  // null means the flash has not been visible in a frame yet.
-  const hits = new Map<EnemyId, number | null>();
+  const hits = new Map<EnemyId, { start?: number; drewOriginalColor: boolean }>();
   let leakStart = -Infinity;
   const bounties = new Set<{
     readonly id: EnemyId;
@@ -65,12 +64,15 @@ export function createCombatFeedback(
     for (const event of events) {
       if (event.type === 'shot') {
         const id = event.target.id;
-        const start = hits.get(id);
+        const hit = hits.get(id);
+        // Catch-up ticks alone cannot satisfy the visible gap between pulses.
         if (
-          start === undefined ||
-          (start !== null && gameTime - start >= HIT_FLASH_MS + HIT_FLASH_GAP_MS)
+          hit === undefined ||
+          (hit.drewOriginalColor &&
+            hit.start !== undefined &&
+            gameTime - hit.start >= HIT_FLASH_MS + HIT_FLASH_GAP_MS)
         ) {
-          hits.set(id, null);
+          hits.set(id, { drewOriginalColor: false });
         }
       }
       if (event.type !== 'killed') continue;
@@ -104,9 +106,12 @@ export function createCombatFeedback(
   }
 
   function update(gameTime: number, reducedMotion: boolean) {
-    for (const [id, start] of hits) {
-      if (start === null) hits.set(id, gameTime);
-      else if (gameTime - start >= HIT_FLASH_MS + HIT_FLASH_GAP_MS) hits.delete(id);
+    for (const [id, hit] of hits) {
+      // Start on the first draw. A catch-up batch can otherwise skip the entire pulse.
+      hit.start ??= gameTime;
+      const elapsed = gameTime - hit.start;
+      if (elapsed >= HIT_FLASH_MS + HIT_FLASH_GAP_MS) hits.delete(id);
+      else if (elapsed >= HIT_FLASH_MS) hit.drewOriginalColor = true;
     }
     const sinceLeak = gameTime - leakStart;
     const leak = Math.max(0, 1 - sinceLeak / LEAK_FLASH_MS);
@@ -129,8 +134,8 @@ export function createCombatFeedback(
     }
     return {
       hitFlash: (id: EnemyId) => {
-        const start = hits.get(id);
-        return start == null
+        const start = hits.get(id)?.start;
+        return start === undefined
           ? 0
           : HIT_FLASH_STRENGTH * Math.max(0, 1 - (gameTime - start) / HIT_FLASH_MS);
       },
