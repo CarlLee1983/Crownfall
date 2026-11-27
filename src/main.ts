@@ -52,8 +52,8 @@ function startGame(models: LoadedModels): void {
   const renderer = new WebGLRenderer({ canvas, antialias: true });
   renderer.setClearColor(0x0a0d0a);
 
-  const terrain = createTerrain(level);
-  const torches = createTorches(level, torchPositions);
+  const terrain = createTerrain(level, models.scenery);
+  const torches = createTorches(level, torchPositions, models.scenery.torch);
   const cameraView = createCamera(level);
   const { camera, resize } = cameraView;
   connectCameraControls(canvas, cameraView);

@@ -7,10 +7,13 @@ import {
   Mesh,
   MeshLambertMaterial,
   NearestFilter,
+  type Object3D,
   SRGBColorSpace,
 } from 'three';
 import { type CellIndex, cellAt, cellPoint, type Level, rampDirection } from '../core';
+import { neighbors } from '../core/level';
 import { WORLD_LAYER } from './layers';
+import { placeableScenery } from './scenery-model';
 
 /** 一個高度層在世界座標中的高度。 */
 export const LAYER_HEIGHT = 0.6;
@@ -79,7 +82,10 @@ function rampGeometry(dx: number, dy: number): BufferGeometry {
   return geometry;
 }
 
-export function createTerrain(level: Level) {
+export function createTerrain(
+  level: Level,
+  models: { readonly entrance: Object3D; readonly castle: Object3D },
+) {
   const group = new Group();
   const stone = terrainTexture(false);
   const moss = terrainTexture(true);
@@ -110,12 +116,38 @@ export function createTerrain(level: Level) {
     mesh.layers.set(WORLD_LAYER);
     group.add(mesh);
   }
-  const castleColor = materials.goal.color.clone();
+  const entrance = placeableScenery(models.entrance, 1, 0.24).group;
+  const castle = placeableScenery(models.castle, 0.9, 0.32);
+  for (const [index, model] of [
+    [level.spawn, entrance],
+    [level.goal, castle.group],
+  ] as const) {
+    const { x, y } = cellPoint(level, index);
+    model.position.set(x, cellAt(level, index).layer * LAYER_HEIGHT, y);
+    const lane = neighbors(level, index).find(({ index }) => cellAt(level, index).lane);
+    if (lane !== undefined) {
+      const { dx, dy } = lane.direction;
+      model.rotation.y = Math.atan2(dx, dy);
+      if (index === level.spawn) {
+        // Keep the first enemy and the door passage on opposite sides of the gate's lintel.
+        model.position.x -= dx * 0.33;
+        model.position.z -= dy * 0.33;
+      }
+    }
+    group.add(model);
+  }
+
+  const castleMaterials = castle.materials.map((material) => ({
+    material,
+    emissive: material.emissive.clone(),
+    intensity: material.emissiveIntensity,
+  }));
   const castleRed = new Color(0xff263d);
   const setCastleFlash = (amount: number): void => {
-    materials.goal.color.copy(castleColor).lerp(castleRed, amount);
-    materials.goal.emissive.copy(castleRed);
-    materials.goal.emissiveIntensity = amount * 0.5;
+    for (const { material, emissive, intensity } of castleMaterials) {
+      material.emissive.copy(emissive).lerp(castleRed, amount);
+      material.emissiveIntensity = intensity * (1 - amount) + 1.3 * amount;
+    }
   };
 
   return { group, setCastleFlash };

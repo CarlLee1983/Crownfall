@@ -231,11 +231,11 @@
     {
       "id": "prop-entrance",
       "role": "入口",
-      "path": "public/models/prop-entrance.glb",
-      "status": "planned",
+      "path": "src/render/models/prop-entrance.glb",
+      "status": "implemented",
       "technical": {
         "format": "glb",
-        "dimensions": "1x1 cell",
+        "dimensions": "~0.45×1 footprint, ~0.71 tall",
         "origin": "bottom-center",
         "up": "+Y",
         "forward": "+Z",
@@ -245,29 +245,30 @@
       },
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
-        "kind": "",
-        "url_or_tool": "",
-        "creator": "",
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Medieval-Hexagon-Pack-1.0",
+        "commit": "84fa4e91af6a88989be7c99e0891cede11f2ca38",
+        "creator": "Kay Lousberg",
         "created_at": "",
-        "license": "",
-        "attribution": "",
-        "prompt_or_source_record": ""
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
+        "prompt_or_source_record": "addons/kaykit_medieval_hexagon_pack/Assets/gltf/buildings/neutral/wall_straight_gate.gltf"
       },
       "verification": {
-        "native_scale_reviewed": false,
-        "in_engine_reviewed": false,
-        "technical_checks_passed": false,
+        "native_scale_reviewed": true,
+        "in_engine_reviewed": true,
+        "technical_checks_passed": true,
         "approved_by": ""
       }
     },
     {
       "id": "prop-castle",
       "role": "城堡",
-      "path": "public/models/prop-castle.glb",
-      "status": "planned",
+      "path": "src/render/models/prop-castle.glb",
+      "status": "implemented",
       "technical": {
         "format": "glb",
-        "dimensions": "1x1 cell",
+        "dimensions": "~0.77×0.9 footprint, ~1.59 tall",
         "origin": "bottom-center",
         "up": "+Y",
         "forward": "+Z",
@@ -277,29 +278,30 @@
       },
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
-        "kind": "",
-        "url_or_tool": "",
-        "creator": "",
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Medieval-Hexagon-Pack-1.0",
+        "commit": "84fa4e91af6a88989be7c99e0891cede11f2ca38",
+        "creator": "Kay Lousberg",
         "created_at": "",
-        "license": "",
-        "attribution": "",
-        "prompt_or_source_record": ""
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
+        "prompt_or_source_record": "addons/kaykit_medieval_hexagon_pack/Assets/gltf/buildings/blue/building_castle_blue.gltf"
       },
       "verification": {
-        "native_scale_reviewed": false,
-        "in_engine_reviewed": false,
-        "technical_checks_passed": false,
+        "native_scale_reviewed": true,
+        "in_engine_reviewed": true,
+        "technical_checks_passed": true,
         "approved_by": ""
       }
     },
     {
       "id": "prop-torch",
       "role": "火把（點光源錨點）",
-      "path": "public/models/prop-torch.glb",
-      "status": "planned",
+      "path": "src/render/models/prop-torch.glb",
+      "status": "implemented",
       "technical": {
         "format": "glb",
-        "dimensions": "~0.1 footprint",
+        "dimensions": "~0.17×0.19 footprint, ~0.33 tall",
         "origin": "bottom-center",
         "up": "+Y",
         "forward": "+Z",
@@ -309,18 +311,19 @@
       },
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
-        "kind": "",
-        "url_or_tool": "",
-        "creator": "",
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Dungeon-Remastered-1.0",
+        "commit": "b0ca9bd96a8072ab36a3a5464f00ed1e06a16d07",
+        "creator": "Kay Lousberg",
         "created_at": "",
-        "license": "",
-        "attribution": "",
-        "prompt_or_source_record": ""
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
+        "prompt_or_source_record": "addons/kaykit_dungeon_remastered/Assets/gltf/torch_mounted.gltf.glb"
       },
       "verification": {
-        "native_scale_reviewed": false,
-        "in_engine_reviewed": false,
-        "technical_checks_passed": false,
+        "native_scale_reviewed": true,
+        "in_engine_reviewed": true,
+        "technical_checks_passed": true,
         "approved_by": ""
       }
     }

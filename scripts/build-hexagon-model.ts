@@ -10,7 +10,7 @@ export async function prepareHexagonModel(document: Document): Promise<void> {
   const root = document.getRoot();
   for (const texture of root.listTextures()) {
     const image = texture.getImage();
-    if (image === null) throw new Error('Hexagon 模型缺少色表');
+    if (image === null) throw new Error('模型缺少色表');
     const { data, info } = await sharp(image)
       .resize(128, 128, { kernel: 'nearest' })
       .ensureAlpha()

@@ -46,7 +46,7 @@ bun run test:smoke
 (cd dist && zip -qr - .) > crownfall.zip
 ```
 
-確認 ZIP 根目錄直接包含 `index.html` 和 `assets/`。在 itch.io 專案頁將作品類型設為 **HTML**，上傳 `crownfall.zip`，勾選 **This file will be played in the browser**，儲存後在預覽頁載入遊戲。
+確認 ZIP 根目錄直接包含 `index.html` 和 `assets/`。在 itch.io 專案頁將作品類型設為 **HTML**，上傳 `crownfall.zip`，勾選 **This file will be played in the browser**，並在專案頁介紹加入「3D 模型：KayKit by Kay Lousberg (CC0)」。儲存後在預覽頁載入遊戲。
 
 ## 模型前處理
 

@@ -3,6 +3,7 @@ import { dedup, prune, resample, textureCompress } from '@gltf-transform/functio
 import sharp from 'sharp';
 import manifest from '../docs/art/asset-manifest.json';
 import { prepareHexagonModel } from './build-hexagon-model';
+import { prepareSceneryModel } from './build-scenery-model';
 
 const skeleton = manifest.assets.find(({ id }) => id === 'enemy-skeleton');
 if (skeleton?.source.commit === undefined) throw new Error('缺少骷髏兵的來源版本');
@@ -53,3 +54,14 @@ const archerDocument = await io.read(archerInput);
 await prepareHexagonModel(archerDocument);
 await io.write(archer.path, archerDocument);
 console.log(`${archer.path} (${io.lastWriteBytes} bytes)`);
+
+for (const asset of manifest.assets.filter(({ id }) => id.startsWith('prop-'))) {
+  const { id, source, path } = asset;
+  if (source.commit === undefined) throw new Error(`缺少 ${id} 的來源版本`);
+  const upstream = new URL(source.url_or_tool);
+  const input = `https://raw.githubusercontent.com${upstream.pathname}/${source.commit}/${source.prompt_or_source_record}`;
+  const document = await io.read(input);
+  await prepareSceneryModel(document, id);
+  await io.write(path, document);
+  console.log(`${path} (${io.lastWriteBytes} bytes)`);
+}
