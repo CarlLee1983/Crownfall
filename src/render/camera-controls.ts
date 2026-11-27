@@ -14,6 +14,7 @@ export function connectCameraControls(
   const pointer = new Vector2();
   const previous = new Vector3();
   const next = new Vector3();
+  const screenRight = new Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
   let drag: { id: number; x: number; y: number } | undefined;
   let suppressClick = false;
 
@@ -94,16 +95,16 @@ export function connectCameraControls(
       return;
     switch (event.key) {
       case 'ArrowLeft':
-        pan(-1, 0);
+        pan(-screenRight.x, -screenRight.z);
         break;
       case 'ArrowRight':
-        pan(1, 0);
+        pan(screenRight.x, screenRight.z);
         break;
       case 'ArrowUp':
-        pan(0, -1);
+        pan(screenRight.z, -screenRight.x);
         break;
       case 'ArrowDown':
-        pan(0, 1);
+        pan(-screenRight.z, screenRight.x);
         break;
       default:
         return;
