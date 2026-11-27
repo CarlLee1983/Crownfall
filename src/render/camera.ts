@@ -4,7 +4,7 @@ import { LAYER_HEIGHT } from './terrain';
 
 const FOV_DEGREES = 45;
 const YAW = Math.PI / 4;
-const PITCH = (58 * Math.PI) / 180;
+const PITCH = (35 * Math.PI) / 180;
 const OVERVIEW_FILL = 0.85;
 const CLOSEST_DISTANCE_RATIO = 0.5;
 

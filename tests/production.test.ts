@@ -1,12 +1,12 @@
 import { expect, type Page, test } from '@playwright/test';
 
 // An open tile in the initial 1280×720 view.
-const openTile = { x: 640, y: 360 };
+const openTile = { x: 640, y: 389 };
 
 async function hasEnemyBodyAtEntrance(page: Page): Promise<boolean> {
   const screenshot = await page.screenshot({
-    // First stretch of lane at the configured viewport, below the entrance flag.
-    clip: { x: 538, y: 88, width: 82, height: 60 },
+    // First stretch of lane at the configured viewport.
+    clip: { x: 505, y: 76, width: 100, height: 55 },
     style: '#wave-flag { visibility: hidden !important; }',
   });
   return page.evaluate(
