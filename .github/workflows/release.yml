@@ -1,0 +1,77 @@
+name: Release to itch.io
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      artifact-id: ${{ steps.dist.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run test
+      - run: bun run balance
+      - run: bun run build
+        env:
+          APP_VERSION: ${{ github.ref_name }}
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run test:smoke
+        env:
+          APP_VERSION: ${{ github.ref_name }}
+      - name: Store verified build
+        id: dist
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: crownfall-dist-${{ github.run_attempt }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.verify.outputs.artifact-id }}
+          path: dist/
+          merge-multiple: true
+      - name: Install butler 15.32.0
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --proto '=https' --proto-redir '=https' --fail --silent --show-error --location \
+            --output butler.zip https://broth.itch.zone/butler/linux-amd64/15.32.0/archive/default
+          echo '2335971394ef6596f95ded0833e85ee28755e13761716ef4c91d6b11f69162f5  butler.zip' | sha256sum --check
+          unzip -q butler.zip -d butler
+          chmod +x butler/butler
+      - name: Push to itch.io
+        shell: bash
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCH_TARGET: ${{ vars.ITCH_TARGET }}
+        run: |
+          if [[ -z "$BUTLER_API_KEY" ]]; then
+            echo '::error::Missing repository secret BUTLER_API_KEY.'
+            exit 1
+          fi
+          if [[ -z "$ITCH_TARGET" ]]; then
+            echo '::error::Missing repository variable ITCH_TARGET (itch owner/project).'
+            exit 1
+          fi
+          "$RUNNER_TEMP/butler/butler" push dist/ "$ITCH_TARGET:html5" --userversion "$GITHUB_REF_NAME"
