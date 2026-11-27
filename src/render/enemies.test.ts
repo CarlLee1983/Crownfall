@@ -1,8 +1,8 @@
 import { Mesh, PerspectiveCamera, Vector3 } from 'three';
 import { expect, it } from 'vitest';
-import { level as dLevel } from '../content/level';
 import { applyCommands, type Content, createGame, type GameState, parseLevel, step } from '../core';
 import { cellIndex } from '../core/level';
+import { dLevel } from './d-level.fixture';
 import { createEnemyLayer } from './enemies';
 import { LAYER_HEIGHT } from './terrain';
 

@@ -4,7 +4,7 @@ import { level } from '../content/level';
 import { cellPoint, createGame } from '../core';
 import { runCampaign, runWave } from './simulation';
 
-it('builds on all twelve cells of the southwestern platform', () => {
+it('builds on every cell of the platform beside the lower lane', () => {
   const initial = createGame({ ...content, startingMoney: 2000, waves: [{ groups: [] }] }, level);
 
   const result = runWave(initial, 'platform');
@@ -13,7 +13,7 @@ it('builds on all twelve cells of the southwestern platform', () => {
     .map(({ cell }) => cell)
     .sort((a, b) => a - b)
     .map((cell) => cellPoint(level, cell));
-  expect(placements).toEqual([7, 8].flatMap((y) => [4, 5, 6, 7, 8, 9].map((x) => ({ x, y }))));
+  expect(placements).toEqual([2, 3, 4, 5].map((x) => ({ x, y: 4 })));
 });
 
 describe('campaign balance', () => {
