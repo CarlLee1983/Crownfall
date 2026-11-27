@@ -1,4 +1,4 @@
-import { PerspectiveCamera } from 'three';
+import { Mesh, MeshLambertMaterial, PerspectiveCamera } from 'three';
 import { expect, it, onTestFinished, vi } from 'vitest';
 import { type Content, createGame, type EnemyId, parseLevel, step } from '../core';
 import { cellIndex } from '../core/level';
@@ -10,14 +10,15 @@ function fixture({
   bounty = 5,
   count = 1,
   damage = 12,
+  enemyKind = 'grunt',
   immediate = false,
   hp = 12,
   speed = 15,
   shotsPerSecond = 1,
 } = {}) {
   const content = {
-    enemies: { grunt: { speed, hp, bounty, leakDamage: 1 } },
-    waves: [{ groups: [{ enemy: 'grunt', count, interval: 0, delay: immediate ? 0 : 1 / 30 }] }],
+    enemies: { [enemyKind]: { speed, hp, bounty, leakDamage: 1 } },
+    waves: [{ groups: [{ enemy: enemyKind, count, interval: 0, delay: immediate ? 0 : 1 / 30 }] }],
     towers: {
       splash: { name: 'Splash', cost: 10, range: 3, damage, shotsPerSecond, splashRadius: 1 },
     },
@@ -89,6 +90,34 @@ it('keeps all six death fragments on the world layer', () => {
   advance(100);
   feedback.update(220, false);
   expect(feedback.group.children.map((fragment) => fragment.layers.mask)).toEqual(Array(6).fill(1));
+});
+
+it.each([
+  ['grunt', 0xffe7a4],
+  ['runner', 0xb5ec69],
+  ['tank', 0xffad73],
+  ['boss', 0xf37b55],
+])('lights the %s body and its death fragments with the same glow color', (enemyKind, color) => {
+  const initial = fixture({ enemyKind, immediate: true });
+  const state = step(initial, [{ type: 'startWave', tick: 0 }]).state;
+  const enemies = createEnemyLayer(new PerspectiveCamera());
+  enemies.update(state, state, 1);
+  const [body] = enemies.group.children[0]?.children ?? [];
+  if (!(body instanceof Mesh) || !(body.material instanceof MeshLambertMaterial)) {
+    throw new Error('Missing enemy body');
+  }
+  expect(body.material.emissive.getHex()).toBe(color);
+  expect(body.material.emissiveIntensity).toBeGreaterThan(0);
+
+  const { feedback } = setup({ enemyKind, immediate: true });
+  expect(feedback.group.children).toHaveLength(6);
+  for (const fragment of feedback.group.children) {
+    if (!(fragment instanceof Mesh) || !(fragment.material instanceof MeshLambertMaterial)) {
+      throw new Error('Missing death fragment');
+    }
+    expect(fragment.material.color.getHex()).toBe(color);
+    expect(fragment.material.emissive.getHex()).toBe(color);
+  }
 });
 
 it('caps the number of visible fragments after many simultaneous kills', () => {

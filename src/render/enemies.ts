@@ -33,18 +33,24 @@ import { LAYER_HEIGHT } from './terrain';
 
 interface Look {
   readonly size: number;
-  readonly color: number;
   readonly round?: true;
   readonly cornerCut?: number;
 }
 
 const LOOKS: Readonly<Record<string, Look>> = {
-  grunt: { size: 0.5, color: 0xd9a441 },
-  runner: { size: 0.4, color: 0xe05a8a },
-  tank: { size: 0.8, color: 0x7a4fb0, cornerCut: 0.1 },
-  boss: { size: 1, color: 0xc83b36, round: true },
+  grunt: { size: 0.5 },
+  runner: { size: 0.4 },
+  tank: { size: 0.8, cornerCut: 0.1 },
+  boss: { size: 1, round: true },
 };
-const DEFAULT_LOOK: Look = { size: 0.5, color: 0xbbbbbb };
+const DEFAULT_LOOK: Look = { size: 0.5 };
+const GLOW_COLORS: ReadonlyMap<string, number> = new Map([
+  ['grunt', 0xffe7a4],
+  ['runner', 0xb5ec69],
+  ['tank', 0xffad73],
+  ['boss', 0xf37b55],
+]);
+const GLOW_INTENSITY = 0.55;
 const WHITE = new Color(0xffffff);
 const UP = new Vector3(0, 1, 0);
 const BACK = new Vector3(0, 0, 1);
@@ -55,8 +61,8 @@ function enemyLook(kind: string): Look {
   return LOOKS[kind] ?? DEFAULT_LOOK;
 }
 
-export function enemyColor(kind: string): number {
-  return enemyLook(kind).color;
+export function enemyGlowColor(kind: string): number {
+  return GLOW_COLORS.get(kind) ?? 0xbbbbbb;
 }
 
 function enemyGeometry({ size, cornerCut, round }: Look): BufferGeometry {
@@ -230,7 +236,7 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
   const viewFor = (id: EnemyId, look: Look): EnemyView => {
     const existing = views.get(id);
     if (existing !== undefined) return existing;
-    const body = new Mesh(enemyGeometry(look), new MeshLambertMaterial({ color: look.color }));
+    const body = new Mesh(enemyGeometry(look), new MeshLambertMaterial());
     body.layers.set(WORLD_LAYER);
     body.matrixAutoUpdate = false;
     const barWidth = Math.max(0.52, look.size);
@@ -287,9 +293,10 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
       const look = enemyLook(enemy.kind);
       const view = viewFor(enemy.id, look);
       const flash = hitFlash?.(enemy.id) ?? 0;
-      view.body.material.color.setHex(look.color).lerp(WHITE, flash);
-      view.body.material.emissive.copy(WHITE);
-      view.body.material.emissiveIntensity = flash * 0.35;
+      const glow = enemyGlowColor(enemy.kind);
+      view.body.material.color.setHex(glow).multiplyScalar(0.36).lerp(WHITE, flash);
+      view.body.material.emissive.setHex(glow).lerp(WHITE, flash);
+      view.body.material.emissiveIntensity = GLOW_INTENSITY;
       const half = look.size / 2;
       const ground = supportBody(current.level, point, look, normal, view.body.position);
       view.group.position.set(point.x, ground, point.y);
