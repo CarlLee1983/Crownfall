@@ -6,7 +6,7 @@
       "id": "tower-archer",
       "role": "弓箭塔",
       "path": "public/models/tower-archer.glb",
-      "status": "planned",
+      "status": "trialled",
       "technical": {
         "format": "glb",
         "dimensions": "0.8x0.8 footprint, ~0.75 tall",
@@ -19,16 +19,16 @@
       },
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
-        "kind": "",
-        "url_or_tool": "",
-        "creator": "",
+        "kind": "licensed-pack",
+        "url_or_tool": "KayKit Medieval Hexagon Pack 1.0",
+        "creator": "Kay Lousberg",
         "created_at": "",
-        "license": "",
-        "attribution": "",
-        "prompt_or_source_record": ""
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
+        "prompt_or_source_record": "building_tower_A"
       },
       "verification": {
-        "native_scale_reviewed": false,
+        "native_scale_reviewed": true,
         "in_engine_reviewed": false,
         "technical_checks_passed": false,
         "approved_by": ""
@@ -102,29 +102,29 @@
       "id": "enemy-skeleton",
       "role": "骷髏兵",
       "path": "public/models/enemy-skeleton.glb",
-      "status": "planned",
+      "status": "trialled",
       "technical": {
         "format": "glb",
         "dimensions": "0.5 footprint",
         "origin": "bottom-center",
         "up": "+Y",
         "forward": "+Z",
-        "max_triangles": 1500,
+        "max_triangles": 5500,
         "max_texture": "128x128",
         "filtering": "nearest"
       },
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
-        "kind": "",
-        "url_or_tool": "",
-        "creator": "",
+        "kind": "licensed-pack",
+        "url_or_tool": "KayKit Character Pack: Skeletons 1.0",
+        "creator": "Kay Lousberg",
         "created_at": "",
-        "license": "",
-        "attribution": "",
-        "prompt_or_source_record": ""
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
+        "prompt_or_source_record": "Skeleton_Minion"
       },
       "verification": {
-        "native_scale_reviewed": false,
+        "native_scale_reviewed": true,
         "in_engine_reviewed": false,
         "technical_checks_passed": false,
         "approved_by": ""
@@ -134,26 +134,26 @@
       "id": "enemy-ghoul",
       "role": "食屍鬼",
       "path": "public/models/enemy-ghoul.glb",
-      "status": "planned",
+      "status": "selected",
       "technical": {
         "format": "glb",
         "dimensions": "0.4 footprint",
         "origin": "bottom-center",
         "up": "+Y",
         "forward": "+Z",
-        "max_triangles": 1500,
+        "max_triangles": 5500,
         "max_texture": "128x128",
         "filtering": "nearest"
       },
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
-        "kind": "",
-        "url_or_tool": "",
-        "creator": "",
+        "kind": "licensed-pack",
+        "url_or_tool": "KayKit Character Pack: Skeletons 1.0",
+        "creator": "Kay Lousberg",
         "created_at": "",
-        "license": "",
-        "attribution": "",
-        "prompt_or_source_record": ""
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
+        "prompt_or_source_record": "Skeleton_Rogue"
       },
       "verification": {
         "native_scale_reviewed": false,
@@ -166,26 +166,26 @@
       "id": "enemy-skeleton-knight",
       "role": "骷髏騎士",
       "path": "public/models/enemy-skeleton-knight.glb",
-      "status": "planned",
+      "status": "selected",
       "technical": {
         "format": "glb",
         "dimensions": "0.8 footprint, 0.1 corner cut",
         "origin": "bottom-center",
         "up": "+Y",
         "forward": "+Z",
-        "max_triangles": 1500,
+        "max_triangles": 5500,
         "max_texture": "128x128",
         "filtering": "nearest"
       },
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
-        "kind": "",
-        "url_or_tool": "",
-        "creator": "",
+        "kind": "licensed-pack",
+        "url_or_tool": "KayKit Character Pack: Skeletons 1.0",
+        "creator": "Kay Lousberg",
         "created_at": "",
-        "license": "",
-        "attribution": "",
-        "prompt_or_source_record": ""
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
+        "prompt_or_source_record": "Skeleton_Warrior"
       },
       "verification": {
         "native_scale_reviewed": false,
@@ -198,26 +198,26 @@
       "id": "enemy-lich",
       "role": "巫妖",
       "path": "public/models/enemy-lich.glb",
-      "status": "planned",
+      "status": "selected",
       "technical": {
         "format": "glb",
         "dimensions": "1.0 round footprint",
         "origin": "bottom-center",
         "up": "+Y",
         "forward": "+Z",
-        "max_triangles": 1500,
+        "max_triangles": 5500,
         "max_texture": "128x128",
         "filtering": "nearest"
       },
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
-        "kind": "",
-        "url_or_tool": "",
-        "creator": "",
+        "kind": "licensed-pack",
+        "url_or_tool": "KayKit Character Pack: Skeletons 1.0",
+        "creator": "Kay Lousberg",
         "created_at": "",
-        "license": "",
-        "attribution": "",
-        "prompt_or_source_record": ""
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
+        "prompt_or_source_record": "Skeleton_Mage"
       },
       "verification": {
         "native_scale_reviewed": false,
