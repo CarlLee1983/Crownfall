@@ -424,6 +424,12 @@ body {
   text-align: center;
 }
 
+#playtest-survey {
+  display: inline-block;
+  margin-top: 12px;
+  color: #f1d992;
+}
+
 #game-help::backdrop,
 #game-result::backdrop {
   overflow: hidden;

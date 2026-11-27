@@ -9,6 +9,7 @@ import {
 } from '../core';
 import { neighbors } from '../core/level';
 import { cellProjection, element, isGameDialogOpen, updateText } from './hud-dom';
+import { createSurveyUrl, PLAYTEST_SURVEY_URL_TEMPLATE } from './survey';
 
 const ENEMY_NAMES: Readonly<Record<string, string>> = {
   grunt: '雜兵',
@@ -67,6 +68,12 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
   ) {
     throw new Error('遊戲控制項的 HTML 元素類型錯誤');
   }
+
+  const surveyLink = document.createElement('a');
+  surveyLink.id = 'playtest-survey';
+  surveyLink.target = '_blank';
+  surveyLink.rel = 'noopener';
+  surveyLink.textContent = '填寫試玩問卷';
 
   const projectCell = cellProjection(camera);
   const notices = new Map<string, { count: number; until: number }>();
@@ -180,14 +187,21 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
         flag.hidden = true;
         if (result.open) return;
         continueButton.hidden = continueRejection(state) !== undefined;
+        const outcome = state.phase === 'victory' ? '勝利' : '敗北';
+        updateText(resultTitle, outcome);
         if (state.phase === 'victory') {
-          updateText(resultTitle, '勝利');
           updateText(resultDetail, `剩餘生命 ${state.lives}`);
         } else {
-          updateText(resultTitle, '敗北');
-          const reason = state.defeatReason === 'bossLeaked' ? 'Boss 抵達終點' : '生命歸零';
+          const reason = state.defeatReason === 'bossLeaked' ? 'Boss 抵達城堡' : '生命歸零';
           updateText(resultDetail, `${reason}，撐到${waveLabel}`);
         }
+        surveyLink.href = createSurveyUrl(
+          PLAYTEST_SURVEY_URL_TEMPLATE,
+          __APP_VERSION__,
+          outcome,
+          displayedWave,
+        );
+        result.append(surveyLink);
         result.showModal();
         return;
       }
