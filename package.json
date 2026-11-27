@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "audition": "vite --open /?audition",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "biome check .",

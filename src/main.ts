@@ -20,6 +20,10 @@ import { createTorches } from './render/torches';
 import { createWaveHud } from './render/wave-hud';
 import './render/hud.css';
 
+const audition = new URLSearchParams(location.search).has('audition')
+  ? (await import('./audition/prototype')).createAudition()
+  : undefined;
+
 const help = element('game-help');
 const start = element('start-game');
 if (!(help instanceof HTMLDialogElement) || !(start instanceof HTMLButtonElement)) {
@@ -29,7 +33,9 @@ const loading = element('model-loading');
 const error = element('model-error');
 help.addEventListener('cancel', (event) => {
   if (start.disabled) event.preventDefault();
+  else audition?.start();
 });
+start.addEventListener('click', () => audition?.start());
 help.showModal();
 
 loadModels().then(
@@ -106,8 +112,12 @@ function startGame(models: LoadedModels): void {
   const waveHud = createWaveHud(canvas, camera, {
     startWave: () => loop.enqueue((tick) => ({ type: 'startWave', tick })),
     continueEndless: () => loop.enqueue((tick) => ({ type: 'continueEndless', tick })),
-    setSpeed: (speed) => loop.setSpeed(speed),
+    setSpeed: (speed) => {
+      loop.setSpeed(speed);
+      audition?.pause(speed === 0);
+    },
     restart: () => {
+      audition?.reset();
       hud.reset();
       shots.reset();
       enemies.reset();
@@ -119,6 +129,7 @@ function startGame(models: LoadedModels): void {
   const loop = startLoop({
     initial,
     onEvents: (events, previous, current, time) => {
+      audition?.observe(events, previous, current);
       hud.onEvents(events);
       waveHud.onEvents(events, time.wallMs);
       shots.onEvents(events, current, time.gameMs);

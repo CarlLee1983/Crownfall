@@ -1,0 +1,182 @@
+.audition-panel {
+  --audition-surface: #171e24;
+  --audition-raised: #232d35;
+  --audition-line: #53616b;
+  --audition-accent: #f0d38b;
+  position: fixed;
+  z-index: 3;
+  inset: 12px 12px auto auto;
+  box-sizing: border-box;
+  max-inline-size: calc(100vw - 24px);
+  color-scheme: dark;
+  color: #f4f1e6;
+  background: var(--audition-surface);
+  border: 1px solid var(--audition-line);
+  border-radius: 8px;
+  box-shadow: 0 5px 22px #0008;
+  font-size: 0.88rem;
+}
+
+.audition-panel[open] {
+  inline-size: 412px;
+}
+
+.audition-panel summary {
+  padding: 8px 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.audition-panel summary::marker {
+  color: var(--audition-accent);
+}
+
+.audition-panel .audition-summary {
+  min-block-size: 40px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  color: var(--audition-accent);
+}
+
+.audition-panel[open] .audition-closed-label,
+.audition-panel:not([open]) .audition-open-label {
+  display: none;
+}
+
+.audition-body {
+  max-block-size: calc(100dvh - 72px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-block-start: 1px solid var(--audition-line);
+}
+
+.audition-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.audition-button,
+.audition-select {
+  min-block-size: 32px;
+  padding: 3px 8px;
+  color: inherit;
+  background: var(--audition-raised);
+  border: 1px solid var(--audition-line);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.audition-button {
+  cursor: pointer;
+}
+
+.audition-section > summary {
+  background: #1d272f;
+}
+
+.audition-button:hover,
+.audition-panel summary:hover {
+  background: #303c45;
+}
+
+.audition-button[aria-pressed="true"] {
+  color: #172029;
+  background: var(--audition-accent);
+  font-weight: 650;
+}
+
+.audition-panel :focus-visible {
+  outline: 2px solid var(--audition-accent);
+  outline-offset: 1px;
+}
+
+.audition-panel summary:focus-visible {
+  outline-offset: -3px;
+}
+
+.audition-status {
+  margin: 0 12px 10px;
+  color: var(--audition-accent);
+  overflow-wrap: anywhere;
+}
+
+.audition-status:empty {
+  margin-block-end: 0;
+}
+
+.audition-section {
+  border-block-start: 1px solid #37454e;
+}
+
+.audition-track {
+  display: grid;
+  gap: 4px;
+  margin-inline: 12px;
+  padding-block: 7px;
+}
+
+.audition-track + .audition-track {
+  border-block-start: 1px solid #37454e;
+}
+
+.audition-track-label {
+  font-weight: 650;
+}
+
+.audition-track-controls {
+  display: flex;
+  gap: 5px;
+}
+
+.audition-select {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.audition-track-controls .audition-button {
+  white-space: nowrap;
+}
+
+.audition-toolbar .audition-button:last-child {
+  margin-inline-start: auto;
+}
+
+.audition-attribution {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  color: #bfc9cf;
+  font-size: 0.75rem;
+}
+
+.audition-attribution a[href] {
+  color: var(--audition-accent);
+}
+
+.audition-levels {
+  display: grid;
+  gap: 4px;
+  padding: 8px 12px;
+}
+
+.audition-slider {
+  display: grid;
+  grid-template-columns: minmax(98px, auto) minmax(0, 1fr) 55px;
+  align-items: center;
+  gap: 6px;
+  min-block-size: 26px;
+}
+
+.audition-slider input {
+  min-inline-size: 0;
+  margin: 0;
+  accent-color: var(--audition-accent);
+}
+
+.audition-slider-value {
+  justify-self: end;
+  color: #bfc9cf;
+  font-variant-numeric: tabular-nums;
+}
