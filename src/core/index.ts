@@ -16,6 +16,7 @@ export type {
 export {
   applyCommands,
   type Command,
+  continueRejection,
   createGame,
   type DefeatReason,
   type Enemy,
@@ -24,11 +25,13 @@ export {
   type GameEvent,
   type GameState,
   queryTower,
+  queryWave,
   type RejectionReason,
   type StepResult,
   step,
   type Tower,
   type TowerDetails,
+  type WaveDetails,
   type WaveRejection,
   waveStartRejection,
 } from './game';

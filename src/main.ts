@@ -51,8 +51,9 @@ const hud = createBuildHud(canvas, camera, initial, {
   manageTower: (cell, type) => loop.enqueue((tick) => ({ type, cell, tick })),
   pickTower: (raycaster) => builds.pickTower(raycaster, terrain),
 });
-const waveHud = createWaveHud(canvas, camera, content.waves, {
+const waveHud = createWaveHud(canvas, camera, {
   startWave: () => loop.enqueue((tick) => ({ type: 'startWave', tick })),
+  continueEndless: () => loop.enqueue((tick) => ({ type: 'continueEndless', tick })),
   setSpeed: (speed) => loop.setSpeed(speed),
   restart: () => {
     hud.reset();

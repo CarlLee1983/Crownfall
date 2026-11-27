@@ -1,5 +1,11 @@
 import type { Camera } from 'three';
-import { type Content, type GameEvent, type GameState, waveStartRejection } from '../core';
+import {
+  continueRejection,
+  type GameEvent,
+  type GameState,
+  queryWave,
+  waveStartRejection,
+} from '../core';
 import { cellProjection, element, updateText } from './hud-dom';
 
 const ENEMY_NAMES: Readonly<Record<string, string>> = {
@@ -20,16 +26,24 @@ const NOTICE_MS = 3000;
 
 interface WaveActions {
   startWave(): void;
+  continueEndless(): void;
   setSpeed(speed: number): void;
   restart(): void;
 }
 
-export function createWaveHud(
-  canvas: HTMLCanvasElement,
-  camera: Camera,
-  waves: Content['waves'],
-  actions: WaveActions,
-) {
+function previewText(state: GameState): string {
+  if (state.phase === 'wave') {
+    return `剩餘敵人 ${state.pendingSpawns.length + state.enemies.length}`;
+  }
+  const next = queryWave(state, state.waveNumber + 1);
+  if (next === undefined) return '沒有下一波';
+  const composition = next.groups
+    .map(({ enemy, count }) => `${ENEMY_NAMES[enemy] ?? enemy} ×${count}`)
+    .join('、');
+  return state.endless ? `${composition}，血量 ×${next.hpMultiplier.toFixed(2)}` : composition;
+}
+
+export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions: WaveActions) {
   const lives = element('game-lives');
   const waveNumber = element('wave-number');
   const flag = element('wave-flag');
@@ -41,14 +55,12 @@ export function createWaveHud(
   const result = element('game-result');
   const resultTitle = element('result-title');
   const resultDetail = element('result-detail');
+  const continueButton = element('continue-endless');
   if (!(result instanceof HTMLDialogElement) || !(start instanceof HTMLButtonElement)) {
     throw new Error('遊戲控制項的 HTML 元素類型錯誤');
   }
 
   const projectCell = cellProjection(camera);
-  const previewTexts = waves.map(({ groups }) =>
-    groups.map(({ enemy, count }) => `${ENEMY_NAMES[enemy] ?? enemy} ×${count}`).join('、'),
-  );
   const notices = new Map<string, { count: number; until: number }>();
   let paused = false;
   let speed = 1;
@@ -78,6 +90,7 @@ export function createWaveHud(
   start.addEventListener('click', actions.startWave);
   pause.addEventListener('click', togglePause);
   speedControl.addEventListener('click', cycleSpeed);
+  continueButton.addEventListener('click', actions.continueEndless);
   result.addEventListener('cancel', (event) => event.preventDefault());
   result.addEventListener('submit', () => {
     paused = false;
@@ -131,7 +144,13 @@ export function createWaveHud(
     },
     update(state: GameState, now: number): void {
       updateText(lives, String(state.lives));
-      updateText(waveNumber, `第 ${state.waveNumber} / ${waves.length} 波`);
+      const displayedWave =
+        state.endless && state.phase === 'preparation' ? state.waveNumber + 1 : state.waveNumber;
+      const waveLabel = `第 ${displayedWave} 波${state.endless ? '（無盡）' : ''}`;
+      updateText(
+        waveNumber,
+        state.endless ? waveLabel : `第 ${state.waveNumber} / ${state.waves.length} 波`,
+      );
       start.disabled = waveStartRejection(state) !== undefined;
 
       for (const [text, notice] of notices) {
@@ -147,29 +166,25 @@ export function createWaveHud(
       if (state.phase === 'victory' || state.phase === 'defeat') {
         flag.hidden = true;
         if (result.open) return;
+        continueButton.hidden = continueRejection(state) !== undefined;
         if (state.phase === 'victory') {
           updateText(resultTitle, '勝利');
           updateText(resultDetail, `剩餘生命 ${state.lives}`);
         } else {
           updateText(resultTitle, '敗北');
           const reason = state.defeatReason === 'bossLeaked' ? 'Boss 抵達終點' : '生命歸零';
-          updateText(resultDetail, `${reason}，撐到第 ${state.waveNumber} 波`);
+          updateText(resultDetail, `${reason}，撐到${waveLabel}`);
         }
         result.showModal();
         return;
       }
 
+      if (result.open) result.close();
       const point = projectCell(state.level, state.level.spawn, canvas.getBoundingClientRect());
       flag.hidden = point === undefined;
       if (point === undefined) return;
 
-      const next = previewTexts[state.waveNumber];
-      updateText(
-        preview,
-        state.phase === 'wave'
-          ? `剩餘敵人 ${state.pendingSpawns.length + state.enemies.length}`
-          : (next ?? '沒有下一波'),
-      );
+      updateText(preview, previewText(state));
 
       const halfWidth = flag.offsetWidth / 2;
       const x = Math.max(8 + halfWidth, Math.min(point.x, window.innerWidth - halfWidth - 8));

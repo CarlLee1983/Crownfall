@@ -82,8 +82,6 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     const alive = new Set<EnemyId>();
 
     for (const enemy of current.enemies) {
-      const rules = current.enemyRules[enemy.kind];
-      if (rules === undefined) throw new Error(`未知的敵人種類「${enemy.kind}」`);
       alive.add(enemy.id);
       const now = enemyPosition(current, enemy);
       const from = before.get(enemy.id) ?? now;
@@ -94,7 +92,7 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
       view.group.position.set(x, ground, y);
       view.bar.quaternion.copy(camera.quaternion);
 
-      const { maxHp } = rules;
+      const { maxHp } = enemy;
       const ratio = maxHp > 0 ? Math.min(1, Math.max(0, enemy.hp / maxHp)) : 0;
       view.fill.visible = ratio > 0;
       view.fill.scale.x = view.barWidth * ratio;

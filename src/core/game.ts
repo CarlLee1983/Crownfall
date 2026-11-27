@@ -1,5 +1,5 @@
 import { TICKS_PER_SECOND } from './clock';
-import type { Content, EnemyDefinition, TowerDefinition, TowerUpgrades } from './content';
+import type { Content, EnemyDefinition, TowerDefinition, TowerUpgrades, Wave } from './content';
 import { type CellIndex, cellAt, cellIndex, cellPoint, type GridPoint, type Level } from './level';
 import { type DistanceField, distanceField, nextCell } from './pathing';
 import { checkPlacement, type PlacementRejection, rangeBonusForLayers } from './placement';
@@ -11,6 +11,7 @@ export interface Enemy {
   readonly id: EnemyId;
   readonly kind: string;
   readonly hp: number;
+  readonly maxHp: number;
   /** 敵人離開的格子；停在格子中央時 from 與 to 相同。 */
   readonly from: CellIndex;
   readonly to: CellIndex;
@@ -43,9 +44,21 @@ interface TowerRules extends TowerDefinition {
   readonly ticksPerShot: number | undefined;
 }
 
-interface PendingSpawn {
+interface ScheduledSpawn {
   readonly kind: string;
   readonly tick: number;
+}
+
+interface PendingSpawn extends ScheduledSpawn {
+  readonly maxHp: number;
+}
+
+interface CampaignWave extends Wave {
+  readonly spawns: readonly ScheduledSpawn[];
+}
+
+export interface WaveDetails extends Wave {
+  readonly hpMultiplier: number;
 }
 
 export interface GameState {
@@ -54,12 +67,13 @@ export interface GameState {
   readonly money: number;
   readonly lives: number;
   readonly phase: 'preparation' | 'wave' | 'victory' | 'defeat';
+  readonly endless: boolean;
   /** 已開始的波次數。 */
   readonly waveNumber: number;
   readonly defeatReason: DefeatReason | undefined;
   readonly waveClearReward: number;
-  /** 各波的出兵清單，tick 相對於開波時計算。 */
-  readonly waves: readonly (readonly PendingSpawn[])[];
+  /** 戰役波次與預先排定的出兵清單，tick 相對於開波時計算。 */
+  readonly waves: readonly CampaignWave[];
   readonly towers: readonly Tower[];
   readonly towerDefinitions: Readonly<Record<string, TowerRules>>;
   readonly towerUpgrades: TowerUpgrades;
@@ -75,6 +89,7 @@ export interface GameState {
 export type DefeatReason = 'noLives' | 'bossLeaked';
 type WaveStartRejection = 'waveInProgress' | 'noNextWave' | 'gameOver';
 export type WaveRejection = 'wrongTick' | WaveStartRejection;
+type ContinueRejection = 'wrongTick' | 'notVictory' | 'noNextWave';
 export type RejectionReason = PlacementRejection | 'maxLevel' | 'noTower';
 
 export type Command =
@@ -87,7 +102,8 @@ export type Command =
     }
   | { readonly type: 'upgradeTower'; readonly tick: number; readonly cell: CellIndex }
   | { readonly type: 'sellTower'; readonly tick: number; readonly cell: CellIndex }
-  | { readonly type: 'startWave'; readonly tick: number };
+  | { readonly type: 'startWave'; readonly tick: number }
+  | { readonly type: 'continueEndless'; readonly tick: number };
 
 export type GameEvent =
   | {
@@ -112,6 +128,7 @@ export type GameEvent =
   | { readonly type: 'victory'; readonly waveNumber: number }
   | { readonly type: 'defeat'; readonly waveNumber: number; readonly reason: DefeatReason }
   | { readonly type: 'waveRejected'; readonly reason: WaveRejection }
+  | { readonly type: 'continueRejected'; readonly reason: ContinueRejection }
   | { readonly type: 'rejected'; readonly cell: CellIndex; readonly reason: RejectionReason };
 
 export interface TowerDetails {
@@ -131,6 +148,20 @@ export interface StepResult {
 }
 
 const secondsToTicks = (seconds: number): number => Math.round(seconds * TICKS_PER_SECOND);
+const ENDLESS_FIRST_TEMPLATE = 4;
+const ENDLESS_CYCLE_LENGTH = 6;
+const ENDLESS_HP_PER_CYCLE = 1.15;
+
+function scheduleSpawns(groups: Wave['groups']): readonly ScheduledSpawn[] {
+  return groups
+    .flatMap(({ enemy, count, delay, interval }) =>
+      Array.from({ length: count }, (_, i) => ({
+        kind: enemy,
+        tick: secondsToTicks(delay + i * interval),
+      })),
+    )
+    .sort((a, b) => a.tick - b.tick);
+}
 
 export function createGame(content: Content, level: Level): GameState {
   assertRampsRiseOneWay(level);
@@ -164,19 +195,15 @@ export function createGame(content: Content, level: Level): GameState {
     ]),
   );
 
-  const waves = content.waves.map(({ groups }) =>
-    groups
-      .flatMap((group) => {
-        if (!Object.hasOwn(enemyRules, group.enemy)) {
-          throw new Error(`未知的敵人種類「${group.enemy}」`);
-        }
-        return Array.from({ length: group.count }, (_, i) => ({
-          kind: group.enemy,
-          tick: secondsToTicks(group.delay + i * group.interval),
-        }));
-      })
-      .sort((a, b) => a.tick - b.tick),
-  );
+  const waves = content.waves.map(({ groups }) => {
+    const definitions = groups.map((group) => {
+      if (!Object.hasOwn(enemyRules, group.enemy)) {
+        throw new Error(`未知的敵人種類「${group.enemy}」`);
+      }
+      return { ...group };
+    });
+    return { groups: definitions, spawns: scheduleSpawns(definitions) };
+  });
 
   const lives = Math.max(0, content.startingLives);
   return {
@@ -185,6 +212,7 @@ export function createGame(content: Content, level: Level): GameState {
     money: content.startingMoney,
     lives,
     phase: lives === 0 ? 'defeat' : 'preparation',
+    endless: false,
     waveNumber: 0,
     defeatReason: lives === 0 ? 'noLives' : undefined,
     waveClearReward: content.waveClearReward,
@@ -201,10 +229,34 @@ export function createGame(content: Content, level: Level): GameState {
   };
 }
 
-function nextWave(state: GameState): readonly PendingSpawn[] | WaveStartRejection {
+/** 依 1 起算的波次編號查詢出兵組與血量倍率。 */
+export function queryWave(state: GameState, waveNumber: number): WaveDetails | undefined {
+  if (!Number.isInteger(waveNumber) || waveNumber < 1) return undefined;
+
+  const campaignWave = state.waves[waveNumber - 1];
+  if (campaignWave !== undefined) return { groups: campaignWave.groups, hpMultiplier: 1 };
+  if (!state.endless) return undefined;
+
+  const offset = waveNumber - state.waves.length - 1;
+  const cycle = Math.floor(offset / ENDLESS_CYCLE_LENGTH) + 1;
+  const template = state.waves[ENDLESS_FIRST_TEMPLATE - 1 + (offset % ENDLESS_CYCLE_LENGTH)];
+  if (template === undefined) return undefined;
+  return {
+    groups: template.groups.map((group) => ({ ...group, count: group.count + cycle })),
+    hpMultiplier: ENDLESS_HP_PER_CYCLE ** cycle,
+  };
+}
+
+function nextWave(state: GameState): WaveDetails | WaveStartRejection {
   if (state.phase === 'victory' || state.phase === 'defeat') return 'gameOver';
   if (state.phase === 'wave') return 'waveInProgress';
-  return state.waves[state.waveNumber] ?? 'noNextWave';
+  return queryWave(state, state.waveNumber + 1) ?? 'noNextWave';
+}
+
+export function continueRejection(state: GameState): ContinueRejection | undefined {
+  if (state.phase !== 'victory') return 'notVictory';
+  if (state.waves.length < ENDLESS_FIRST_TEMPLATE + ENDLESS_CYCLE_LENGTH - 1) return 'noNextWave';
+  return undefined;
 }
 
 export function waveStartRejection(state: GameState): WaveStartRejection | undefined {
@@ -249,16 +301,30 @@ export function applyCommands(state: GameState, commands: readonly Command[]): S
   const events: GameEvent[] = [];
   let current = state;
   for (const command of commands) {
+    if (command.type === 'continueEndless') {
+      const reason = command.tick === current.tick ? continueRejection(current) : 'wrongTick';
+      if (reason !== undefined) {
+        events.push({ type: 'continueRejected', reason });
+      } else {
+        current = { ...current, phase: 'preparation', endless: true };
+      }
+      continue;
+    }
     if (command.type === 'startWave') {
       const wave = command.tick === current.tick ? nextWave(current) : 'wrongTick';
       if (typeof wave === 'string') {
         events.push({ type: 'waveRejected', reason: wave });
       } else {
+        const spawns = current.waves[current.waveNumber]?.spawns ?? scheduleSpawns(wave.groups);
         current = spawnDue({
           ...current,
           phase: 'wave',
           waveNumber: current.waveNumber + 1,
-          pendingSpawns: wave.map(({ kind, tick }) => ({ kind, tick: current.tick + tick })),
+          pendingSpawns: spawns.map(({ kind, tick }) => ({
+            kind,
+            tick: current.tick + tick,
+            maxHp: enemyRulesFor(current, kind).maxHp * wave.hpMultiplier,
+          })),
         });
       }
       continue;
@@ -363,7 +429,7 @@ export function step(state: GameState, commands: readonly Command[]): StepResult
 
   const reward = next.waveClearReward;
   events.push({ type: 'waveCleared', waveNumber: next.waveNumber, reward });
-  const won = next.waveNumber === next.waves.length;
+  const won = !next.endless && next.waveNumber === next.waves.length;
   if (won) events.push({ type: 'victory', waveNumber: next.waveNumber });
   return {
     state: { ...next, phase: won ? 'victory' : 'preparation', money: next.money + reward },
@@ -474,7 +540,8 @@ function spawnDue(state: GameState): GameState {
   const spawned = due.map((spawn, i) => ({
     id: (state.nextEnemyId + i) as EnemyId,
     kind: spawn.kind,
-    hp: enemyRulesFor(state, spawn.kind).maxHp,
+    hp: spawn.maxHp,
+    maxHp: spawn.maxHp,
     from: state.level.spawn,
     to: state.level.spawn,
     progress: 0,
