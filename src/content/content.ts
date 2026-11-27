@@ -5,9 +5,9 @@ type EnemyKind = 'grunt' | 'runner' | 'tank' | 'boss';
 /** 戰役數值與出兵編排。 */
 export const content = {
   towers: {
-    basic: { name: '基本塔', cost: 50, range: 2.5, damage: 4, shotsPerSecond: 2 },
-    sniper: { name: '狙擊塔', cost: 100, range: 4.5, damage: 20, shotsPerSecond: 0.6 },
-    splash: { name: '範圍塔', cost: 80, range: 2, damage: 6, shotsPerSecond: 1, splashRadius: 1.1 },
+    basic: { name: '弓箭塔', cost: 50, range: 2.5, damage: 4, shotsPerSecond: 2 },
+    sniper: { name: '弩砲塔', cost: 100, range: 4.5, damage: 20, shotsPerSecond: 0.6 },
+    splash: { name: '法師塔', cost: 80, range: 2, damage: 6, shotsPerSecond: 1, splashRadius: 1.1 },
   },
   towerUpgrades: { costPercents: [60, 100], damageMultiplier: 1.5, rangeBonus: 0.3 },
   startingMoney: 100,

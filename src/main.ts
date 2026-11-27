@@ -1,5 +1,6 @@
-import { DirectionalLight, HemisphereLight, Scene, Vector3, WebGLRenderer } from 'three';
+import { DirectionalLight, FogExp2, HemisphereLight, Scene, Vector3, WebGLRenderer } from 'three';
 import { content } from './content/content';
+import { torchPositions } from './content/decor';
 import { level } from './content/level';
 import { createGame } from './core';
 import { createBuildHud } from './render/build-hud';
@@ -10,8 +11,10 @@ import { createCombatFeedback } from './render/combat-feedback';
 import { createCombatHud } from './render/combat-hud';
 import { createEnemyLayer } from './render/enemies';
 import { startLoop } from './render/loop';
+import { createPixelRenderer } from './render/pixel-renderer';
 import { createShotLayer } from './render/shots';
 import { createTerrain } from './render/terrain';
+import { createTorches } from './render/torches';
 import { createWaveHud } from './render/wave-hud';
 import './render/hud.css';
 
@@ -19,9 +22,10 @@ const canvas = document.getElementById('game');
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error('找不到 #game 畫布');
 
 const renderer = new WebGLRenderer({ canvas, antialias: true });
-renderer.setClearColor(0x14161c);
+renderer.setClearColor(0x0a0d0a);
 
 const terrain = createTerrain(level);
+const torches = createTorches(level, torchPositions);
 const cameraView = createCamera(level);
 const { camera, resize } = cameraView;
 connectCameraControls(canvas, cameraView);
@@ -34,21 +38,26 @@ const allowShake = window.matchMedia('(prefers-reduced-motion: no-preference)');
 const cameraPosition = new Vector3();
 
 const scene = new Scene();
-const sun = new DirectionalLight(0xffffff, 1.6);
+scene.fog = new FogExp2(0x10180f, 0.022);
+const sun = new DirectionalLight(0x9fb4ff, 0.8);
 sun.position.set(-6, 14, 4);
 scene.add(
-  new HemisphereLight(0xcfe3ff, 0x40382a, 1.2),
+  new HemisphereLight(0xcfe3ff, 0x40382a, 0.75),
   sun,
   terrain.group,
+  torches.group,
   enemies.group,
   builds.group,
   shots.group,
   combat.group,
 );
 
+const pixelRenderer = createPixelRenderer(renderer, scene, camera);
+
 const onResize = (): void => {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight, false);
+  pixelRenderer.resize(window.innerWidth, window.innerHeight);
   resize(Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight));
 };
 window.addEventListener('resize', onResize);
@@ -96,7 +105,8 @@ const loop = startLoop({
     waveHud.update(current, time.wallMs);
     shots.update(time.gameMs);
     combatHud.update(feedback);
-    renderer.render(scene, camera);
+    torches.update(time.gameMs / 1000);
+    pixelRenderer.render();
     if (shaking) {
       camera.position.copy(cameraPosition);
       camera.updateMatrixWorld();

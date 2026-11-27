@@ -1,4 +1,4 @@
-import { Mesh, PerspectiveCamera, Vector3 } from 'three';
+import { Mesh, MeshLambertMaterial, PerspectiveCamera, Vector3 } from 'three';
 import { expect, it } from 'vitest';
 import { level } from '../content/level';
 import {
@@ -150,6 +150,31 @@ it('sets the bottom of the enemy on the ramp at its rounded position', () => {
     }
   }
   expect(bar.quaternion.toArray()).toEqual(camera.quaternion.toArray());
+});
+
+it('keeps a flashing enemy in the world and both parts of its health bar on the overlay', () => {
+  const state = start(['S=G']);
+  const layer = createEnemyLayer(new PerspectiveCamera());
+  layer.update(state, state, 1);
+
+  const [body, bar] = layer.group.children[0]?.children ?? [];
+  if (!(body instanceof Mesh) || !(body.material instanceof MeshLambertMaterial)) {
+    throw new Error('Missing flashing enemy');
+  }
+  const material = body.material;
+  const baseColor = material.color.clone();
+  const baseGlow = material.emissive.clone();
+
+  layer.update(state, state, 1, () => 0.5);
+
+  expect(material.color.b).toBeGreaterThan(baseColor.b);
+  expect(material.emissive.b).toBeGreaterThan(baseGlow.b);
+  expect(body.layers.mask).toBe(1);
+  expect(bar?.children.map((part) => part.layers.mask)).toEqual([2, 2]);
+
+  layer.update(state, state, 1);
+  expect(material.color).toEqual(baseColor);
+  expect(material.emissive).toEqual(baseGlow);
 });
 
 it('draws the tank health bar above its silhouette on the ramp', () => {

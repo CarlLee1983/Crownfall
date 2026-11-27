@@ -1,6 +1,7 @@
 import { BoxGeometry, Group, Mesh, MeshLambertMaterial, Vector2, Vector3 } from 'three';
 import type { EnemyId, GameEvent, GameState } from '../core';
-import { type EnemyLayer, enemyColor } from './enemies';
+import { type EnemyLayer, enemyGlowColor } from './enemies';
+import { WORLD_LAYER } from './layers';
 
 const HIT_FLASH_MS = 100;
 const HIT_FLASH_GAP_MS = 50;
@@ -46,14 +47,15 @@ export function createCombatFeedback(
   function shatter(kind: string, id: EnemyId, origin: Vector3, start: number): void {
     removeExpiredFragments(start);
     if (fragments.size + FRAGMENTS_PER_KILL > MAX_FRAGMENTS) return;
-    const color = enemyColor(kind);
+    const color = enemyGlowColor(kind);
     let material = materials.get(color);
     if (material === undefined) {
-      material = new MeshLambertMaterial({ color });
+      material = new MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.45 });
       materials.set(color, material);
     }
     for (let index = 0; index < FRAGMENTS_PER_KILL; index++) {
       const mesh = new Mesh(geometry, material);
+      mesh.layers.set(WORLD_LAYER);
       group.add(mesh);
       fragments.add({ mesh, origin, heading: ((index + id * 0.37) * Math.PI) / 3, start });
     }

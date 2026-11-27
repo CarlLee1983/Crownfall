@@ -3,11 +3,11 @@ import { expect, type Page, test } from '@playwright/test';
 // An open tile in the initial 1280×720 view.
 const openTile = { x: 654, y: 395 };
 
-async function hasEnemyBodyAtEntrance(page: Page): Promise<boolean> {
-  const screenshot = await page.screenshot({
-    // First stretch of lane at the configured viewport.
-    clip: { x: 579, y: 460, width: 91, height: 92 },
-  });
+// The entrance and first stretch of lane at the configured viewport.
+const entrance = { x: 579, y: 460, width: 91, height: 92 };
+
+async function entranceBrightness(page: Page): Promise<number[]> {
+  const screenshot = await page.screenshot({ clip: entrance, scale: 'css' });
   return page.evaluate(
     async (png) => {
       const image = await createImageBitmap(new Blob([new Uint8Array(png)], { type: 'image/png' }));
@@ -17,19 +17,31 @@ async function hasEnemyBodyAtEntrance(page: Page): Promise<boolean> {
       const { data } = context.getImageData(0, 0, image.width, image.height);
       image.close();
 
-      // The first wave's grunts have gold bodies. Allow for lighting and antialiasing.
-      let goldPixels = 0;
-      for (let offset = 0; offset < data.length; offset += 4) {
+      return Array.from({ length: data.length / 4 }, (_, index) => {
+        const offset = index * 4;
         const red = data[offset] ?? 0;
         const green = data[offset + 1] ?? 0;
         const blue = data[offset + 2] ?? 0;
-        if (red > 100 && red - green > 20 && green - blue > 45) goldPixels++;
-        if (goldPixels >= 12) return true;
-      }
-      return false;
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+      });
     },
     [...screenshot],
   );
+}
+
+function hasBrighterBody(baseline: readonly number[], current: readonly number[]): boolean {
+  let consecutiveBrightRows = 0;
+  for (let y = 0; y < entrance.height; y++) {
+    let brightPixels = 0;
+    for (let x = 0; x < entrance.width; x++) {
+      const index = y * entrance.width + x;
+      if ((current[index] ?? 0) - (baseline[index] ?? 0) >= 45) brightPixels++;
+    }
+    // A body occupies a taller patch than the thin health bar.
+    consecutiveBrightRows = brightPixels >= 6 ? consecutiveBrightRows + 1 : 0;
+    if (consecutiveBrightRows >= 10) return true;
+  }
+  return false;
 }
 
 test('builds a tower and renders an enemy in the production game', async ({ page, baseURL }) => {
@@ -63,24 +75,28 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   await expect(ring).toBeVisible();
   const balance = page.locator('#build-balance');
   const before = await balance.textContent();
-  await ring.getByRole('button', { name: /基本塔/ }).click();
+  await ring.getByRole('button', { name: /弓箭塔/ }).click();
   await expect(ring).toBeHidden();
   await expect(balance).not.toHaveText(before ?? '');
   await canvas.click({ position: openTile });
   const towerRing = page.getByRole('region', { name: '升級／賣出環' });
-  await expect(towerRing.getByText(/基本塔 · 等級 1/)).toBeVisible();
+  await expect(towerRing.getByText(/弓箭塔 · 等級 1/)).toBeVisible();
   await page.keyboard.press('Escape');
 
-  expect(await hasEnemyBodyAtEntrance(page)).toBe(false);
   const waveControls = page.getByRole('region', { name: '波次與時間控制' });
+  await expect(waveControls.getByText('骷髏兵 ×8', { exact: true })).toBeVisible();
+  // While paused, starting the wave spawns its first enemy without advancing the world.
+  await waveControls.getByRole('button', { name: '暫停' }).click();
+  await expect(waveControls.getByRole('button', { name: '繼續' })).toBeVisible();
+  const baseline = await entranceBrightness(page);
   const startWave = waveControls.getByRole('button', { name: /開波/ });
   await expect(startWave).toBeEnabled();
   await startWave.click();
   await expect(startWave).toBeDisabled();
   await expect(waveControls.getByText(/^剩餘敵人 [1-9]\d*$/)).toBeVisible();
   await expect
-    .poll(() => hasEnemyBodyAtEntrance(page), {
-      message: 'An enemy body appears near the entrance',
+    .poll(async () => hasBrighterBody(baseline, await entranceBrightness(page)), {
+      message: 'A body distinctly brighter than the ground appears at the entrance',
     })
     .toBe(true);
   expect(requestsOutsideMount).toEqual([]);

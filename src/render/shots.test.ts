@@ -68,6 +68,13 @@ function fire(
   };
 }
 
+it('keeps the shot line and splash effect on the world layer', () => {
+  const { line, shots } = fire(4, { splashRadius: 1 });
+  const splash = shots.group.children.find((child) => child instanceof Mesh);
+  expect(line.layers.mask).toBe(1);
+  expect(splash?.layers.mask).toBe(1);
+});
+
 it('keeps the line endpoint on the interpolated enemy body as it moves', () => {
   const { enemies, shots, before, state, endpoint } = fire(4);
   enemies.update(before, state, 0.5);

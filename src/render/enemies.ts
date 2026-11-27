@@ -28,22 +28,24 @@ import {
 } from '../core';
 import { cellIndex, neighbors } from '../core/level';
 import { type EnemyMotion, enemyMotion, sampleEnemyMotion } from './enemy-motion';
+import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
 import { LAYER_HEIGHT } from './terrain';
 
 interface Look {
   readonly size: number;
-  readonly color: number;
+  readonly glowColor: number;
   readonly round?: true;
   readonly cornerCut?: number;
 }
 
-const LOOKS: Readonly<Record<string, Look>> = {
-  grunt: { size: 0.5, color: 0xd9a441 },
-  runner: { size: 0.4, color: 0xe05a8a },
-  tank: { size: 0.8, color: 0x7a4fb0, cornerCut: 0.1 },
-  boss: { size: 1, color: 0xc83b36, round: true },
-};
-const DEFAULT_LOOK: Look = { size: 0.5, color: 0xbbbbbb };
+const LOOKS: ReadonlyMap<string, Look> = new Map([
+  ['grunt', { size: 0.5, glowColor: 0xe0ac4f }],
+  ['runner', { size: 0.4, glowColor: 0xb5ec69 }],
+  ['tank', { size: 0.8, glowColor: 0xffad73, cornerCut: 0.1 }],
+  ['boss', { size: 1, glowColor: 0xf37b55, round: true }],
+]);
+const DEFAULT_LOOK: Look = { size: 0.5, glowColor: 0xbbbbbb };
+const GLOW_INTENSITY = 0.55;
 const WHITE = new Color(0xffffff);
 const UP = new Vector3(0, 1, 0);
 const BACK = new Vector3(0, 0, 1);
@@ -51,11 +53,11 @@ const BAR_HEIGHT = 0.14;
 const BAR_GAP = 0.08;
 
 function enemyLook(kind: string): Look {
-  return LOOKS[kind] ?? DEFAULT_LOOK;
+  return LOOKS.get(kind) ?? DEFAULT_LOOK;
 }
 
-export function enemyColor(kind: string): number {
-  return enemyLook(kind).color;
+export function enemyGlowColor(kind: string): number {
+  return enemyLook(kind).glowColor;
 }
 
 function enemyGeometry({ size, cornerCut, round }: Look): BufferGeometry {
@@ -229,13 +231,16 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
   const viewFor = (id: EnemyId, look: Look): EnemyView => {
     const existing = views.get(id);
     if (existing !== undefined) return existing;
-    const body = new Mesh(enemyGeometry(look), new MeshLambertMaterial({ color: look.color }));
+    const body = new Mesh(enemyGeometry(look), new MeshLambertMaterial());
+    body.layers.set(WORLD_LAYER);
     body.matrixAutoUpdate = false;
     const barWidth = Math.max(0.52, look.size);
     const bar = new Group();
     const background = new Mesh(barGeometry, barBackground);
+    background.layers.set(OVERLAY_LAYER);
     background.scale.set(barWidth + 0.06, BAR_HEIGHT, 1);
     const fill = new Mesh(barGeometry, barFill);
+    fill.layers.set(OVERLAY_LAYER);
     fill.scale.y = 0.08;
     fill.position.z = 0.01;
     bar.add(background, fill);
@@ -283,9 +288,10 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
       const look = enemyLook(enemy.kind);
       const view = viewFor(enemy.id, look);
       const flash = hitFlash?.(enemy.id) ?? 0;
-      view.body.material.color.setHex(look.color).lerp(WHITE, flash);
-      view.body.material.emissive.copy(WHITE);
-      view.body.material.emissiveIntensity = flash * 0.35;
+      const glow = look.glowColor;
+      view.body.material.color.setHex(glow).multiplyScalar(0.36).lerp(WHITE, flash);
+      view.body.material.emissive.setHex(glow).lerp(WHITE, flash);
+      view.body.material.emissiveIntensity = GLOW_INTENSITY;
       const half = look.size / 2;
       const ground = supportBody(current.level, point, look, normal, view.body.position);
       view.group.position.set(point.x, ground, point.y);

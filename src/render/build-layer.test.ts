@@ -1,4 +1,4 @@
-import { Camera } from 'three';
+import { Camera, Mesh } from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { describe, expect, it } from 'vitest';
@@ -34,6 +34,23 @@ it('picks the wider edge of a basic tower in front of the ground', () => {
 
   expect(pickCell(level, ray)).toBe(cellIndex(level.width, 1, 1));
   expect(pickCell(level, ray, new Map([[cell, towerStructure(tower)]]))).toBe(cell);
+});
+
+it('puts routes, placement previews, and range indicators on the overlay', () => {
+  const level = parseLevel(['S==.', '===G']);
+  const state = createGame(content, level);
+  const layer = createBuildLayer();
+  layer.update(state, state, 1, {
+    cell: level.spawn,
+    range: 2,
+    route: currentRoute(state),
+  });
+
+  const lines = layer.group.children.filter((child) => child instanceof Line2 && child.visible);
+  const range = layer.group.children.find((child) => child instanceof Mesh && child.visible);
+  expect(lines.map((line) => line.layers.mask)).toEqual([2, 2]);
+  expect(range?.layers.mask).toBe(2);
+  expect(branchLine(layer).layers.mask).toBe(2);
 });
 
 function vertices(line: LineSegments2): number[][] {
