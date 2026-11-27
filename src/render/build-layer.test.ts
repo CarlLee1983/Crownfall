@@ -10,13 +10,31 @@ import {
   currentRoute,
   type EnemyId,
   parseLevel,
+  pickCell,
   step,
 } from '../core';
-import { createBuildLayer } from './build-layer';
+import { cellIndex } from '../core/level';
+import { createBuildLayer, towerStructure } from './build-layer';
 import { dLevel } from './d-level.fixture';
 import { createEnemyLayer } from './enemies';
 import { enemyMotion, sampleEnemyMotion } from './enemy-motion';
 import { LAYER_HEIGHT } from './terrain';
+
+it('picks the wider edge of a basic tower in front of the ground', () => {
+  const level = parseLevel(['S.', '=.', '=.', 'G.']);
+  const initial = createGame(content, level);
+  const cell = cellIndex(level.width, 1, 2);
+  const { state } = applyCommands(initial, [{ type: 'placeTower', kind: 'basic', cell, tick: 0 }]);
+  const [tower] = state.towers;
+  if (tower === undefined) throw new Error('Missing basic tower');
+  const ray = {
+    origin: { x: 1.39, y: 3, z: 3 },
+    direction: { x: 0, y: -1 / LAYER_HEIGHT, z: -1 },
+  };
+
+  expect(pickCell(level, ray)).toBe(cellIndex(level.width, 1, 1));
+  expect(pickCell(level, ray, new Map([[cell, towerStructure(tower)]]))).toBe(cell);
+});
 
 function vertices(line: LineSegments2): number[][] {
   const start = line.geometry.getAttribute('instanceStart');
