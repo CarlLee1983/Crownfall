@@ -36,25 +36,20 @@ import { LAYER_HEIGHT } from './terrain';
 
 interface Look {
   readonly size: number;
+  readonly glowColor: number;
   readonly round?: true;
   readonly cornerCut?: number;
   readonly modelScale?: number;
 }
 
-const LOOKS: Readonly<Record<string, Look>> = {
-  grunt: { size: 0.5 },
-  runner: { size: 0.4 },
-  tank: { size: 0.8, cornerCut: 0.1 },
+const LOOKS: ReadonlyMap<string, Look> = new Map([
+  ['grunt', { size: 0.5, glowColor: 0xe0ac4f }],
+  ['runner', { size: 0.4, glowColor: 0xb5ec69 }],
+  ['tank', { size: 0.8, glowColor: 0xffad73, cornerCut: 0.1 }],
   // The equipped walk has a native diameter of 2.71; scale it to the one-cell proxy.
-  boss: { size: 1, round: true, modelScale: 0.37 },
-};
-const DEFAULT_LOOK: Look = { size: 0.5 };
-const GLOW_COLORS: ReadonlyMap<string, number> = new Map([
-  ['grunt', 0xffe7a4],
-  ['runner', 0xb5ec69],
-  ['tank', 0xffad73],
-  ['boss', 0xf37b55],
+  ['boss', { size: 1, glowColor: 0xf37b55, round: true, modelScale: 0.37 }],
 ]);
+const DEFAULT_LOOK: Look = { size: 0.5, glowColor: 0xbbbbbb };
 const GLOW_INTENSITY = 0.55;
 const WHITE = new Color(0xffffff);
 const UP = new Vector3(0, 1, 0);
@@ -63,11 +58,11 @@ const BAR_HEIGHT = 0.14;
 const BAR_GAP = 0.08;
 
 function enemyLook(kind: string): Look {
-  return LOOKS[kind] ?? DEFAULT_LOOK;
+  return LOOKS.get(kind) ?? DEFAULT_LOOK;
 }
 
 export function enemyGlowColor(kind: string): number {
-  return GLOW_COLORS.get(kind) ?? 0xbbbbbb;
+  return enemyLook(kind).glowColor;
 }
 
 function enemyGeometry({ size, cornerCut, round }: Look): BufferGeometry {
@@ -251,7 +246,7 @@ export function createEnemyLayer(
     body.matrixAutoUpdate = false;
     const asset = models[kind];
     const visual =
-      asset && createEnemyModel(asset, -look.size / 2, enemyGlowColor(kind), look.modelScale);
+      asset && createEnemyModel(asset, -look.size / 2, look.glowColor, look.modelScale);
     if (visual !== undefined) {
       body.material.colorWrite = body.material.depthWrite = false;
       body.add(visual.model);
@@ -313,7 +308,7 @@ export function createEnemyLayer(
       const view = viewFor(enemy, look);
       const flash = hitFlash?.(enemy.id) ?? 0;
       if (view.visual === undefined) {
-        const glow = enemyGlowColor(enemy.kind);
+        const glow = look.glowColor;
         view.body.material.color.setHex(glow).multiplyScalar(0.36).lerp(WHITE, flash);
         view.body.material.emissive.setHex(glow).lerp(WHITE, flash);
         view.body.material.emissiveIntensity = GLOW_INTENSITY;

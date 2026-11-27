@@ -12,10 +12,10 @@ import { cellProjection, element, isGameDialogOpen, updateText } from './hud-dom
 import { createSurveyUrl, PLAYTEST_SURVEY_URL_TEMPLATE } from './survey';
 
 const ENEMY_NAMES: Readonly<Record<string, string>> = {
-  grunt: '雜兵',
-  runner: '快兵',
-  tank: '坦克',
-  boss: 'Boss',
+  grunt: '骷髏兵',
+  runner: '食屍鬼',
+  tank: '骷髏騎士',
+  boss: '巫妖',
 };
 
 const WAVE_REJECTIONS = {
@@ -190,7 +190,8 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
         if (state.phase === 'victory') {
           updateText(resultDetail, `剩餘生命 ${state.lives}`);
         } else {
-          const reason = state.defeatReason === 'bossLeaked' ? 'Boss 抵達城堡' : '生命歸零';
+          const reason =
+            state.defeatReason === 'bossLeaked' ? `${ENEMY_NAMES.boss}抵達城堡` : '生命歸零';
           updateText(resultDetail, `${reason}，撐到${waveLabel}`);
         }
         surveyLink.href = createSurveyUrl(
