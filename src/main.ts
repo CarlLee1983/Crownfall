@@ -58,8 +58,8 @@ function startGame(models: LoadedModels): void {
   const { camera, resize } = cameraView;
   connectCameraControls(canvas, cameraView);
   const enemies = createEnemyLayer(camera, models.enemies);
-  const builds = createBuildLayer();
-  const shots = createShotLayer(enemies);
+  const builds = createBuildLayer(models.towers);
+  const shots = createShotLayer(enemies, builds.towerHeight);
   const combat = createCombatFeedback(enemies);
   const combatHud = createCombatHud(canvas, camera);
   const allowShake = window.matchMedia('(prefers-reduced-motion: no-preference)');
@@ -92,10 +92,17 @@ function startGame(models: LoadedModels): void {
   onResize();
 
   const initial = createGame(content, level);
-  const hud = createBuildHud(canvas, camera, initial, {
-    placeTower: (cell, kind) => loop.enqueue((tick) => ({ type: 'placeTower', cell, kind, tick })),
-    manageTower: (cell, type) => loop.enqueue((tick) => ({ type, cell, tick })),
-  });
+  const hud = createBuildHud(
+    canvas,
+    camera,
+    initial,
+    {
+      placeTower: (cell, kind) =>
+        loop.enqueue((tick) => ({ type: 'placeTower', cell, kind, tick })),
+      manageTower: (cell, type) => loop.enqueue((tick) => ({ type, cell, tick })),
+    },
+    builds.towerStructure,
+  );
   const waveHud = createWaveHud(canvas, camera, {
     startWave: () => loop.enqueue((tick) => ({ type: 'startWave', tick })),
     continueEndless: () => loop.enqueue((tick) => ({ type: 'continueEndless', tick })),

@@ -1,4 +1,4 @@
-import { Camera, Mesh } from 'three';
+import { Box3, BoxGeometry, Camera, Mesh, MeshLambertMaterial } from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { describe, expect, it } from 'vitest';
@@ -14,26 +14,62 @@ import {
   step,
 } from '../core';
 import { cellIndex } from '../core/level';
-import { createBuildLayer, towerStructure } from './build-layer';
+import { createBuildLayer } from './build-layer';
 import { dLevel } from './d-level.fixture';
 import { createEnemyLayer } from './enemies';
 import { enemyMotion, sampleEnemyMotion } from './enemy-motion';
 import { LAYER_HEIGHT } from './terrain';
+import { prepareTowerModel } from './tower-model';
 
-it('picks the wider edge of a basic tower in front of the ground', () => {
+it('picks the upper half at the wider edge of the archer tower model', () => {
   const level = parseLevel(['S.', '=.', '=.', 'G.']);
   const initial = createGame(content, level);
   const cell = cellIndex(level.width, 1, 2);
   const { state } = applyCommands(initial, [{ type: 'placeTower', kind: 'basic', cell, tick: 0 }]);
   const [tower] = state.towers;
   if (tower === undefined) throw new Error('Missing basic tower');
+  const model = new Mesh(new BoxGeometry(0.6, 1.8, 0.9).translate(0, 0.9, 0));
+  const layer = createBuildLayer({ basic: prepareTowerModel(model, 1) });
+  const structure = layer.towerStructure(tower);
+  expect(structure).toEqual({ height: expect.closeTo(3), halfWidth: expect.closeTo(0.45) });
   const ray = {
-    origin: { x: 1.39, y: 3, z: 3 },
+    origin: { x: 1.42, y: 5, z: 3.6 },
     direction: { x: 0, y: -1 / LAYER_HEIGHT, z: -1 },
   };
 
   expect(pickCell(level, ray)).toBe(cellIndex(level.width, 1, 1));
-  expect(pickCell(level, ray, new Map([[cell, towerStructure(tower)]]))).toBe(cell);
+  expect(pickCell(level, ray, new Map([[cell, structure]]))).toBe(cell);
+});
+
+it('places the gold upgrade marker above the model roof on elevated ground', () => {
+  const level = parseLevel(['S==G', '.+..']);
+  const initial = createGame(content, level);
+  const cell = cellIndex(level.width, 1, 1);
+  const placed = applyCommands(initial, [
+    { type: 'placeTower', kind: 'basic', cell, tick: 0 },
+  ]).state;
+  const upgraded = applyCommands(placed, [{ type: 'upgradeTower', cell, tick: 0 }]).state;
+  const model = new Mesh(new BoxGeometry(0.6, 1.8, 0.9).translate(0, 2, 0));
+  const layer = createBuildLayer({ basic: prepareTowerModel(model, 1) });
+  layer.update(placed, upgraded, 1);
+  layer.group.updateMatrixWorld(true);
+
+  const markers: Mesh[] = [];
+  layer.group.traverse((object) => {
+    if (
+      object instanceof Mesh &&
+      object.material instanceof MeshLambertMaterial &&
+      object.material.color.getHex() === 0xffd34d
+    ) {
+      markers.push(object);
+    }
+  });
+  expect(markers).toHaveLength(1);
+  const [marker] = markers;
+  if (marker === undefined) throw new Error('Missing gold upgrade marker');
+  const markerBounds = new Box3().setFromObject(marker);
+  expect(markerBounds.min.y).toBeCloseTo(0.6 + 1.8 + 0.08, 5);
+  expect(marker.layers.mask).toBe(1);
 });
 
 it('puts routes, placement previews, and range indicators on the overlay', () => {
