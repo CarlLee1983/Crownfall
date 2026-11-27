@@ -2,8 +2,16 @@ import type { Content } from '../core';
 
 type EnemyKind = 'grunt' | 'runner' | 'tank';
 
-/** 測試用敵人：速度取自規格的起始數值表。 */
+/** 塔、開局金錢和高度優勢取自規格的起始數值表。 */
 export const content = {
+  towers: {
+    basic: { name: '基本塔', cost: 50, range: 2.5, damage: 4, shotsPerSecond: 2 },
+    sniper: { name: '狙擊塔', cost: 100, range: 4.5, damage: 20, shotsPerSecond: 0.6 },
+    splash: { name: '範圍塔', cost: 80, range: 2, damage: 6, shotsPerSecond: 1, splashRadius: 1.1 },
+  },
+  startingMoney: 100,
+  heightRangeBonus: 1.5,
+  // 保留現階段自動出兵用的敵人與波次，速度取自規格的起始數值表。
   enemies: {
     grunt: { speed: 1.6 },
     runner: { speed: 2.9 },

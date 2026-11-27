@@ -5,23 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Crownfall</title>
     <link rel="icon" href="data:," />
-    <style>
-      html,
-      body {
-        margin: 0;
-        height: 100%;
-        overflow: hidden;
-        background: #14161c;
-      }
-      #game {
-        display: block;
-        width: 100vw;
-        height: 100vh;
-      }
-    </style>
   </head>
   <body>
-    <canvas id="game"></canvas>
+    <main>
+      <canvas id="game" tabindex="-1" aria-label="Crownfall 關卡"></canvas>
+      <div id="build-anchor" aria-hidden="true" hidden></div>
+      <section id="build-ring" aria-label="建造環" tabindex="-1" hidden>
+        <fieldset id="build-options" aria-label="選擇塔種"></fieldset>
+      </section>
+      <p id="build-preview"></p>
+      <p id="build-feedback" role="status"></p>
+      <p id="build-money">金錢 <span id="build-balance"></span></p>
+    </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
