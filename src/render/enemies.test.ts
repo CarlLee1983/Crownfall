@@ -152,6 +152,18 @@ it('sets the bottom of the enemy on the ramp at its rounded position', () => {
   expect(bar.quaternion.toArray()).toEqual(camera.quaternion.toArray());
 });
 
+it('keeps a flashing enemy in the world and both parts of its health bar on the overlay', () => {
+  const state = start(['S=G']);
+  const layer = createEnemyLayer(new PerspectiveCamera());
+  layer.update(state, state, 1, () => 0.5);
+
+  const [body, bar] = layer.group.children[0]?.children ?? [];
+  if (!(body instanceof Mesh)) throw new Error('Missing flashing enemy');
+  expect(body.material.emissiveIntensity).toBeGreaterThan(0);
+  expect(body.layers.mask).toBe(1);
+  expect(bar?.children.map((part) => part.layers.mask)).toEqual([2, 2]);
+});
+
 it('draws the tank health bar above its silhouette on the ramp', () => {
   const { camera, resize, pan, zoom } = createCamera(dLevel);
   resize(16 / 9);

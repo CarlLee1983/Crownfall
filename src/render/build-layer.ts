@@ -29,6 +29,7 @@ import {
 } from '../core';
 import { nextCell } from '../core/pathing';
 import { type EnemyMotion, enemyMotion, sampleEnemyMotion } from './enemy-motion';
+import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
 import { sampleRoute } from './route-curve';
 import { LAYER_HEIGHT } from './terrain';
 
@@ -70,11 +71,14 @@ const LEVEL_MARKER = {
 function towerMesh(tower: Tower, level: Level): Group {
   const model = TOWER_MODELS.get(tower.kind) ?? BASIC_MODEL;
   const group = new Group();
-  group.add(new Mesh(model.geometry, model.material));
+  const body = new Mesh(model.geometry, model.material);
+  body.layers.set(WORLD_LAYER);
+  group.add(body);
   const upgrades = tower.level - 1;
   const spacing = LEVEL_MARKER_SIZE + LEVEL_MARKER_GAP;
   for (let i = 0; i < upgrades; i++) {
     const marker = new Mesh(LEVEL_MARKER.geometry, LEVEL_MARKER.material);
+    marker.layers.set(WORLD_LAYER);
     marker.position.set(
       (i - (upgrades - 1) / 2) * spacing,
       model.height + LEVEL_MARKER_GAP + LEVEL_MARKER_SIZE / 2,
@@ -332,6 +336,10 @@ export function createBuildLayer(): BuildLayer {
       depthWrite: false,
     }),
   );
+  solid.layers.set(OVERLAY_LAYER);
+  branches.layers.set(OVERLAY_LAYER);
+  dashed.layers.set(OVERLAY_LAYER);
+  range.layers.set(OVERLAY_LAYER);
   solid.visible = branches.visible = dashed.visible = range.visible = false;
   group.add(towers, solid, dashed, range, branches);
 

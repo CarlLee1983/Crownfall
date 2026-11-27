@@ -10,6 +10,7 @@ import { createCombatFeedback } from './render/combat-feedback';
 import { createCombatHud } from './render/combat-hud';
 import { createEnemyLayer } from './render/enemies';
 import { startLoop } from './render/loop';
+import { createPixelRenderer } from './render/pixel-renderer';
 import { createShotLayer } from './render/shots';
 import { createTerrain } from './render/terrain';
 import { createWaveHud } from './render/wave-hud';
@@ -46,9 +47,12 @@ scene.add(
   combat.group,
 );
 
+const pixelRenderer = createPixelRenderer(renderer, scene, camera);
+
 const onResize = (): void => {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight, false);
+  pixelRenderer.resize(window.innerWidth, window.innerHeight);
   resize(Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight));
 };
 window.addEventListener('resize', onResize);
@@ -96,7 +100,7 @@ const loop = startLoop({
     waveHud.update(current, time.wallMs);
     shots.update(time.gameMs);
     combatHud.update(feedback);
-    renderer.render(scene, camera);
+    pixelRenderer.render();
     if (shaking) {
       camera.position.copy(cameraPosition);
       camera.updateMatrixWorld();

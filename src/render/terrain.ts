@@ -1,5 +1,6 @@
 import { BoxGeometry, type BufferGeometry, Color, Group, Mesh, MeshLambertMaterial } from 'three';
 import { type CellIndex, cellAt, cellPoint, type Level, rampDirection } from '../core';
+import { WORLD_LAYER } from './layers';
 
 /** 一個高度層在世界座標中的高度。 */
 export const LAYER_HEIGHT = 0.6;
@@ -59,6 +60,7 @@ export function createTerrain(level: Level) {
       mesh = new Mesh(new BoxGeometry(1, thickness, 1), materials[paletteOf(level, index)]);
       mesh.position.set(x, top - thickness / 2, y);
     }
+    mesh.layers.set(WORLD_LAYER);
     group.add(mesh);
   }
   const castleRed = new Color(0xff263d);

@@ -28,6 +28,7 @@ import {
 } from '../core';
 import { cellIndex, neighbors } from '../core/level';
 import { type EnemyMotion, enemyMotion, sampleEnemyMotion } from './enemy-motion';
+import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
 import { LAYER_HEIGHT } from './terrain';
 
 interface Look {
@@ -230,12 +231,15 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     const existing = views.get(id);
     if (existing !== undefined) return existing;
     const body = new Mesh(enemyGeometry(look), new MeshLambertMaterial({ color: look.color }));
+    body.layers.set(WORLD_LAYER);
     body.matrixAutoUpdate = false;
     const barWidth = Math.max(0.52, look.size);
     const bar = new Group();
     const background = new Mesh(barGeometry, barBackground);
+    background.layers.set(OVERLAY_LAYER);
     background.scale.set(barWidth + 0.06, BAR_HEIGHT, 1);
     const fill = new Mesh(barGeometry, barFill);
+    fill.layers.set(OVERLAY_LAYER);
     fill.scale.y = 0.08;
     fill.position.z = 0.01;
     bar.add(background, fill);

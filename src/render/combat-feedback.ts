@@ -1,6 +1,7 @@
 import { BoxGeometry, Group, Mesh, MeshLambertMaterial, Vector2, Vector3 } from 'three';
 import type { EnemyId, GameEvent, GameState } from '../core';
 import { type EnemyLayer, enemyColor } from './enemies';
+import { WORLD_LAYER } from './layers';
 
 const HIT_FLASH_MS = 100;
 const HIT_FLASH_GAP_MS = 50;
@@ -54,6 +55,7 @@ export function createCombatFeedback(
     }
     for (let index = 0; index < FRAGMENTS_PER_KILL; index++) {
       const mesh = new Mesh(geometry, material);
+      mesh.layers.set(WORLD_LAYER);
       group.add(mesh);
       fragments.add({ mesh, origin, heading: ((index + id * 0.37) * Math.PI) / 3, start });
     }

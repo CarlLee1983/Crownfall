@@ -84,6 +84,13 @@ it('does not show a bounty for a zero-reward kill', () => {
   expect(feedback.update(100, false).bounties).toEqual([]);
 });
 
+it('keeps all six death fragments on the world layer', () => {
+  const { feedback, advance } = setup();
+  advance(100);
+  feedback.update(220, false);
+  expect(feedback.group.children.map((fragment) => fragment.layers.mask)).toEqual(Array(6).fill(1));
+});
+
 it('caps the number of visible fragments after many simultaneous kills', () => {
   const { feedback, advance } = setup({ count: 20 });
   advance(100);

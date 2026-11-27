@@ -12,6 +12,7 @@ import {
 } from '../core';
 import { towerHeight } from './build-layer';
 import type { EnemyLayer } from './enemies';
+import { WORLD_LAYER } from './layers';
 import { LAYER_HEIGHT } from './terrain';
 
 const SHOT_DURATION_MS = 180;
@@ -70,6 +71,7 @@ export function createShotLayer(enemies: Pick<EnemyLayer, 'impactPosition' | 'ta
         ]),
         new LineMaterial({ color, linewidth: 3, transparent: true, depthWrite: false }),
       );
+      line.layers.set(WORLD_LAYER);
       group.add(line);
 
       let ring: Mesh<RingGeometry, MeshBasicMaterial> | undefined;
@@ -80,6 +82,7 @@ export function createShotLayer(enemies: Pick<EnemyLayer, 'impactPosition' | 'ta
         );
         const impact = enemyPosition(state, event.target);
         const ground = groundHeight(state.level, impact) * LAYER_HEIGHT;
+        ring.layers.set(WORLD_LAYER);
         ring.position.set(impact.x, ground + 0.065, impact.y);
         ring.scale.set(event.splashRadius, 1, event.splashRadius);
         group.add(ring);
