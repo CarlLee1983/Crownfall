@@ -261,7 +261,6 @@ body {
 
 #game-vitals,
 #game-controls,
-#wave-flag,
 #wave-feedback:where(:not(:empty)),
 #game-help,
 #game-result {
@@ -271,25 +270,33 @@ body {
   border-radius: 6px;
 }
 
-#game-vitals,
-#game-controls,
+#game-hud,
 #wave-flag,
 #wave-feedback {
   position: fixed;
 }
 
+#game-hud {
+  inset: auto 12px 12px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+
 #game-vitals,
 #game-controls {
-  bottom: 12px;
   display: flex;
   align-items: center;
   gap: 8px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+  pointer-events: auto;
 }
 
 #game-vitals {
-  left: 12px;
+  flex: none;
   gap: 14px;
 }
 
@@ -298,50 +305,35 @@ body {
 }
 
 #game-controls {
-  right: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
-#wave-number {
+#wave-number,
+#wave-preview {
   margin: 0 4px 0 0;
 }
 
 #wave-flag {
   z-index: 1;
-  width: max-content;
-  max-width: min(240px, calc(100vw - 44px));
-  padding: 8px 10px;
-  transform: translate(-50%, -100%);
-  border-color: #bc816b;
-  box-shadow: 0 3px 10px #0006;
-  text-align: center;
+  width: 2px;
+  height: 18px;
+  transform: translateY(-100%);
+  background: #42332a;
+  pointer-events: none;
 }
 
 #wave-flag::after {
   position: absolute;
-  bottom: -8px;
-  left: calc(50% + var(--wave-flag-arrow-offset, 0px) - 7px);
-  border: 7px solid transparent;
-  border-top-color: #bc816b;
-  border-bottom: 0;
+  top: 0;
+  left: 100%;
+  border: 5px solid transparent;
+  border-right: 0;
+  border-left: 10px solid #f1b595;
   content: "";
 }
 
-#wave-flag.below-entrance {
-  transform: translateX(-50%);
-}
-
-#wave-flag.below-entrance::after {
-  top: -8px;
-  bottom: auto;
-  transform: rotate(180deg);
-}
-
-#wave-preview {
-  margin: 0 0 6px;
-}
-
 #game-controls button,
-#wave-flag button,
 #game-help button,
 #game-result button {
   padding: 3px 8px;
@@ -353,18 +345,24 @@ body {
   cursor: pointer;
 }
 
+#game-controls button {
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  white-space: nowrap;
+}
+
 #game-help button {
   min-height: 44px;
 }
 
-#wave-flag button:disabled {
+#start-wave:disabled {
   border-color: #536373;
   color: #a6adb2;
   background: #20272e;
   cursor: default;
 }
 
-#wave-flag kbd {
+#game-controls kbd {
   color: #cbd4dd;
 }
 
@@ -424,8 +422,29 @@ body {
   margin: 0;
 }
 
-@media (max-width: 390px) {
-  #game-vitals {
-    bottom: 54px;
+@media (max-width: 600px) {
+  #game-hud {
+    flex-direction: column;
   }
+
+  #game-vitals {
+    align-self: start;
+  }
+}
+
+#game-lives {
+  display: inline-block;
+}
+
+.combat-bounty {
+  position: fixed;
+  inset: 0 auto auto 0;
+  color: #ffd66b;
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow:
+    0 1px 3px #221503,
+    0 0 2px #221503;
+  pointer-events: none;
 }

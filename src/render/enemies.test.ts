@@ -1,7 +1,15 @@
 import { Mesh, PerspectiveCamera, Vector3 } from 'three';
 import { expect, it } from 'vitest';
 import { level } from '../content/level';
-import { applyCommands, type Content, createGame, type GameState, parseLevel, step } from '../core';
+import {
+  applyCommands,
+  type Content,
+  createGame,
+  type GameState,
+  groundHeight,
+  parseLevel,
+  step,
+} from '../core';
 import { cellIndex } from '../core/level';
 import { createCamera } from './camera';
 import { dLevel } from './d-level.fixture';
@@ -21,6 +29,13 @@ const content = {
 
 function start(rows: readonly string[]): GameState {
   return step(createGame(content, parseLevel(rows)), [{ type: 'startWave', tick: 0 }]).state;
+}
+
+function worldVertices(mesh: Mesh): Vector3[] {
+  const vertices = mesh.geometry.getAttribute('position');
+  return Array.from({ length: vertices.count }, (_, i) =>
+    mesh.localToWorld(new Vector3().fromBufferAttribute(vertices, i)),
+  );
 }
 
 it('samples the turn at the interpolated tick progress', () => {
@@ -73,6 +88,39 @@ it('supports the D boss across the upper flank as it leaves the ramp', () => {
   const before = poseAt(0.49).getWorldPosition(new Vector3());
   const after = poseAt(0.51).getWorldPosition(new Vector3());
   expect(before.distanceTo(after)).toBeLessThan(0.03);
+});
+
+it('keeps the boss directly above its support while its base follows the ramp', () => {
+  const level = parseLevel(['S^g']);
+  const initial = createGame(content, level);
+  const state = {
+    ...initial,
+    enemies: [
+      {
+        id: initial.nextEnemyId,
+        kind: 'boss',
+        hp: 1,
+        maxHp: 1,
+        from: cellIndex(level.width, 1, 0),
+        to: cellIndex(level.width, 2, 0),
+        progress: 0,
+      },
+    ],
+  };
+  const layer = createEnemyLayer(new PerspectiveCamera());
+  layer.update(state, state, 1);
+  const [body] = layer.group.children[0]?.children ?? [];
+  if (!(body instanceof Mesh)) throw new Error('No boss body');
+  body.geometry.computeBoundingBox();
+  const bounds = body.geometry.boundingBox;
+  if (bounds === null) throw new Error('No boss bounds');
+
+  for (const x of [bounds.min.x / 2, bounds.max.x / 2]) {
+    const foot = body.localToWorld(new Vector3(x, bounds.min.y, 0));
+    const top = body.localToWorld(new Vector3(x, bounds.max.y, 0));
+    expect(foot.y).toBeCloseTo(groundHeight(level, { x: foot.x, y: foot.z }) * LAYER_HEIGHT);
+    expect(top.x).toBeCloseTo(foot.x);
+  }
 });
 
 it('sets the bottom of the enemy on the ramp at its rounded position', () => {
@@ -131,20 +179,11 @@ it('draws the tank health bar above its silhouette on the ramp', () => {
   if (!(body instanceof Mesh) || !(background instanceof Mesh)) {
     throw new Error('No tank model or health bar');
   }
-  const projectedY = (mesh: Mesh) => {
-    const vertices = mesh.geometry.getAttribute('position');
-    return Array.from(
-      { length: vertices.count },
-      (_, i) => mesh.localToWorld(new Vector3().fromBufferAttribute(vertices, i)).project(camera).y,
-    );
-  };
+  const projectedY = (mesh: Mesh) => worldVertices(mesh).map((point) => point.project(camera).y);
   expect(Math.min(...projectedY(background))).toBeGreaterThan(Math.max(...projectedY(body)));
 });
 
-it.each([
-  { kind: 'tank', width: 0.8 },
-  { kind: 'boss', width: 1 },
-])('keeps the $kind grounded and clear of the plateau at a rounded turn', ({ kind, width }) => {
+it.each(['tank', 'boss'])('keeps the %s grounded and clear at a plateau turn', (kind) => {
   const layer = createEnemyLayer(new PerspectiveCamera());
   const initial = createGame(content, level);
   const state = {
@@ -170,13 +209,8 @@ it.each([
   ]);
   const [body] = enemy?.children ?? [];
   if (!(body instanceof Mesh)) throw new Error('No enemy body');
-  const vertices = body.geometry.getAttribute('position');
-  const corners = Array.from({ length: vertices.count }, (_, i) =>
-    body.localToWorld(new Vector3().fromBufferAttribute(vertices, i)),
-  );
+  const corners = worldVertices(body);
   expect(Math.min(...corners.map(({ y }) => y))).toBeCloseTo(0, 5);
-  const xs = corners.map(({ x }) => x);
-  expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(width, 5);
   // The high cell starts at x = 1.5 and z = 3.5.
   expect(Math.max(...corners.map(({ x, z }) => x + z))).toBeLessThan(5);
 });

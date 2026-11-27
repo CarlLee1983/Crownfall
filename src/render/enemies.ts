@@ -2,15 +2,16 @@ import {
   BoxGeometry,
   type BufferGeometry,
   type Camera,
+  Color,
   CylinderGeometry,
   ExtrudeGeometry,
   Group,
+  Matrix3,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
   PerspectiveCamera,
   PlaneGeometry,
-  Quaternion,
   Shape,
   Vector3,
 } from 'three';
@@ -43,6 +44,7 @@ const LOOKS: Readonly<Record<string, Look>> = {
   boss: { size: 1, color: 0xc83b36, round: true },
 };
 const DEFAULT_LOOK: Look = { size: 0.5, color: 0xbbbbbb };
+const WHITE = new Color(0xffffff);
 const UP = new Vector3(0, 1, 0);
 const BACK = new Vector3(0, 0, 1);
 const BAR_HEIGHT = 0.14;
@@ -50,6 +52,10 @@ const BAR_GAP = 0.08;
 
 function enemyLook(kind: string): Look {
   return LOOKS[kind] ?? DEFAULT_LOOK;
+}
+
+export function enemyColor(kind: string): number {
+  return enemyLook(kind).color;
 }
 
 function enemyGeometry({ size, cornerCut, round }: Look): BufferGeometry {
@@ -80,7 +86,8 @@ function smoothUnit(value: number): number {
   return t * t * (3 - 2 * t);
 }
 
-function supportingPlane(level: Level, point: GridPoint, half: number, normal: Vector3): number {
+function supportingPlane(level: Level, point: GridPoint, look: Look, normal: Vector3): number {
+  const half = look.size / 2;
   const x = Math.round(point.x);
   const y = Math.round(point.y);
   const dx = point.x - x;
@@ -129,7 +136,7 @@ function supportingPlane(level: Level, point: GridPoint, half: number, normal: V
 
   // Support the actual projected footprint. Clearance can be lowest at either edge or at
   // the crest, where the rising plane meets the upper flat.
-  const reach = half / length;
+  const reach = look.round ? half : half / length;
   const crest = Math.max(-reach, Math.min(reach, 0.5 - along));
   const supportAt = (offset: number): number =>
     LAYER_HEIGHT * Math.min(1, Math.max(0, 0.5 + along + offset)) - slope * offset;
@@ -165,6 +172,19 @@ function supportingPlane(level: Level, point: GridPoint, half: number, normal: V
   return height;
 }
 
+function supportBody(
+  level: Level,
+  point: GridPoint,
+  look: Look,
+  normal: Vector3,
+  offset: Vector3,
+): number {
+  const ground = supportingPlane(level, point, look, normal);
+  const half = look.size / 2;
+  offset.copy(look.round ? UP : normal).multiplyScalar(half);
+  return ground;
+}
+
 interface EnemyView {
   readonly group: Group;
   readonly body: Mesh<BufferGeometry, MeshLambertMaterial>;
@@ -179,9 +199,15 @@ export interface EnemyLayer {
   /** Observe every tick, including ticks advanced between draws. */
   observe(state: GameState): void;
   /** alpha 為 previous 到 current 之間的內插比例；只存在於 previous 的敵人不畫。 */
-  update(previous: GameState, current: GameState, alpha: number): void;
+  update(
+    previous: GameState,
+    current: GameState,
+    alpha: number,
+    hitFlash?: (id: EnemyId) => number,
+  ): void;
   targetPosition(id: EnemyId, output: Vector3): Vector3 | undefined;
   impactPosition(state: GameState, enemy: Enemy, output: Vector3): Vector3;
+  spawnPosition(state: GameState, kind: string, output: Vector3): Vector3;
   reset(): void;
 }
 
@@ -192,7 +218,7 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
   const cameraBack = new Vector3();
   const viewOffset = new Vector3();
   const cameraUpInBody = new Vector3();
-  const inverseTilt = new Quaternion();
+  const bodyTransform = new Matrix3();
   const views = new Map<EnemyId, EnemyView>();
   let motions = new Map<EnemyId, EnemyMotion>();
   let observed: GameState | undefined;
@@ -204,6 +230,7 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     const existing = views.get(id);
     if (existing !== undefined) return existing;
     const body = new Mesh(enemyGeometry(look), new MeshLambertMaterial({ color: look.color }));
+    body.matrixAutoUpdate = false;
     const barWidth = Math.max(0.52, look.size);
     const bar = new Group();
     const background = new Mesh(barGeometry, barBackground);
@@ -244,7 +271,7 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     views.delete(id);
   };
 
-  const update = (previous: GameState, current: GameState, alpha: number): void => {
+  const update: EnemyLayer['update'] = (previous, current, alpha, hitFlash) => {
     if (observed === undefined || observed.tick < previous.tick) observe(previous);
     observe(current);
     cameraUp.copy(UP).applyQuaternion(camera.quaternion);
@@ -255,27 +282,38 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
       const point = sampleEnemyMotion(motion, previous === current ? 1 : alpha);
       const look = enemyLook(enemy.kind);
       const view = viewFor(enemy.id, look);
+      const flash = hitFlash?.(enemy.id) ?? 0;
+      view.body.material.color.setHex(look.color).lerp(WHITE, flash);
+      view.body.material.emissive.copy(WHITE);
+      view.body.material.emissiveIntensity = flash * 0.35;
       const half = look.size / 2;
-      const ground = supportingPlane(current.level, point, half, normal);
+      const ground = supportBody(current.level, point, look, normal, view.body.position);
       view.group.position.set(point.x, ground, point.y);
-      view.body.quaternion.setFromUnitVectors(UP, normal);
-      view.body.position.copy(normal).multiplyScalar(half);
+      if (!look.round) view.body.quaternion.setFromUnitVectors(UP, normal);
+      view.body.updateMatrix();
+      const slopeX = look.round ? -normal.x / normal.y : 0;
+      const slopeZ = look.round ? -normal.z / normal.y : 0;
+      if (look.round) {
+        // Shear the boss vertically so its base rests on the slope without widening its footprint.
+        view.body.matrix.elements[1] = slopeX;
+        view.body.matrix.elements[9] = slopeZ;
+      }
       view.bar.quaternion.copy(camera.quaternion);
       // Project the tilted body bounds onto the camera's up axis to clear its silhouette.
-      inverseTilt.copy(view.body.quaternion).invert();
+      bodyTransform.setFromMatrix4(view.body.matrix).transpose();
       cameraUpInBody.copy(cameraUp);
       let perspectiveScale = 1;
       if (camera instanceof PerspectiveCamera) {
         viewOffset.copy(view.group.position).add(view.body.position).sub(camera.position);
         const depth = -viewOffset.dot(cameraBack);
-        const radius = half * Math.sqrt(3);
+        const radius = half * (Math.sqrt(3) + Math.hypot(slopeX, slopeZ));
         if (depth > radius) {
           // Account for depth shifting the apparent height of the nearer corners.
           cameraUpInBody.addScaledVector(cameraBack, viewOffset.dot(cameraUp) / depth);
           perspectiveScale = depth / (depth - radius);
         }
       }
-      cameraUpInBody.applyQuaternion(inverseTilt);
+      cameraUpInBody.applyMatrix3(bodyTransform);
       const bodyTop =
         half *
         (Math.abs(cameraUpInBody.x) + Math.abs(cameraUpInBody.y) + Math.abs(cameraUpInBody.z));
@@ -296,6 +334,11 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     }
   };
 
+  const bodyPosition = (level: Level, point: GridPoint, kind: string, output: Vector3) => {
+    const ground = supportBody(level, point, enemyLook(kind), normal, output);
+    return output.set(point.x + output.x, ground + output.y, point.y + output.z);
+  };
+
   return {
     group,
     routeMotions: () => motions.values(),
@@ -310,11 +353,10 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     impactPosition: (state, enemy, output) => {
       const motion = motions.get(enemy.id) ?? enemyMotion(state, enemy);
       const point = sampleEnemyMotion(motion, 1);
-      const half = enemyLook(enemy.kind).size / 2;
-      const ground = supportingPlane(state.level, point, half, output);
-      output.multiplyScalar(half);
-      return output.set(point.x + output.x, ground + output.y, point.y + output.z);
+      return bodyPosition(state.level, point, enemy.kind, output);
     },
+    spawnPosition: (state, kind, output) =>
+      bodyPosition(state.level, cellPoint(state.level, state.level.spawn), kind, output),
     reset: () => {
       for (const [id, view] of views) remove(id, view);
       motions.clear();

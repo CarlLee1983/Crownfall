@@ -1,4 +1,4 @@
-import { BoxGeometry, type BufferGeometry, Group, Mesh, MeshLambertMaterial } from 'three';
+import { BoxGeometry, type BufferGeometry, Color, Group, Mesh, MeshLambertMaterial } from 'three';
 import { type CellIndex, cellAt, cellPoint, type Level, rampDirection } from '../core';
 
 /** 一個高度層在世界座標中的高度。 */
@@ -36,7 +36,7 @@ function rampGeometry(dx: number, dy: number): BufferGeometry {
   return geometry;
 }
 
-export function createTerrain(level: Level): Group {
+export function createTerrain(level: Level) {
   const group = new Group();
   const materials = Object.fromEntries(
     Object.entries(COLOURS).map(([name, color]) => [name, new MeshLambertMaterial({ color })]),
@@ -61,5 +61,12 @@ export function createTerrain(level: Level): Group {
     }
     group.add(mesh);
   }
-  return group;
+  const castleRed = new Color(0xff263d);
+  const setCastleFlash = (amount: number): void => {
+    materials.goal.color.setHex(COLOURS.goal).lerp(castleRed, amount);
+    materials.goal.emissive.copy(castleRed);
+    materials.goal.emissiveIntensity = amount * 0.5;
+  };
+
+  return { group, setCastleFlash };
 }
