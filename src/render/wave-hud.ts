@@ -6,7 +6,7 @@ import {
   queryWave,
   waveStartRejection,
 } from '../core';
-import { cellProjection, element, updateText } from './hud-dom';
+import { cellProjection, element, isGameDialogOpen, updateText } from './hud-dom';
 
 const ENEMY_NAMES: Readonly<Record<string, string>> = {
   grunt: '雜兵',
@@ -52,11 +52,16 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
   const pause = element('pause');
   const speedControl = element('speed');
   const feedback = element('wave-feedback');
+  const help = element('game-help');
   const result = element('game-result');
   const resultTitle = element('result-title');
   const resultDetail = element('result-detail');
   const continueButton = element('continue-endless');
-  if (!(result instanceof HTMLDialogElement) || !(start instanceof HTMLButtonElement)) {
+  if (
+    !(help instanceof HTMLDialogElement) ||
+    !(result instanceof HTMLDialogElement) ||
+    !(start instanceof HTMLButtonElement)
+  ) {
     throw new Error('遊戲控制項的 HTML 元素類型錯誤');
   }
 
@@ -92,18 +97,21 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
   speedControl.addEventListener('click', cycleSpeed);
   continueButton.addEventListener('click', actions.continueEndless);
   result.addEventListener('cancel', (event) => event.preventDefault());
-  result.addEventListener('submit', () => {
+  result.addEventListener('submit', (event) => {
+    event.preventDefault();
     paused = false;
     speed = 1;
     notices.clear();
     feedback.textContent = '';
     actions.restart();
     syncSpeed();
+    result.close();
+    help.showModal();
   });
 
   document.addEventListener('keydown', (event) => {
     if (
-      result.open ||
+      isGameDialogOpen() ||
       event.defaultPrevented ||
       event.isComposing ||
       event.altKey ||
@@ -127,6 +135,8 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
       cycleSpeed();
     }
   });
+
+  help.showModal();
 
   return {
     onEvents(events: readonly GameEvent[], now: number): void {
@@ -187,11 +197,12 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
       updateText(preview, previewText(state));
 
       const halfWidth = flag.offsetWidth / 2;
-      const x = Math.max(8 + halfWidth, Math.min(point.x, window.innerWidth - halfWidth - 8));
+      const x = Math.max(halfWidth, Math.min(point.x, window.innerWidth - halfWidth));
       const above = point.y >= flag.offsetHeight + 24;
       flag.classList.toggle('below-entrance', !above);
       flag.style.left = `${x}px`;
       flag.style.top = `${point.y + (above ? -12 : 12)}px`;
+      flag.style.setProperty('--wave-flag-arrow-offset', `${point.x - x}px`);
     },
   };
 }

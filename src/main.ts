@@ -5,6 +5,7 @@ import { createGame } from './core';
 import { createBuildHud } from './render/build-hud';
 import { createBuildLayer } from './render/build-layer';
 import { createCamera } from './render/camera';
+import { connectCameraControls } from './render/camera-controls';
 import { createEnemyLayer } from './render/enemies';
 import { startLoop } from './render/loop';
 import { createShotLayer } from './render/shots';
@@ -19,7 +20,9 @@ const renderer = new WebGLRenderer({ canvas, antialias: true });
 renderer.setClearColor(0x14161c);
 
 const terrain = createTerrain(level);
-const { camera, resize } = createCamera(level);
+const cameraView = createCamera(level);
+const { camera, resize } = cameraView;
+connectCameraControls(canvas, cameraView);
 const enemies = createEnemyLayer(camera);
 const builds = createBuildLayer();
 const shots = createShotLayer();
@@ -39,8 +42,7 @@ scene.add(
 const onResize = (): void => {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight, false);
-  resize(window.innerWidth / window.innerHeight);
-  camera.updateMatrixWorld();
+  resize(Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight));
 };
 window.addEventListener('resize', onResize);
 onResize();

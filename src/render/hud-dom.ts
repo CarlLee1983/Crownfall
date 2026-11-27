@@ -12,6 +12,10 @@ export function updateText(node: HTMLElement, text: string): void {
   if (node.textContent !== text) node.textContent = text;
 }
 
+export function isGameDialogOpen(): boolean {
+  return document.querySelector('dialog:modal') !== null;
+}
+
 export function cellProjection(camera: Camera) {
   const projected = new Vector3();
   return (level: Level, cell: CellIndex, bounds: DOMRect) => {

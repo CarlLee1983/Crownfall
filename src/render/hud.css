@@ -263,6 +263,7 @@ body {
 #game-controls,
 #wave-flag,
 #wave-feedback:where(:not(:empty)),
+#game-help,
 #game-result {
   padding: 5px 12px;
   background: #172029;
@@ -318,7 +319,7 @@ body {
 #wave-flag::after {
   position: absolute;
   bottom: -8px;
-  left: calc(50% - 7px);
+  left: calc(50% + var(--wave-flag-arrow-offset, 0px) - 7px);
   border: 7px solid transparent;
   border-top-color: #bc816b;
   border-bottom: 0;
@@ -341,6 +342,7 @@ body {
 
 #game-controls button,
 #wave-flag button,
+#game-help button,
 #game-result button {
   padding: 3px 8px;
   border: 1px solid #7890a0;
@@ -349,6 +351,10 @@ body {
   background: #263746;
   font: inherit;
   cursor: pointer;
+}
+
+#game-help button {
+  min-height: 44px;
 }
 
 #wave-flag button:disabled {
@@ -375,20 +381,45 @@ body {
   pointer-events: none;
 }
 
+#game-help,
 #game-result {
-  max-width: min(320px, calc(100vw - 68px));
   padding: 20px 28px;
   color: inherit;
-  text-align: center;
   overscroll-behavior: contain;
 }
 
+#game-help {
+  max-width: min(440px, calc(100vw - 76px));
+}
+
+#game-help ul {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 20px;
+  padding-inline-start: 1.4em;
+}
+
+#game-help kbd {
+  color: #f1d992;
+}
+
+#game-help form {
+  text-align: right;
+}
+
+#game-result {
+  max-width: min(320px, calc(100vw - 68px));
+  text-align: center;
+}
+
+#game-help::backdrop,
 #game-result::backdrop {
   overflow: hidden;
   background: #0a1119b3;
   overscroll-behavior: contain;
 }
 
+#help-title,
 #result-title {
   margin: 0;
 }
