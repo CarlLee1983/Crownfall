@@ -71,10 +71,31 @@ export async function buildEnemyModels(io: NodeIO): Promise<void> {
       dedup(),
       textureCompress({ encoder: sharp, resize: [128, 128], targetFormat: 'png' }),
     );
+    if (source.equipment !== undefined) {
+      // Retain texture detail in the glow while keeping the dark cloth visible.
+      for (const atlas of root.listTextures()) {
+        const image = atlas.getImage();
+        if (image === null) throw new Error(`${id} 的色表未包含圖片`);
+        const glow = await sharp(image)
+          .removeAlpha()
+          .toColourspace('b-w')
+          .linear(0.28, 184)
+          .png()
+          .toBuffer();
+        const emissive = document
+          .createTexture('Glow atlas')
+          .setImage(glow)
+          .setMimeType('image/png');
+        for (const material of root.listMaterials()) {
+          if (material.getBaseColorTexture() === atlas) material.setEmissiveTexture(emissive);
+        }
+      }
+    }
     // glTF sampler constant for nearest-neighbor filtering.
     const NEAREST = 9728;
     for (const material of root.listMaterials()) {
       material.getBaseColorTextureInfo()?.setMagFilter(NEAREST).setMinFilter(NEAREST);
+      material.getEmissiveTextureInfo()?.setMagFilter(NEAREST).setMinFilter(NEAREST);
     }
 
     if (root.listBuffers().length > 1) await document.transform(unpartition());

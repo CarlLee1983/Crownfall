@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { NodeIO, TextureInfo } from '@gltf-transform/core';
+import sharp from 'sharp';
 import { expect, it } from 'vitest';
 
 const loadouts = [
@@ -71,6 +72,14 @@ it.each(loadouts)(
       if (sampler === null) continue;
       expect(sampler.getMagFilter()).toBe(TextureInfo.MagFilter.NEAREST);
       expect(sampler.getMinFilter()).toBe(TextureInfo.MinFilter.NEAREST);
+      if (equipment.length > 0) {
+        const emission = material.getEmissiveTexture();
+        expect(emission).not.toBe(material.getBaseColorTexture());
+        const image = emission?.getImage();
+        if (image == null) throw new Error('Equipped enemy has no embedded glow atlas');
+        const stats = await sharp(image).stats();
+        expect(stats.channels[0]?.min).toBeGreaterThanOrEqual(180);
+      }
     }
   },
 );

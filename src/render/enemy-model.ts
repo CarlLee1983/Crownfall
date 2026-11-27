@@ -25,7 +25,7 @@ export function createEnemyModel(
     const existing = materials.get(source);
     if (existing !== undefined) return existing;
     const material = source.clone();
-    material.emissiveMap = material.map;
+    material.emissiveMap ??= material.map;
     materials.set(source, material);
     return material;
   };
