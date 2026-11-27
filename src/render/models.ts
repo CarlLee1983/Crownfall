@@ -1,18 +1,13 @@
-import { type AnimationClip, LoadingManager, type Object3D } from 'three';
+import { LoadingManager } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import skeletonUrl from './models/enemy-skeleton.glb?url';
+import { loadEnemyModels } from './enemy-model-assets';
 import archerUrl from './models/tower-archer.glb?url';
 import ballistaUrl from './models/tower-ballista.glb?url';
 import mageUrl from './models/tower-mage.glb?url';
 import { type LoadedTowerModel, prepareTowerModel } from './tower-model';
 
-export interface LoadedEnemyModel {
-  readonly scene: Object3D;
-  readonly walk: AnimationClip;
-}
-
 export interface LoadedModels {
-  readonly enemies: { readonly grunt: LoadedEnemyModel };
+  readonly enemies: Readonly<Awaited<ReturnType<typeof loadEnemyModels>>>;
   readonly towers: {
     readonly basic: LoadedTowerModel;
     readonly sniper: LoadedTowerModel;
@@ -28,17 +23,15 @@ export async function loadModels(): Promise<LoadedModels> {
     resourceFailed = true;
   };
   const loader = new GLTFLoader(manager);
-  const [{ scene, animations }, archer, ballista, mage] = await Promise.all([
-    loader.loadAsync(skeletonUrl),
+  const [enemies, archer, ballista, mage] = await Promise.all([
+    loadEnemyModels(loader),
     loader.loadAsync(archerUrl),
     loader.loadAsync(ballistaUrl),
     loader.loadAsync(mageUrl),
   ]);
   if (resourceFailed) throw new Error('3D 模型資源載入失敗');
-  const walk = animations.find(({ name }) => name === 'Walking_A');
-  if (walk === undefined) throw new Error('骷髏兵模型缺少 Walking_A');
   return {
-    enemies: { grunt: { scene, walk } },
+    enemies,
     towers: {
       basic: prepareTowerModel(archer.scene),
       sniper: prepareTowerModel(ballista.scene),
