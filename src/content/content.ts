@@ -9,6 +9,7 @@ export const content = {
     sniper: { name: '狙擊塔', cost: 100, range: 4.5, damage: 20, shotsPerSecond: 0.6 },
     splash: { name: '範圍塔', cost: 80, range: 2, damage: 6, shotsPerSecond: 1, splashRadius: 1.1 },
   },
+  towerUpgrades: { costPercents: [60, 100], damageMultiplier: 1.5, rangeBonus: 0.3 },
   startingMoney: 100,
   startingLives: 20,
   waveClearReward: 30,

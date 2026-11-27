@@ -5,7 +5,14 @@ export {
   MAX_CATCH_UP_TICKS,
   TICKS_PER_SECOND,
 } from './clock';
-export type { Content, EnemyDefinition, SpawnGroup, TowerDefinition, Wave } from './content';
+export type {
+  Content,
+  EnemyDefinition,
+  SpawnGroup,
+  TowerDefinition,
+  TowerUpgrades,
+  Wave,
+} from './content';
 export {
   applyCommands,
   type Command,
@@ -16,9 +23,12 @@ export {
   enemyPosition,
   type GameEvent,
   type GameState,
+  queryTower,
+  type RejectionReason,
   type StepResult,
   step,
   type Tower,
+  type TowerDetails,
   type WaveRejection,
   waveStartRejection,
 } from './game';

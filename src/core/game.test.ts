@@ -14,6 +14,7 @@ import {
   type Level,
   parseLevel,
   previewPlacement,
+  queryTower,
   samePlacementPreviewInputs,
   step,
   waveStartRejection,
@@ -24,6 +25,7 @@ const content = {
   enemies: { grunt: { speed: 7.5, hp: 12, bounty: 5, leakDamage: 1 } },
   waves: [{ groups: [{ enemy: 'grunt', count: 1, interval: 1, delay: 0 }] }],
   towers: { basic: { name: 'Basic', cost: 30, range: 2, damage: 4, shotsPerSecond: 0 } },
+  towerUpgrades: { costPercents: [60, 100], damageMultiplier: 1.5, rangeBonus: 0.3 },
   startingMoney: 100,
   startingLives: 10,
   waveClearReward: 12,
@@ -44,6 +46,146 @@ function run(state: GameState, ticks: number): { state: GameState; events: GameE
 function positions(state: GameState) {
   return state.enemies.map((enemy) => enemyPosition(state, enemy));
 }
+
+describe('upgrading and selling towers', () => {
+  it('quotes both upgrades, changes tower stats, and rejects upgrading a level 3 tower', () => {
+    const cell = 6 as CellIndex;
+    const initial = createGame(content, parseLevel(['S==G', '..#.']));
+    expect(queryTower(initial, cell)).toBeNull();
+
+    const placed = step(initial, [{ type: 'placeTower', cell, kind: 'basic', tick: 0 }]).state;
+    expect(queryTower(placed, cell)).toEqual({
+      kind: 'basic',
+      level: 1,
+      range: 3.5,
+      damage: 4,
+      upgradeCost: 18,
+      refund: 30,
+      refundPercent: 100,
+    });
+    expect(queryTower(placed, cell, 1)?.range).toBe(2);
+
+    const upgraded = step(placed, [{ type: 'upgradeTower', cell, tick: 1 }]);
+    expect(upgraded.events).toEqual([]);
+    expect(upgraded.state.money).toBe(52);
+    expect(queryTower(upgraded.state, cell)).toMatchObject({
+      level: 2,
+      range: 3.8,
+      damage: 6,
+      upgradeCost: 30,
+      refund: 48,
+    });
+
+    const maxed = step(upgraded.state, [{ type: 'upgradeTower', cell, tick: 2 }]);
+    expect(maxed.events).toEqual([]);
+    expect(maxed.state.money).toBe(22);
+    expect(queryTower(maxed.state, cell)).toMatchObject({
+      level: 3,
+      range: 4.1,
+      damage: 9,
+      upgradeCost: null,
+      refund: 78,
+    });
+    expect(applyCommands(maxed.state, [{ type: 'upgradeTower', cell, tick: 3 }])).toEqual({
+      state: maxed.state,
+      events: [{ type: 'rejected', cell, reason: 'maxLevel' }],
+    });
+  });
+
+  it('refunds all spending on a tower placed after an earlier wave has started', () => {
+    const cell = 4 as CellIndex;
+    const initial = createGame(
+      { ...content, waves: [{ groups: [] }, ...content.waves] },
+      parseLevel(['S==G', '....']),
+    );
+    const betweenWaves = step(initial, [{ type: 'startWave', tick: 0 }]).state;
+    const built = applyCommands(betweenWaves, [
+      { type: 'placeTower', cell, kind: 'basic', tick: 1 },
+      { type: 'upgradeTower', cell, tick: 1 },
+    ]).state;
+    expect(queryTower(built, cell)).toMatchObject({ refund: 48, refundPercent: 100 });
+
+    const sold = step(built, [{ type: 'sellTower', cell, tick: 1 }]);
+    expect(sold.events).toEqual([]);
+    expect(sold.state.money).toBe(112);
+    expect(queryTower(sold.state, cell)).toBeNull();
+  });
+
+  it('refunds 70% including upgrades during the wave and opens the route while paused', () => {
+    const cell = 4 as CellIndex;
+    const initial = createGame(content, parseLevel(['S====G', '===.==', '======']));
+    const started = applyCommands(initial, [
+      { type: 'placeTower', cell, kind: 'basic', tick: 0 },
+      { type: 'startWave', tick: 0 },
+    ]).state;
+    const approaching = run(started, 8).state;
+    expect(positions(approaching)).toEqual([{ x: 2, y: 0 }]);
+    expect(currentRoute(approaching)).toEqual([0, 1, 2, 8, 14, 15, 16, 10, 11, 5]);
+
+    const upgraded = applyCommands(approaching, [{ type: 'upgradeTower', cell, tick: 8 }]);
+    expect(upgraded.events).toEqual([]);
+    expect(queryTower(upgraded.state, cell)).toMatchObject({ refund: 33, refundPercent: 70 });
+
+    const sold = applyCommands(upgraded.state, [{ type: 'sellTower', cell, tick: 8 }]);
+    expect(sold.events).toEqual([]);
+    expect(sold.state).toMatchObject({ tick: 8, money: 85 });
+    expect(queryTower(sold.state, cell)).toBeNull();
+    expect(positions(sold.state)).toEqual([{ x: 2, y: 0 }]);
+    expect(currentRoute(sold.state)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(positions(step(sold.state, []).state)).toEqual([{ x: 2.25, y: 0 }]);
+  });
+
+  it.each([
+    { level: 2, range: 0.5, remainingHp: 6 },
+    { level: 3, range: 0.25, remainingHp: 3 },
+  ])(
+    'uses level $level range and damage on the tick a wave starts',
+    ({ level, range, remainingHp }) => {
+      const cell = 8 as CellIndex;
+      const initial = createGame(
+        {
+          ...content,
+          towers: { basic: { ...content.towers.basic, range, shotsPerSecond: 1 } },
+        },
+        parseLevel(['S====G', '..#...']),
+      );
+      const placed = applyCommands(initial, [
+        { type: 'placeTower', cell, kind: 'basic', tick: 0 },
+      ]).state;
+      const wave = { type: 'startWave', tick: 0 } as const;
+      const upgrade = { type: 'upgradeTower', cell, tick: 0 } as const;
+      const previousLevel = level === 3 ? applyCommands(placed, [upgrade]).state : placed;
+      expect(step(previousLevel, [wave]).events).toEqual([]);
+
+      const upgraded = step(previousLevel, [upgrade, wave]);
+      expect(upgraded.events).toMatchObject([{ type: 'shot', towerCell: cell }]);
+      expect(upgraded.state.enemies).toMatchObject([{ hp: remainingHp }]);
+    },
+  );
+
+  it('rejects unaffordable upgrades, stale commands, and commands for an empty cell', () => {
+    const cell = 4 as CellIndex;
+    const empty = 5 as CellIndex;
+    const initial = createGame({ ...content, startingMoney: 47 }, parseLevel(['S==G', '....']));
+    const placed = step(initial, [{ type: 'placeTower', cell, kind: 'basic', tick: 0 }]).state;
+    expect(
+      applyCommands(placed, [
+        { type: 'upgradeTower', cell, tick: 1 },
+        { type: 'sellTower', cell, tick: 0 },
+        { type: 'upgradeTower', cell: empty, tick: 1 },
+        { type: 'sellTower', cell: empty, tick: 1 },
+      ]),
+    ).toEqual({
+      state: placed,
+      events: [
+        { type: 'rejected', cell, reason: 'insufficientFunds' },
+        { type: 'rejected', cell, reason: 'wrongTick' },
+        { type: 'rejected', cell: empty, reason: 'noTower' },
+        { type: 'rejected', cell: empty, reason: 'noTower' },
+      ],
+    });
+  });
+});
 
 describe('wave commands', () => {
   it.each([0, -1])('ends at creation with %i starting lives', (startingLives) => {
