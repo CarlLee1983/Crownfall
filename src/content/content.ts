@@ -2,7 +2,7 @@ import type { Content } from '../core';
 
 type EnemyKind = 'grunt' | 'runner' | 'tank' | 'boss';
 
-/** 戰役內容採用規格的起始數值。 */
+/** 戰役數值與出兵編排。 */
 export const content = {
   towers: {
     basic: { name: '基本塔', cost: 50, range: 2.5, damage: 4, shotsPerSecond: 2 },
@@ -18,14 +18,14 @@ export const content = {
     grunt: { speed: 1.6, hp: 22, bounty: 5, leakDamage: 1 },
     runner: { speed: 2.9, hp: 12, bounty: 4, leakDamage: 1 },
     tank: { speed: 0.9, hp: 95, bounty: 15, leakDamage: 2 },
-    boss: { speed: 0.7, hp: 1200, bounty: 0, leakDamage: 'defeat' },
+    boss: { speed: 0.7, hp: 3250, bounty: 0, leakDamage: 'defeat' },
   },
   waves: [
     { groups: [{ enemy: 'grunt', count: 8, interval: 1, delay: 0 }] },
     {
       groups: [
         { enemy: 'grunt', count: 8, interval: 0.9, delay: 0 },
-        { enemy: 'runner', count: 6, interval: 0.5, delay: 6 },
+        { enemy: 'runner', count: 6, interval: 0.5, delay: 3 },
       ],
     },
     {
