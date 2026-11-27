@@ -45,7 +45,7 @@ export {
   type Level,
   parseLevel,
 } from './level';
-export { pickCell, type TerrainRay } from './picking';
+export { pickCell, type Structure, type TerrainRay } from './picking';
 export {
   canAffordTower,
   currentRoute,

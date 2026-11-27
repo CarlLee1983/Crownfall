@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { parseLevel, pickCell } from './index';
+import { type CellIndex, parseLevel, pickCell } from './index';
 
 it('picks raised ground before the ray reaches the lower layer', () => {
   const level = parseLevel(['S#.G']);
@@ -101,4 +101,40 @@ it('returns no cell when the ray passes above the map and lands outside it', () 
       direction: { x: 0, y: -1, z: 1 },
     }),
   ).toBeUndefined();
+});
+
+it('picks the top of a tower standing in front of lower ground', () => {
+  const level = parseLevel(['S..G']);
+  const ray = { origin: { x: 3, y: 2, z: 0 }, direction: { x: -1, y: -1, z: 0 } };
+
+  expect(pickCell(level, ray)).toBe(1);
+  expect(pickCell(level, ray, new Map([[2 as CellIndex, { height: 1, halfWidth: 0.5 }]]))).toBe(2);
+});
+
+it('picks the side of a tower that blocks a ray headed off the map', () => {
+  const level = parseLevel(['S..G']);
+  const ray = { origin: { x: 0, y: 0.5, z: 0 }, direction: { x: 1, y: -0.1, z: 0 } };
+
+  expect(pickCell(level, ray)).toBeUndefined();
+  expect(pickCell(level, ray, new Map([[2 as CellIndex, { height: 1, halfWidth: 0.5 }]]))).toBe(2);
+});
+
+it('picks the cell behind a narrow tower when the ray passes over its top', () => {
+  const level = parseLevel(['S', '.', 'G']);
+  const ray = { origin: { x: 0, y: 4, z: 3 }, direction: { x: 0, y: -2, z: -1 } };
+
+  expect(pickCell(level, ray, new Map([[2 as CellIndex, { height: 1.2, halfWidth: 0.5 }]]))).toBe(
+    2,
+  );
+  expect(pickCell(level, ray, new Map([[2 as CellIndex, { height: 1.2, halfWidth: 0.32 }]]))).toBe(
+    1,
+  );
+});
+
+it('stacks a tower on a raised cell above that cell layer', () => {
+  const level = parseLevel(['S', '#', 'G']);
+  const ray = { origin: { x: 0, y: 1.5, z: 3 }, direction: { x: 0, y: 0, z: -1 } };
+
+  expect(pickCell(level, ray)).toBeUndefined();
+  expect(pickCell(level, ray, new Map([[1 as CellIndex, { height: 1, halfWidth: 0.3 }]]))).toBe(1);
 });

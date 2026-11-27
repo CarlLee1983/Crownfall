@@ -7,8 +7,6 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
-  type Object3D,
-  type Raycaster,
   RingGeometry,
 } from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
@@ -26,29 +24,66 @@ import {
   groundHeight,
   type Level,
   type RouteSegment,
+  type Structure,
   type Tower,
 } from '../core';
 import { LAYER_HEIGHT } from './terrain';
 
 const SOLID_ROUTE_LIFT = 0.035;
 
-function towerModel(geometry: BufferGeometry, height: number, color: number) {
+function towerModel(geometry: BufferGeometry, height: number, halfWidth: number, color: number) {
   return {
     geometry: geometry.translate(0, height / 2, 0),
     height,
+    halfWidth,
     material: new MeshLambertMaterial({ color }),
   };
 }
 
-const BASIC_MODEL = towerModel(new BoxGeometry(0.64, 0.6, 0.64), 0.6, 0x57a4da);
+const BASIC_MODEL = towerModel(new BoxGeometry(0.64, 0.6, 0.64), 0.6, 0.32, 0x57a4da);
 const TOWER_MODELS = new Map([
   ['basic', BASIC_MODEL],
-  ['sniper', towerModel(new CylinderGeometry(0.23, 0.32, 0.94, 6), 0.94, 0xeeaa48)],
-  ['splash', towerModel(new ConeGeometry(0.42, 0.54, 8), 0.54, 0xc381dc)],
+  ['sniper', towerModel(new CylinderGeometry(0.23, 0.32, 0.94, 6), 0.94, 0.32, 0xeeaa48)],
+  ['splash', towerModel(new ConeGeometry(0.42, 0.54, 8), 0.54, 0.42, 0xc381dc)],
 ]);
+
+const LEVEL_MARKER_SIZE = 0.13;
+const LEVEL_MARKER_GAP = 0.08;
+const LEVEL_MARKER = {
+  geometry: new BoxGeometry(LEVEL_MARKER_SIZE, LEVEL_MARKER_SIZE, LEVEL_MARKER_SIZE),
+  material: new MeshLambertMaterial({ color: 0xffd34d, emissive: 0x4a3200 }),
+};
+
+/** 塔頂一排金色方塊，數量是升過的段數。 */
+function towerMesh(tower: Tower, level: Level): Group {
+  const model = TOWER_MODELS.get(tower.kind) ?? BASIC_MODEL;
+  const group = new Group();
+  group.add(new Mesh(model.geometry, model.material));
+  const upgrades = tower.level - 1;
+  const spacing = LEVEL_MARKER_SIZE + LEVEL_MARKER_GAP;
+  for (let i = 0; i < upgrades; i++) {
+    const marker = new Mesh(LEVEL_MARKER.geometry, LEVEL_MARKER.material);
+    marker.position.set(
+      (i - (upgrades - 1) / 2) * spacing,
+      model.height + LEVEL_MARKER_GAP + LEVEL_MARKER_SIZE / 2,
+      0,
+    );
+    group.add(marker);
+  }
+  const { x, y } = cellPoint(level, tower.cell);
+  group.position.set(x, tower.layer * LAYER_HEIGHT, y);
+  return group;
+}
 
 export function towerHeight(kind: string): number {
   return (TOWER_MODELS.get(kind) ?? BASIC_MODEL).height;
+}
+
+/** 給 core picking 的塔柱，以高度層與格為單位；等級方塊也算在可點範圍內。 */
+export function towerStructure(tower: Tower): Structure {
+  const model = TOWER_MODELS.get(tower.kind) ?? BASIC_MODEL;
+  const markers = tower.level > 1 ? LEVEL_MARKER_GAP + LEVEL_MARKER_SIZE : 0;
+  return { height: (model.height + markers) / LAYER_HEIGHT, halfWidth: model.halfWidth };
 }
 
 interface BuildPreview {
@@ -59,7 +94,6 @@ interface BuildPreview {
 
 interface BuildLayer {
   readonly group: Group;
-  pickTower(raycaster: Raycaster, terrain: Object3D): CellIndex | undefined;
   update(previous: GameState, state: GameState, alpha: number, preview?: BuildPreview): void;
 }
 
@@ -120,9 +154,14 @@ function sameTowerLayout(
   return (
     previous === current ||
     (previous?.length === current.length &&
-      current.every(({ cell, kind, layer }, i) => {
+      current.every(({ cell, kind, layer, level }, i) => {
         const tower = previous[i];
-        return tower?.cell === cell && tower.kind === kind && tower.layer === layer;
+        return (
+          tower?.cell === cell &&
+          tower.kind === kind &&
+          tower.layer === layer &&
+          tower.level === level
+        );
       }))
   );
 }
@@ -130,7 +169,6 @@ function sameTowerLayout(
 export function createBuildLayer(): BuildLayer {
   const group = new Group();
   const towers = new Group();
-  const towerCells = new Map<Object3D, CellIndex>();
   const solid = new Line2(
     new LineGeometry(),
     new LineMaterial({ color: 0x1e6e78, linewidth: 4, alphaToCoverage: true }),
@@ -174,15 +212,7 @@ export function createBuildLayer(): BuildLayer {
     const levelChanged = lastState?.level !== state.level;
     if (levelChanged || !sameTowerLayout(lastState?.towers, state.towers)) {
       towers.clear();
-      towerCells.clear();
-      for (const tower of state.towers) {
-        const { geometry, material } = TOWER_MODELS.get(tower.kind) ?? BASIC_MODEL;
-        const mesh = new Mesh(geometry, material);
-        const { x, y } = cellPoint(state.level, tower.cell);
-        mesh.position.set(x, tower.layer * LAYER_HEIGHT, y);
-        towers.add(mesh);
-        towerCells.set(mesh, tower.cell);
-      }
+      for (const tower of state.towers) towers.add(towerMesh(tower, state.level));
     }
     if (levelChanged || lastState?.distance !== state.distance) {
       drawRoute(solid, state.level, currentRoute(state), SOLID_ROUTE_LIFT);
@@ -227,15 +257,6 @@ export function createBuildLayer(): BuildLayer {
 
   return {
     group,
-    pickTower(raycaster, terrain) {
-      const hit = raycaster.intersectObjects(towers.children, false)[0];
-      if (hit === undefined) return undefined;
-      // Only select a model visible in front of terrain; grid picking stays in the core.
-      const ground = raycaster.intersectObject(terrain)[0];
-      return ground === undefined || ground.distance > hit.distance
-        ? towerCells.get(hit.object)
-        : undefined;
-    },
     update,
   };
 }
