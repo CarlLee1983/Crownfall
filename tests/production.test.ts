@@ -60,12 +60,12 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   await expect(ring).toBeVisible();
   const balance = page.locator('#build-balance');
   const before = await balance.textContent();
-  await ring.getByRole('button', { name: /基本塔/ }).click();
+  await ring.getByRole('button', { name: /弓箭塔/ }).click();
   await expect(ring).toBeHidden();
   await expect(balance).not.toHaveText(before ?? '');
   await canvas.click({ position: openTile });
   const towerRing = page.getByRole('region', { name: '升級／賣出環' });
-  await expect(towerRing.getByText(/基本塔 · 等級 1/)).toBeVisible();
+  await expect(towerRing.getByText(/弓箭塔 · 等級 1/)).toBeVisible();
   await page.keyboard.press('Escape');
 
   expect(await hasEnemyBodyAtEntrance(page)).toBe(false);
