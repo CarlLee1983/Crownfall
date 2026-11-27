@@ -11,7 +11,10 @@ function canStep(level: Level, a: CellIndex, b: CellIndex): boolean {
 }
 
 /** 從終點反推每格沿車道到終點的步數；走不到的格子是 Infinity。 */
-export function distanceField(level: Level): DistanceField {
+export function distanceField(
+  level: Level,
+  blocked: ReadonlySet<CellIndex> = new Set(),
+): DistanceField {
   const distance = level.cells.map(() => Number.POSITIVE_INFINITY);
   distance[level.goal] = 0;
   const queue: CellIndex[] = [level.goal];
@@ -19,6 +22,7 @@ export function distanceField(level: Level): DistanceField {
     const current = queue[head] as CellIndex;
     const next = (distance[current] ?? 0) + 1;
     for (const { index: neighbor } of neighbors(level, current)) {
+      if (blocked.has(neighbor)) continue;
       if (distance[neighbor] !== Number.POSITIVE_INFINITY) continue;
       if (!canStep(level, current, neighbor)) continue;
       distance[neighbor] = next;

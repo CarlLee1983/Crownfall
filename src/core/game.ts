@@ -2,6 +2,7 @@ import { TICKS_PER_SECOND } from './clock';
 import type { Content } from './content';
 import { type CellIndex, cellPoint, type GridPoint, type Level } from './level';
 import { type DistanceField, distanceField, nextCell } from './pathing';
+import { checkPlacement, type PlacementRejection } from './placement';
 import { assertRampsRiseOneWay } from './terrain';
 
 export type EnemyId = number & { readonly __brand: 'EnemyId' };
@@ -16,6 +17,13 @@ export interface Enemy {
   readonly progress: number;
 }
 
+export interface Tower {
+  readonly cell: CellIndex;
+  readonly kind: string;
+  /** 塔所在格的高度層。 */
+  readonly layer: number;
+}
+
 interface EnemyRules {
   readonly speedPerTick: number;
 }
@@ -28,6 +36,10 @@ interface PendingSpawn {
 export interface GameState {
   readonly tick: number;
   readonly level: Level;
+  readonly money: number;
+  readonly towers: readonly Tower[];
+  readonly towerDefinitions: Content['towers'];
+  readonly heightRangeBonus: number;
   readonly enemyRules: Readonly<Record<string, EnemyRules>>;
   readonly distance: DistanceField;
   readonly enemies: readonly Enemy[];
@@ -36,14 +48,17 @@ export interface GameState {
   readonly pendingSpawns: readonly PendingSpawn[];
 }
 
-/** 玩家指令；目前還沒有任何玩家能下的指令。 */
-export type Command = never;
-
-export type GameEvent = {
-  readonly type: 'leaked';
-  readonly enemyId: EnemyId;
-  readonly enemyKind: string;
+export type Command = {
+  readonly type: 'placeTower';
+  /** 要套用這筆指令的輸入狀態 tick。 */
+  readonly tick: number;
+  readonly cell: CellIndex;
+  readonly kind: string;
 };
+
+export type GameEvent =
+  | { readonly type: 'leaked'; readonly enemyId: EnemyId; readonly enemyKind: string }
+  | { readonly type: 'rejected'; readonly cell: CellIndex; readonly reason: PlacementRejection };
 
 export interface StepResult {
   readonly state: GameState;
@@ -82,6 +97,10 @@ export function createGame(content: Content, level: Level): GameState {
   return spawnDue({
     tick: 0,
     level,
+    money: content.startingMoney,
+    towers: [],
+    towerDefinitions: content.towers,
+    heightRangeBonus: content.heightRangeBonus,
     enemyRules,
     distance,
     enemies: [],
@@ -90,17 +109,35 @@ export function createGame(content: Content, level: Level): GameState {
   });
 }
 
-export function step(state: GameState, _commands: readonly Command[]): StepResult {
+export function step(state: GameState, commands: readonly Command[]): StepResult {
   const events: GameEvent[] = [];
-  const enemies = state.enemies.flatMap((enemy) => {
-    const moved = advanceEnemy(state, enemy);
+  let current = state;
+  for (const command of commands) {
+    if (command.tick !== current.tick) {
+      events.push({ type: 'rejected', cell: command.cell, reason: 'wrongTick' });
+      continue;
+    }
+    const placement = checkPlacement(current, command.cell, command.kind);
+    if (placement.reason !== undefined) {
+      events.push({ type: 'rejected', cell: command.cell, reason: placement.reason });
+      continue;
+    }
+    current = {
+      ...current,
+      money: current.money - placement.cost,
+      towers: [...current.towers, placement.tower],
+      distance: placement.distance,
+    };
+  }
+  const enemies = current.enemies.flatMap((enemy) => {
+    const moved = advanceEnemy(current, enemy);
     if (moved === 'leaked') {
       events.push({ type: 'leaked', enemyId: enemy.id, enemyKind: enemy.kind });
       return [];
     }
     return [moved];
   });
-  return { state: spawnDue({ ...state, tick: state.tick + 1, enemies }), events };
+  return { state: spawnDue({ ...current, tick: current.tick + 1, enemies }), events };
 }
 
 /** 敵人在格座標中的位置；格子 (x, y) 的中心是 (x, y)。 */

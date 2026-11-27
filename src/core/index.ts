@@ -5,7 +5,7 @@ export {
   MAX_CATCH_UP_TICKS,
   TICKS_PER_SECOND,
 } from './clock';
-export type { Content, EnemyDefinition, SpawnGroup, Wave } from './content';
+export type { Content, EnemyDefinition, SpawnGroup, TowerDefinition, Wave } from './content';
 export {
   type Command,
   createGame,
@@ -16,6 +16,7 @@ export {
   type GameState,
   type StepResult,
   step,
+  type Tower,
 } from './game';
 export {
   type Cell,
@@ -27,4 +28,15 @@ export {
   type Level,
   parseLevel,
 } from './level';
+export { pickCell, type TerrainRay } from './picking';
+export {
+  canAffordTower,
+  currentRoute,
+  enemyRouteSegments,
+  type PlacementPreview,
+  type PlacementRejection,
+  previewPlacement,
+  type RouteSegment,
+  samePlacementPreviewInputs,
+} from './placement';
 export { groundHeight, rampDirection } from './terrain';
