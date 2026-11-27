@@ -13,6 +13,7 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   Shape,
+  SkinnedMesh,
   Vector3,
 } from 'three';
 import {
@@ -29,9 +30,9 @@ import {
 } from '../core';
 import { cellIndex, neighbors } from '../core/level';
 import { createEnemyModel } from './enemy-model';
+import type { LoadedEnemyModel } from './enemy-model-assets';
 import { type EnemyMotion, enemyHeading, enemyMotion, sampleEnemyMotion } from './enemy-motion';
 import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
-import type { LoadedEnemyModel } from './models';
 import { LAYER_HEIGHT } from './terrain';
 
 interface Look {
@@ -39,13 +40,15 @@ interface Look {
   readonly glowColor: number;
   readonly round?: true;
   readonly cornerCut?: number;
+  readonly modelScale?: number;
 }
 
 const LOOKS: ReadonlyMap<string, Look> = new Map([
   ['grunt', { size: 0.5, glowColor: 0xe0ac4f }],
   ['runner', { size: 0.4, glowColor: 0xb5ec69 }],
   ['tank', { size: 0.8, glowColor: 0xffad73, cornerCut: 0.1 }],
-  ['boss', { size: 1, glowColor: 0xf37b55, round: true }],
+  // The equipped walk has a native diameter of 2.71; scale it to the one-cell proxy.
+  ['boss', { size: 1, glowColor: 0xf37b55, round: true, modelScale: 0.37 }],
 ]);
 const DEFAULT_LOOK: Look = { size: 0.5, glowColor: 0xbbbbbb };
 const GLOW_INTENSITY = 0.55;
@@ -197,6 +200,7 @@ interface EnemyView {
   readonly fill: Mesh<PlaneGeometry, MeshBasicMaterial>;
   readonly barWidth: number;
   readonly visual: ReturnType<typeof createEnemyModel> | undefined;
+  readonly lichFeet: readonly SkinnedMesh[];
 }
 
 export interface EnemyLayer {
@@ -229,6 +233,7 @@ export function createEnemyLayer(
   const viewOffset = new Vector3();
   const cameraUpInBody = new Vector3();
   const bodyTransform = new Matrix3();
+  const footVertex = new Vector3();
   const views = new Map<EnemyId, EnemyView>();
   let motions = new Map<EnemyId, EnemyMotion>();
   let observed: GameState | undefined;
@@ -243,8 +248,17 @@ export function createEnemyLayer(
     body.layers.set(WORLD_LAYER);
     body.matrixAutoUpdate = false;
     const asset = models[kind];
-    const visual = asset && createEnemyModel(asset, -look.size / 2, look.glowColor);
+    const visual =
+      asset && createEnemyModel(asset, -look.size / 2, look.glowColor, look.modelScale);
+    const lichFeet: SkinnedMesh[] = [];
     if (visual !== undefined) {
+      if (kind === 'boss') {
+        visual.model.traverse((object) => {
+          if (object instanceof SkinnedMesh && object.name.startsWith('Skeleton_Mage_Leg')) {
+            lichFeet.push(object);
+          }
+        });
+      }
       body.material.colorWrite = body.material.depthWrite = false;
       body.add(visual.model);
     }
@@ -261,7 +275,7 @@ export function createEnemyLayer(
 
     const enemyGroup = new Group();
     enemyGroup.add(body, bar);
-    const view = { group: enemyGroup, body, bar, fill, barWidth, visual };
+    const view = { group: enemyGroup, body, bar, fill, barWidth, visual, lichFeet };
     views.set(id, view);
     group.add(enemyGroup);
     return view;
@@ -328,6 +342,27 @@ export function createEnemyLayer(
         // Shear the boss vertically so its base rests on the slope without widening its footprint.
         view.body.matrix.elements[1] = slopeX;
         view.body.matrix.elements[9] = slopeZ;
+      }
+      if (view.visual !== undefined && view.lichFeet.length > 0) {
+        // The proxy spans a cell, but the lich's animated soles occupy a much smaller area.
+        // Preserve the pose's flat-ground clearance while fitting the visible model to the ramp.
+        const model = view.visual.model;
+        model.position.y = -half;
+        view.group.updateMatrixWorld(true);
+        let clearance = Infinity;
+        let flatClearance = Infinity;
+        for (const foot of view.lichFeet) {
+          const count = foot.geometry.getAttribute('position').count;
+          for (let index = 0; index < count; index++) {
+            foot.getVertexPosition(index, footVertex).applyMatrix4(foot.matrixWorld);
+            const { x, y, z } = footVertex;
+            const floor = groundHeight(current.level, { x, y: z }) * LAYER_HEIGHT;
+            clearance = Math.min(clearance, y - floor);
+            const flatY = y - ground - slopeX * (x - point.x) - slopeZ * (z - point.y);
+            flatClearance = Math.min(flatClearance, flatY);
+          }
+        }
+        model.position.y += flatClearance - clearance;
       }
       view.bar.quaternion.copy(camera.quaternion);
       // Project the tilted body bounds onto the camera's up axis to clear its silhouette.

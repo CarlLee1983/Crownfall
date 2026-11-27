@@ -1,22 +1,22 @@
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PointLight } from 'three';
+import { Group, type Object3D, PointLight } from 'three';
 import { type GridPoint, groundHeight, type Level } from '../core';
 import { WORLD_LAYER } from './layers';
+import { placeableScenery } from './scenery-model';
 import { LAYER_HEIGHT } from './terrain';
 
 const MAX_TORCHES = 8;
 
-export function createTorches(level: Level, positions: readonly GridPoint[]) {
+export function createTorches(level: Level, positions: readonly GridPoint[], model: Object3D) {
   const group = new Group();
-  const flameGeometry = new BoxGeometry(0.08, 0.14, 0.08);
-  const flameMaterial = new MeshBasicMaterial({ color: 0xffb347 });
+  const torch = placeableScenery(model, 0.19, 0.38);
   const lights = positions.slice(0, MAX_TORCHES).map((point) => {
-    const flame = new Mesh(flameGeometry, flameMaterial);
+    const prop = torch.group.clone();
     const light = new PointLight(0xff9a3c, 2.6, 4.5, 1.6);
-    light.position.set(point.x, groundHeight(level, point) * LAYER_HEIGHT + 0.35, point.y);
-    flame.position.copy(light.position);
-    flame.layers.set(WORLD_LAYER);
+    prop.position.set(point.x, groundHeight(level, point) * LAYER_HEIGHT, point.y);
+    light.position.copy(prop.position);
+    light.position.y += torch.height;
     light.layers.set(WORLD_LAYER);
-    group.add(light, flame);
+    group.add(light, prop);
     return light;
   });
 

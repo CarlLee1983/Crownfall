@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import {
   AnimationClip,
   BoxGeometry,
@@ -6,9 +7,12 @@ import {
   MeshStandardMaterial,
   NumberKeyframeTrack,
   PerspectiveCamera,
+  Texture,
   Vector3,
 } from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { expect, it } from 'vitest';
+import { content as campaign } from '../content/content';
 import { level } from '../content/level';
 import {
   applyCommands,
@@ -21,6 +25,7 @@ import {
   TICKS_PER_SECOND,
 } from '../core';
 import { cellIndex } from '../core/level';
+import { nextCell } from '../core/pathing';
 import { createCamera } from './camera';
 import { dLevel } from './d-level.fixture';
 import { createEnemyLayer } from './enemies';
@@ -460,4 +465,131 @@ it('paces the skeleton walk with enemy speed and uses paused game time', () => {
 
   expect(poseAtSpeed(1.6)).toBeCloseTo(0.1);
   expect(poseAtSpeed(3.2)).toBeCloseTo(0.2);
+});
+
+async function loadLich() {
+  const binary = await readFile(new URL('./models/enemy-lich.glb', import.meta.url));
+  const loader = new GLTFLoader().register(() => ({
+    name: 'Test texture decoder',
+    loadTexture: async () => new Texture(),
+  }));
+  const { scene, animations } = await loader.parseAsync(new Uint8Array(binary).buffer, '');
+  const walk = animations[0];
+  if (walk === undefined) throw new Error('No lich walk animation');
+  return { scene, walk };
+}
+
+it('fits the equipped lich to one cell and keeps its walking soles on the ramp', async () => {
+  const { scene, walk } = await loadLich();
+  const level = parseLevel(['S^g']);
+  const initial = createGame(campaign, level);
+  const enemy = {
+    id: initial.nextEnemyId,
+    kind: 'boss',
+    hp: 1,
+    maxHp: 1,
+    from: cellIndex(level.width, 1, 0),
+    to: level.goal,
+    progress: 0,
+  };
+  const previous: GameState = {
+    ...initial,
+    phase: 'wave',
+    enemies: [enemy],
+  };
+  const current: GameState = {
+    ...previous,
+    tick: previous.tick + 1,
+    enemies: [{ ...enemy, progress: 0.01 }],
+  };
+
+  const layer = createEnemyLayer(new PerspectiveCamera(), { boss: { scene, walk } });
+  const periodMs =
+    (walk.duration * campaign.enemies.grunt.speed * 1000) / campaign.enemies.boss.speed;
+  const point = new Vector3();
+  let radius = 0;
+  for (let frame = 0; frame < 24; frame++) {
+    // Sample the gait in place, halfway up the ramp where the proxy applies its full shear.
+    layer.update(previous, current, 0, undefined, (frame * periodMs) / 24);
+    layer.group.updateMatrixWorld(true);
+    let clearance = Infinity;
+    layer.group.traverse((mesh) => {
+      if (!(mesh instanceof Mesh) || !(mesh.material instanceof MeshStandardMaterial)) return;
+      const count = mesh.geometry.getAttribute('position').count;
+      for (let vertex = 0; vertex < count; vertex++) {
+        mesh.getVertexPosition(vertex, point).applyMatrix4(mesh.matrixWorld);
+        radius = Math.max(radius, Math.hypot(point.x - 1, point.z));
+        if (Math.abs(point.x - 1) >= 0.5) continue;
+        const floor = groundHeight(level, { x: point.x, y: point.z }) * LAYER_HEIGHT;
+        clearance = Math.min(clearance, point.y - floor);
+      }
+    });
+    expect(clearance).toBeGreaterThanOrEqual(-0.005);
+    expect(clearance).toBeLessThan(0.025);
+  }
+  expect(2 * radius).toBeCloseTo(1, 1);
+});
+
+it('keeps the walking lich on the terrain through both ends of the campaign ramp', async () => {
+  const layer = createEnemyLayer(new PerspectiveCamera(), { boss: await loadLich() });
+  const initial = createGame(campaign, level);
+  const to = nextCell(level, initial.distance, level.spawn);
+  if (to === undefined) throw new Error('Campaign entrance has no route');
+  let current: GameState = {
+    ...initial,
+    phase: 'wave',
+    enemies: [
+      {
+        id: initial.nextEnemyId,
+        kind: 'boss',
+        hp: 1,
+        maxHp: 1,
+        from: level.spawn,
+        to,
+        progress: 0,
+      },
+    ],
+  };
+  layer.update(current, current, 1);
+  const approach = cellIndex(level.width, 3, 1);
+  const ramp = cellIndex(level.width, 2, 1);
+  const vertex = new Vector3();
+  const clearances = new Map([
+    [approach, [] as number[]],
+    [ramp, [] as number[]],
+  ]);
+  for (let tick = 0; tick < 3000; tick++) {
+    const previous = current;
+    current = step(previous, []).state;
+    const boss = current.enemies[0];
+    if (boss === undefined) break;
+    const samples = clearances.get(boss.from);
+    if (samples === undefined) {
+      layer.update(previous, current, 1, undefined, (current.tick * 1000) / TICKS_PER_SECOND);
+      continue;
+    }
+    for (const alpha of [0.25, 0.5, 0.75, 1]) {
+      const gameMs = ((previous.tick + alpha) * 1000) / TICKS_PER_SECOND;
+      layer.update(previous, current, alpha, undefined, gameMs);
+      layer.group.updateMatrixWorld(true);
+      let clearance = Infinity;
+      layer.group.traverse((mesh) => {
+        if (!(mesh instanceof Mesh) || !(mesh.material instanceof MeshStandardMaterial)) return;
+        const count = mesh.geometry.getAttribute('position').count;
+        for (let index = 0; index < count; index++) {
+          mesh.getVertexPosition(index, vertex).applyMatrix4(mesh.matrixWorld);
+          const ground = groundHeight(level, { x: vertex.x, y: vertex.z }) * LAYER_HEIGHT;
+          clearance = Math.min(clearance, vertex.y - ground);
+        }
+      });
+      samples.push(clearance);
+    }
+  }
+
+  for (const [cell, samples] of clearances) {
+    const transition = cell === approach ? 'foot of the ramp' : 'crest of the ramp';
+    expect(samples.length, transition).toBeGreaterThan(100);
+    expect(Math.min(...samples), transition).toBeGreaterThanOrEqual(-0.005);
+    expect(Math.max(...samples), transition).toBeLessThan(0.03);
+  }
 });

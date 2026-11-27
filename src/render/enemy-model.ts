@@ -1,7 +1,7 @@
 import { AnimationMixer, Color, Mesh, MeshStandardMaterial, SkinnedMesh } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
+import type { LoadedEnemyModel } from './enemy-model-assets';
 import { WORLD_LAYER } from './layers';
-import type { LoadedEnemyModel } from './models';
 
 const MODEL_SCALE = 0.26;
 const GLOW_INTENSITY = 0.22;
@@ -11,9 +11,10 @@ export function createEnemyModel(
   { scene, walk }: LoadedEnemyModel,
   footHeight: number,
   glow: number,
+  scale = MODEL_SCALE,
 ) {
   const model = clone(scene);
-  model.scale.setScalar(MODEL_SCALE);
+  model.scale.setScalar(scale);
   model.position.y = footHeight;
   const glowColor = new Color(glow);
   const materials = new Map<MeshStandardMaterial, MeshStandardMaterial>();
@@ -24,7 +25,7 @@ export function createEnemyModel(
     const existing = materials.get(source);
     if (existing !== undefined) return existing;
     const material = source.clone();
-    material.emissiveMap = material.map;
+    material.emissiveMap ??= material.map;
     materials.set(source, material);
     return material;
   };
