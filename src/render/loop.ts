@@ -11,9 +11,15 @@ const MS_PER_TICK = 1000 / TICKS_PER_SECOND;
 
 export interface LoopOptions {
   readonly initial: GameState;
-  readonly onEvents: (events: readonly GameEvent[]) => void;
+  /** 補跑的 tick 各自送出事件，畫面上的特效共用當幀的起始時間。 */
+  readonly onEvents: (events: readonly GameEvent[], current: GameState, frameTime: number) => void;
   /** 畫面比最新 tick 慢一格：previous 到 current 之間以 alpha 內插。 */
-  readonly draw: (previous: GameState, current: GameState, alpha: number) => void;
+  readonly draw: (
+    previous: GameState,
+    current: GameState,
+    alpha: number,
+    frameTime: number,
+  ) => void;
 }
 
 type CommandFactory = (tick: number) => Command;
@@ -43,10 +49,10 @@ export function startLoop({ initial, onEvents, draw }: LoopOptions): LoopSession
       commandLog.push(...commands);
       const result = step(current, commands);
       current = result.state;
-      onEvents(result.events);
+      onEvents(result.events, current, now);
     }
 
-    draw(previous, current, accumulatedMs / MS_PER_TICK);
+    draw(previous, current, accumulatedMs / MS_PER_TICK, now);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

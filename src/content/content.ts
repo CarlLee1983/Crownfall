@@ -11,11 +11,11 @@ export const content = {
   },
   startingMoney: 100,
   heightRangeBonus: 1.5,
-  // 保留現階段自動出兵用的敵人與波次，速度取自規格的起始數值表。
+  // 保留現階段自動出兵用的敵人與波次，敵人數值取自規格的起始數值表。
   enemies: {
-    grunt: { speed: 1.6 },
-    runner: { speed: 2.9 },
-    tank: { speed: 0.9 },
+    grunt: { speed: 1.6, hp: 22, bounty: 5 },
+    runner: { speed: 2.9, hp: 12, bounty: 4 },
+    tank: { speed: 0.9, hp: 95, bounty: 15 },
   },
   waves: [
     {

@@ -7,6 +7,7 @@ import { createBuildLayer } from './render/build-layer';
 import { createCamera } from './render/camera';
 import { createEnemyLayer } from './render/enemies';
 import { startLoop } from './render/loop';
+import { createShotLayer } from './render/shots';
 import { createTerrain } from './render/terrain';
 import './render/hud.css';
 
@@ -17,14 +18,22 @@ const renderer = new WebGLRenderer({ canvas, antialias: true });
 renderer.setClearColor(0x14161c);
 
 const terrain = createTerrain(level);
-const enemies = createEnemyLayer();
-const builds = createBuildLayer();
 const { camera, resize } = createCamera(level);
+const enemies = createEnemyLayer(camera);
+const builds = createBuildLayer();
+const shots = createShotLayer();
 
 const scene = new Scene();
 const sun = new DirectionalLight(0xffffff, 1.6);
 sun.position.set(-6, 14, 4);
-scene.add(new HemisphereLight(0xcfe3ff, 0x40382a, 1.2), sun, terrain, enemies.group, builds.group);
+scene.add(
+  new HemisphereLight(0xcfe3ff, 0x40382a, 1.2),
+  sun,
+  terrain,
+  enemies.group,
+  builds.group,
+  shots.group,
+);
 
 const onResize = (): void => {
   renderer.setPixelRatio(window.devicePixelRatio);
@@ -41,10 +50,14 @@ const hud = createBuildHud(canvas, camera, initial, (cell, kind) => {
 });
 const { enqueue } = startLoop({
   initial,
-  onEvents: hud.onEvents,
-  draw: (previous, current, alpha) => {
+  onEvents: (events, current, frameTime) => {
+    hud.onEvents(events);
+    shots.onEvents(events, current, frameTime);
+  },
+  draw: (previous, current, alpha, frameTime) => {
     builds.update(previous, current, alpha, hud.update(current));
     enemies.update(previous, current, alpha);
+    shots.update(frameTime);
     renderer.render(scene, camera);
   },
 });

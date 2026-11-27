@@ -1,8 +1,8 @@
 import { TICKS_PER_SECOND } from './clock';
 import type { Content } from './content';
-import { type CellIndex, cellPoint, type GridPoint, type Level } from './level';
+import { type CellIndex, cellAt, cellIndex, cellPoint, type GridPoint, type Level } from './level';
 import { type DistanceField, distanceField, nextCell } from './pathing';
-import { checkPlacement, type PlacementRejection } from './placement';
+import { checkPlacement, type PlacementRejection, rangeBonusForLayers } from './placement';
 import { assertRampsRiseOneWay } from './terrain';
 
 export type EnemyId = number & { readonly __brand: 'EnemyId' };
@@ -10,6 +10,7 @@ export type EnemyId = number & { readonly __brand: 'EnemyId' };
 export interface Enemy {
   readonly id: EnemyId;
   readonly kind: string;
+  readonly hp: number;
   /** 敵人離開的格子；停在格子中央時 from 與 to 相同。 */
   readonly from: CellIndex;
   readonly to: CellIndex;
@@ -22,10 +23,15 @@ export interface Tower {
   readonly kind: string;
   /** 塔所在格的高度層。 */
   readonly layer: number;
+  readonly nextShotTick: number;
+  readonly firingStartTick: number;
+  readonly shotsSinceFiringStart: number;
 }
 
 interface EnemyRules {
   readonly speedPerTick: number;
+  readonly maxHp: number;
+  readonly bounty: number;
 }
 
 interface PendingSpawn {
@@ -57,6 +63,18 @@ export type Command = {
 };
 
 export type GameEvent =
+  | {
+      readonly type: 'shot';
+      readonly towerCell: CellIndex;
+      readonly target: Enemy;
+      readonly splashRadius: number | undefined;
+    }
+  | {
+      readonly type: 'killed';
+      readonly enemyId: EnemyId;
+      readonly enemyKind: string;
+      readonly bounty: number;
+    }
   | { readonly type: 'leaked'; readonly enemyId: EnemyId; readonly enemyKind: string }
   | { readonly type: 'rejected'; readonly cell: CellIndex; readonly reason: PlacementRejection };
 
@@ -77,7 +95,11 @@ export function createGame(content: Content, level: Level): GameState {
   const enemyRules = Object.fromEntries(
     Object.entries<Content['enemies'][string]>(content.enemies).map(([kind, definition]) => [
       kind,
-      { speedPerTick: definition.speed / TICKS_PER_SECOND },
+      {
+        speedPerTick: definition.speed / TICKS_PER_SECOND,
+        maxHp: definition.hp,
+        bounty: definition.bounty,
+      },
     ]),
   );
 
@@ -129,6 +151,9 @@ export function step(state: GameState, commands: readonly Command[]): StepResult
       distance: placement.distance,
     };
   }
+  const combat = attack(current);
+  current = combat.state;
+  for (const event of combat.events) events.push(event);
   const enemies = current.enemies.flatMap((enemy) => {
     const moved = advanceEnemy(current, enemy);
     if (moved === 'leaked') {
@@ -138,6 +163,63 @@ export function step(state: GameState, commands: readonly Command[]): StepResult
     return [moved];
   });
   return { state: spawnDue({ ...current, tick: current.tick + 1, enemies }), events };
+}
+
+function attack(state: GameState): StepResult {
+  const events: GameEvent[] = [];
+  let enemies = state.enemies;
+  let money = state.money;
+  const towers = state.towers.map((tower) => {
+    if (tower.nextShotTick > state.tick) return tower;
+    const definition = state.towerDefinitions[tower.kind];
+    if (definition === undefined || !(definition.shotsPerSecond > 0)) return tower;
+
+    const origin = cellPoint(state.level, tower.cell);
+    let target: Enemy | undefined;
+    let shortest = Number.POSITIVE_INFINITY;
+    // 敵人依出場順序排列，剩餘路程相同時選先出場的敵人。
+    for (const enemy of enemies) {
+      const point = enemyPosition(state, enemy);
+      const targetCell = cellIndex(state.level.width, Math.round(point.x), Math.round(point.y));
+      const targetLayer = cellAt(state.level, targetCell).layer;
+      const radius = definition.range + rangeBonusForLayers(state, tower.layer, targetLayer);
+      if (Math.hypot(point.x - origin.x, point.y - origin.y) > radius) continue;
+      const remaining =
+        (state.distance[enemy.to] ?? Number.POSITIVE_INFINITY) +
+        (enemy.from === enemy.to ? 0 : 1 - enemy.progress);
+      if (remaining < shortest) {
+        target = enemy;
+        shortest = remaining;
+      }
+    }
+    if (target === undefined) return tower;
+
+    const { damage, splashRadius } = definition;
+    const impact = enemyPosition(state, target);
+    events.push({ type: 'shot', towerCell: tower.cell, target, splashRadius });
+    enemies = enemies.flatMap((enemy) => {
+      if (enemy.id !== target.id) {
+        if (splashRadius === undefined) return [enemy];
+        const point = enemyPosition(state, enemy);
+        if (Math.hypot(point.x - impact.x, point.y - impact.y) > splashRadius) return [enemy];
+      }
+      const hp = enemy.hp - damage;
+      if (hp > 0) return [{ ...enemy, hp }];
+
+      const { bounty } = enemyRulesFor(state, enemy.kind);
+      money += bounty;
+      events.push({ type: 'killed', enemyId: enemy.id, enemyKind: enemy.kind, bounty });
+      return [];
+    });
+    // 從連續射擊的起點換算 tick，避免每一發取整後累積誤差。
+    const resumed = state.tick > tower.nextShotTick;
+    const firingStartTick = resumed ? state.tick : tower.firingStartTick;
+    const shotsSinceFiringStart = resumed ? 1 : tower.shotsSinceFiringStart + 1;
+    const ticksPerShot = Math.max(1, TICKS_PER_SECOND / definition.shotsPerSecond);
+    const nextShotTick = firingStartTick + Math.ceil(shotsSinceFiringStart * ticksPerShot);
+    return { ...tower, firingStartTick, shotsSinceFiringStart, nextShotTick };
+  });
+  return { state: events.length > 0 ? { ...state, money, towers, enemies } : state, events };
 }
 
 /** 敵人在格座標中的位置；格子 (x, y) 的中心是 (x, y)。 */
@@ -150,11 +232,15 @@ export function enemyPosition(state: GameState, enemy: Enemy): GridPoint {
   };
 }
 
+function enemyRulesFor(state: GameState, kind: string): EnemyRules {
+  const rules = state.enemyRules[kind];
+  if (rules === undefined) throw new Error(`未知的敵人種類「${kind}」`);
+  return rules;
+}
+
 function advanceEnemy(state: GameState, enemy: Enemy): Enemy | 'leaked' {
-  const rules = state.enemyRules[enemy.kind];
-  if (rules === undefined) throw new Error(`未知的敵人種類「${enemy.kind}」`);
   let { from, to, progress } = enemy;
-  let budget = rules.speedPerTick;
+  let budget = enemyRulesFor(state, enemy.kind).speedPerTick;
   while (budget > 0) {
     if (from === to) {
       const next = nextCell(state.level, state.distance, from);
@@ -181,6 +267,7 @@ function spawnDue(state: GameState): GameState {
   const spawned = due.map((spawn, i) => ({
     id: (state.nextEnemyId + i) as EnemyId,
     kind: spawn.kind,
+    hp: enemyRulesFor(state, spawn.kind).maxHp,
     from: state.level.spawn,
     to: state.level.spawn,
     progress: 0,

@@ -66,7 +66,14 @@ export function checkPlacement(state: GameState, cell: CellIndex, kind: string):
   return {
     reason: undefined,
     distance,
-    tower: { cell, kind, layer: terrain.layer },
+    tower: {
+      cell,
+      kind,
+      layer: terrain.layer,
+      nextShotTick: state.tick,
+      firingStartTick: state.tick,
+      shotsSinceFiringStart: 0,
+    },
     cost: definition.cost,
   };
 }
@@ -90,6 +97,10 @@ function towerDefinition(state: GameState, kind: string) {
 export function canAffordTower(state: GameState, kind: string): boolean {
   const definition = towerDefinition(state, kind);
   return definition !== undefined && state.money >= definition.cost;
+}
+
+export function rangeBonusForLayers(state: GameState, towerLayer: number, targetLayer: number) {
+  return Math.max(0, towerLayer - targetLayer) * state.heightRangeBonus;
 }
 
 export function currentRoute(state: GameState): readonly CellIndex[] {
@@ -175,7 +186,7 @@ export function previewPlacement(
 ): PlacementPreview {
   const { reason, distance } = checkPlacement(state, cell, kind);
   const layer = state.level.cells[cell]?.layer ?? 0;
-  const heightBonus = Math.max(0, layer) * state.heightRangeBonus;
+  const heightBonus = rangeBonusForLayers(state, layer, 0);
   const range = towerDefinition(state, kind)?.range ?? 0;
   return {
     reason,
