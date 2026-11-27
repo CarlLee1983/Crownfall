@@ -1,9 +1,12 @@
 import { expect, type Page, test } from '@playwright/test';
 
+// An open tile in the initial 1280×720 view.
+const openTile = { x: 640, y: 360 };
+
 async function hasEnemyBodyAtEntrance(page: Page): Promise<boolean> {
   const screenshot = await page.screenshot({
     // First stretch of lane at the configured viewport, below the entrance flag.
-    clip: { x: 400, y: 271, width: 130, height: 20 },
+    clip: { x: 538, y: 88, width: 82, height: 60 },
     style: '#wave-flag { visibility: hidden !important; }',
   });
   return page.evaluate(
@@ -53,9 +56,7 @@ test('builds a tower and renders an enemy in the production game', async ({ page
 
   const canvas = page.getByLabel('Crownfall 關卡');
   await expect(canvas).toBeVisible();
-  // An open tile near the center of the initial view at the configured viewport.
-  const tile = { x: 670, y: 330 };
-  await canvas.click({ position: tile });
+  await canvas.click({ position: openTile });
   const ring = page.getByRole('region', { name: '建造環' });
   await expect(ring).toBeVisible();
   const balance = page.locator('#build-balance');
@@ -63,7 +64,7 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   await ring.getByRole('button', { name: /基本塔/ }).click();
   await expect(ring).toBeHidden();
   await expect(balance).not.toHaveText(before ?? '');
-  await canvas.click({ position: tile });
+  await canvas.click({ position: openTile });
   const towerRing = page.getByRole('region', { name: '升級／賣出環' });
   await expect(towerRing.getByText(/基本塔 · 等級 1/)).toBeVisible();
   await page.keyboard.press('Escape');
@@ -79,4 +80,35 @@ test('builds a tower and renders an enemy in the production game', async ({ page
     .toBe(true);
   expect(requestsOutsideMount).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test('horizontal pan stops at the map edge without drifting vertically', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: '開始遊戲' }).click();
+  await page.getByLabel('Crownfall 關卡').click({ position: openTile });
+  const anchor = page.locator('#build-anchor');
+  await expect(anchor).toBeVisible();
+  const anchorPosition = () =>
+    anchor.evaluate((node) => {
+      const { x, y } = node.getBoundingClientRect();
+      return { x, y };
+    });
+  const initial = await anchorPosition();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await anchorPosition()).x).toBeLessThan(initial.x - 8);
+  const first = await anchorPosition();
+  expect(first.y).toBeCloseTo(initial.y, 0);
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(anchorPosition).toEqual(initial);
+
+  for (let i = 0; i < 18; i++) await page.keyboard.press('ArrowRight');
+  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
+  const edge = await anchorPosition();
+  // The 14-row map ends 6.5 rows from center, just over nine diagonal key steps.
+  const steps = (initial.x - edge.x) / (initial.x - first.x);
+  expect(steps).toBeCloseTo(9.19, 1);
+  expect(edge.y).toBeCloseTo(initial.y, 0);
+  await page.keyboard.press('ArrowRight');
+  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
+  expect(await anchorPosition()).toEqual(edge);
 });
