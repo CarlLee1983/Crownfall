@@ -1,18 +1,17 @@
-import { type Camera, Raycaster, Vector2, Vector3 } from 'three';
+import { type Camera, Raycaster, Vector2 } from 'three';
 import {
   type CellIndex,
   canAffordTower,
   cellAt,
-  cellPoint,
   currentRoute,
   type GameEvent,
   type GameState,
-  groundHeight,
   type PlacementRejection,
   pickCell,
   previewPlacement,
   samePlacementPreviewInputs,
 } from '../core';
+import { cellProjection, element, updateText } from './hud-dom';
 import { LAYER_HEIGHT } from './terrain';
 
 const REASONS: Record<PlacementRejection, string> = {
@@ -24,22 +23,13 @@ const REASONS: Record<PlacementRejection, string> = {
   occupiedCell: '這格已經有塔',
   unknownTower: '找不到這種塔',
   wrongTick: '建造時機已過',
+  gameOver: '遊戲已結束',
 };
 const FEEDBACK_DURATION_MS = 2600;
 const EDGE_MARGIN = 8;
 const RING_GAP = 24;
 
 type ScreenPoint = { x: number; y: number };
-
-function element(id: string): HTMLElement {
-  const node = document.getElementById(id);
-  if (node === null) throw new Error(`找不到 #${id}`);
-  return node;
-}
-
-function updateText(node: HTMLElement, text: string): void {
-  if (node.textContent !== text) node.textContent = text;
-}
 
 function describePreview(state: GameState, cell: CellIndex, kind: string) {
   const preview = previewPlacement(state, cell, kind);
@@ -69,7 +59,7 @@ export function createBuildHud(
   const balance = element('build-balance');
   const raycaster = new Raycaster();
   const pointer = new Vector2();
-  const projected = new Vector3();
+  const projectCell = cellProjection(camera);
   let state = initial;
   let chosen: CellIndex | undefined;
   let notice: { cell: CellIndex; until: number } | undefined;
@@ -120,18 +110,6 @@ export function createBuildHud(
     return { kind, button, shortcut };
   });
 
-  const projectCell = (cell: CellIndex, bounds: DOMRect): ScreenPoint | undefined => {
-    const point = cellPoint(state.level, cell);
-    const height = groundHeight(state.level, point) * LAYER_HEIGHT;
-    projected.set(point.x, height, point.y).project(camera);
-    if (Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1 || Math.abs(projected.z) > 1)
-      return undefined;
-    return {
-      x: bounds.left + ((projected.x + 1) * bounds.width) / 2,
-      y: bounds.top + ((1 - projected.y) * bounds.height) / 2,
-    };
-  };
-
   const centeredX = (node: HTMLElement, x: number): number => {
     const halfWidth = node.offsetWidth / 2;
     return Math.max(
@@ -157,7 +135,7 @@ export function createBuildHud(
   };
 
   const positionRing = (cell: CellIndex, bounds: DOMRect) => {
-    const point = projectCell(cell, bounds);
+    const point = projectCell(state.level, cell, bounds);
     if (point === undefined) {
       close();
       return;
@@ -234,6 +212,11 @@ export function createBuildHud(
   });
 
   return {
+    reset(): void {
+      close();
+      notice = undefined;
+      feedback.textContent = '';
+    },
     onEvents(events: readonly GameEvent[]): void {
       for (const event of events) {
         if (event.type === 'rejected') showReason(event.cell, event.reason);
@@ -249,7 +232,7 @@ export function createBuildHud(
           notice = undefined;
           feedback.textContent = '';
         } else {
-          const point = projectCell(notice.cell, bounds);
+          const point = projectCell(state.level, notice.cell, bounds);
           feedback.style.visibility = point === undefined ? 'hidden' : '';
           if (point !== undefined) positionNear(feedback, point, 12, false);
         }

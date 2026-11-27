@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyCommands,
   type CellIndex,
+  type Command,
   type Content,
   canAffordTower,
   createGame,
@@ -9,6 +11,7 @@ import {
   enemyRouteSegments,
   type GameEvent,
   type GameState,
+  type Level,
   parseLevel,
   previewPlacement,
   samePlacementPreviewInputs,
@@ -17,10 +20,12 @@ import {
 
 // 每秒 7.5 格 = 每 tick 0.25 格，讓位置在二進位浮點下精確。
 const content = {
-  enemies: { grunt: { speed: 7.5, hp: 12, bounty: 5 } },
+  enemies: { grunt: { speed: 7.5, hp: 12, bounty: 5, leakDamage: 1 } },
   waves: [{ groups: [{ enemy: 'grunt', count: 1, interval: 1, delay: 0 }] }],
   towers: { basic: { name: 'Basic', cost: 30, range: 2, damage: 4, shotsPerSecond: 0 } },
   startingMoney: 100,
+  startingLives: 10,
+  waveClearReward: 12,
   heightRangeBonus: 1.5,
 } satisfies Content;
 
@@ -39,18 +44,179 @@ function positions(state: GameState) {
   return state.enemies.map((enemy) => enemyPosition(state, enemy));
 }
 
+describe('wave commands', () => {
+  it('waits in preparation for the player to start the wave', () => {
+    const initial = createGame(content, parseLevel(['S==G']));
+    const waiting = run(initial, 30).state;
+    expect(waiting).toMatchObject({ phase: 'preparation', waveNumber: 0, enemies: [] });
+
+    const opened = step(waiting, [
+      { type: 'startWave', tick: 30 },
+      { type: 'startWave', tick: 30 },
+    ]);
+    expect(opened.state).toMatchObject({ phase: 'wave', waveNumber: 1 });
+    expect(positions(opened.state)).toEqual([{ x: 0.25, y: 0 }]);
+    expect(opened.events).toEqual([{ type: 'waveRejected', reason: 'waveInProgress' }]);
+  });
+
+  it('rejects opening a wave when no waves are defined', () => {
+    const initial = createGame({ ...content, waves: [] }, parseLevel(['SG']));
+    const result = step(initial, [{ type: 'startWave', tick: 0 }]);
+    expect(result.state.phase).toBe('preparation');
+    expect(result.events).toEqual([{ type: 'waveRejected', reason: 'noNextWave' }]);
+  });
+
+  it('finishes only after overlapping groups have spawned and all enemies are gone', () => {
+    const initial = createGame(
+      {
+        ...content,
+        enemies: { ...content.enemies, runner: { ...content.enemies.grunt, speed: 15 } },
+        waves: [
+          {
+            groups: [
+              { enemy: 'grunt', count: 2, interval: 0.2, delay: 0 },
+              { enemy: 'runner', count: 1, interval: 0, delay: 0.1 },
+            ],
+          },
+          ...content.waves,
+        ],
+      },
+      parseLevel(['SG']),
+    );
+    const waiting = run(initial, 20).state;
+    const first = step(waiting, [{ type: 'startWave', tick: 20 }]).state;
+    const overlapping = run(first, 2).state;
+    expect(overlapping.enemies.map(({ kind }) => kind)).toEqual(['grunt', 'runner']);
+    const gap = run(overlapping, 2).state;
+    expect(gap).toMatchObject({ phase: 'wave', enemies: [], money: 100 });
+    const lastEnemy = run(gap, 1).state;
+    expect(lastEnemy.enemies).toMatchObject([{ kind: 'grunt' }]);
+    const cleared = run(lastEnemy, 4);
+    expect(cleared.events).toContainEqual({ type: 'waveCleared', waveNumber: 1, reward: 12 });
+    expect(cleared.state).toMatchObject({ phase: 'preparation', waveNumber: 1, money: 112 });
+    expect(run(cleared.state, 60)).toMatchObject({
+      state: { phase: 'preparation', waveNumber: 1, money: 112, enemies: [] },
+      events: [],
+    });
+  });
+
+  it('deducts lives by enemy kind with no bounty and wins if lives remain after the final wave', () => {
+    const initial = createGame(
+      {
+        ...content,
+        enemies: {
+          grunt: { ...content.enemies.grunt, speed: 30 },
+          tank: { ...content.enemies.grunt, speed: 30, leakDamage: 2 },
+        },
+        waves: [
+          {
+            groups: [
+              { enemy: 'grunt', count: 1, interval: 0, delay: 0 },
+              { enemy: 'tank', count: 1, interval: 0, delay: 0 },
+            ],
+          },
+        ],
+      },
+      parseLevel(['SG', '..']),
+    );
+    const won = step(initial, [{ type: 'startWave', tick: 0 }]);
+    expect(won.state).toMatchObject({ phase: 'victory', tick: 1, lives: 7, money: 112 });
+    expect(won.events).toEqual([
+      { type: 'leaked', enemyId: 1, enemyKind: 'grunt', livesLost: 1 },
+      { type: 'leaked', enemyId: 2, enemyKind: 'tank', livesLost: 2 },
+      { type: 'waveCleared', waveNumber: 1, reward: 12 },
+      { type: 'victory', waveNumber: 1 },
+    ]);
+
+    expect(
+      step(won.state, [
+        { type: 'startWave', tick: 1 },
+        { type: 'placeTower', cell: 2 as CellIndex, kind: 'basic', tick: 1 },
+      ]),
+    ).toEqual({
+      state: won.state,
+      events: [
+        { type: 'waveRejected', reason: 'gameOver' },
+        { type: 'rejected', cell: 2, reason: 'gameOver' },
+      ],
+    });
+  });
+
+  it.each([
+    ['noLives', 2, 0, 1],
+    ['bossLeaked', 'defeat', 1, 0],
+  ] as const)('ends the run immediately on %s', (reason, leakDamage, lives, livesLost) => {
+    const initial = createGame(
+      {
+        ...content,
+        startingLives: 1,
+        enemies: { grunt: { ...content.enemies.grunt, speed: 30, leakDamage } },
+      },
+      parseLevel(['SG']),
+    );
+    const lost = step(initial, [{ type: 'startWave', tick: 0 }]);
+    expect(lost.state).toMatchObject({ phase: 'defeat', defeatReason: reason, lives, money: 100 });
+    expect(lost.events).toEqual([
+      { type: 'leaked', enemyId: 1, enemyKind: 'grunt', livesLost },
+      { type: 'defeat', waveNumber: 1, reason },
+    ]);
+    expect(run(lost.state, 60)).toEqual({ state: lost.state, events: [] });
+  });
+});
+
+it('replays a full command log identically through the final tick', () => {
+  const level = parseLevel(['SG', '..']);
+  const replayContent = {
+    ...content,
+    enemies: {
+      grunt: { ...content.enemies.grunt, hp: 4 },
+      tank: { ...content.enemies.grunt, speed: 30, leakDamage: 2 },
+    },
+    towers: { basic: { ...content.towers.basic, shotsPerSecond: 1 } },
+    waves: [...content.waves, { groups: [{ enemy: 'tank', count: 1, interval: 0, delay: 0 }] }],
+  } satisfies Content;
+  const commands: readonly Command[] = [
+    { type: 'placeTower', cell: 2 as CellIndex, kind: 'basic', tick: 0 },
+    { type: 'startWave', tick: 3 },
+    { type: 'startWave', tick: 8 },
+  ];
+
+  function replay() {
+    let state = createGame(replayContent, level);
+    const trace = [];
+    for (let tick = 0; tick < 60; tick++) {
+      const frame = step(
+        state,
+        commands.filter((command) => command.tick === tick),
+      );
+      trace.push(frame);
+      state = frame.state;
+      if (state.phase === 'victory' || state.phase === 'defeat') break;
+    }
+    return { state, trace };
+  }
+
+  const first = replay();
+  expect(first.state).toMatchObject({ lives: 8, money: 99, phase: 'victory', tick: 9 });
+  expect(replay().trace).toEqual(first.trace);
+});
+
+function startFirstWave(gameContent: Content, level: Level): GameState {
+  return applyCommands(createGame(gameContent, level), [{ type: 'startWave', tick: 0 }]).state;
+}
+
 describe('enemies walking the lane', () => {
   const corridor = parseLevel(['S==G']);
 
   it('walks toward the goal at its speed', () => {
-    const start = createGame(content, corridor);
+    const start = startFirstWave(content, corridor);
     expect(positions(start)).toEqual([{ x: 0, y: 0 }]);
     expect(positions(run(start, 2).state)).toEqual([{ x: 0.5, y: 0 }]);
     expect(positions(run(start, 6).state)).toEqual([{ x: 1.5, y: 0 }]);
   });
 
   it('disappears on reaching the goal and reports the leak on that tick', () => {
-    const start = createGame(content, corridor);
+    const start = startFirstWave(content, corridor);
     const before = run(start, 11);
     expect(before.events).toEqual([]);
     expect(before.state.enemies).toHaveLength(1);
@@ -58,8 +224,12 @@ describe('enemies walking the lane', () => {
     const arrival = step(before.state, []);
     expect(arrival.state.tick).toBe(12);
     expect(arrival.state.enemies).toEqual([]);
-    expect(arrival.state.money).toBe(100);
-    expect(arrival.events).toEqual([{ type: 'leaked', enemyId: 1, enemyKind: 'grunt' }]);
+    expect(arrival.events[0]).toEqual({
+      type: 'leaked',
+      enemyId: 1,
+      enemyKind: 'grunt',
+      livesLost: 1,
+    });
   });
 });
 
@@ -75,10 +245,10 @@ describe('tower attacks', () => {
   ] as const;
 
   it('shoots as soon as a target is in range and waits its full interval between shots', () => {
-    const start = createGame(
+    const start = startFirstWave(
       {
         ...content,
-        enemies: { grunt: { speed: 0, hp: 12, bounty: 5 } },
+        enemies: { grunt: { speed: 0, hp: 12, bounty: 5, leakDamage: 1 } },
         towers: { basic },
       },
       parseLevel(['S==G', '....']),
@@ -102,10 +272,10 @@ describe('tower attacks', () => {
   });
 
   it('sustains fractional-tick cadence and starts a fresh interval after idling', () => {
-    let state = createGame(
+    let state = startFirstWave(
       {
         ...content,
-        enemies: { grunt: { speed: 0, hp: 20, bounty: 5 } },
+        enemies: { grunt: { speed: 0, hp: 20, bounty: 5, leakDamage: 1 } },
         waves: [{ groups: [{ enemy: 'grunt', count: 2, interval: 1.5, delay: 0 }] }],
         towers: { basic: { ...basic, shotsPerSecond: 4 } },
       },
@@ -127,10 +297,10 @@ describe('tower attacks', () => {
   });
 
   it('targets the enemy with less remaining travel when both are on the same segment', () => {
-    const start = createGame(
+    const start = startFirstWave(
       {
         ...content,
-        enemies: { ...content.enemies, runner: { speed: 15, hp: 10, bounty: 4 } },
+        enemies: { ...content.enemies, runner: { speed: 15, hp: 10, bounty: 4, leakDamage: 1 } },
         waves: pairedWaves,
         towers: { basic },
       },
@@ -146,10 +316,10 @@ describe('tower attacks', () => {
   });
 
   it('targets the front of a folded route even when the trailing enemy is closer to the goal', () => {
-    const start = createGame(
+    const start = startFirstWave(
       {
         ...content,
-        enemies: { ...content.enemies, runner: { speed: 30, hp: 10, bounty: 4 } },
+        enemies: { ...content.enemies, runner: { speed: 30, hp: 10, bounty: 4, leakDamage: 1 } },
         waves: pairedWaves,
         towers: { basic: { ...basic, range: 3 } },
       },
@@ -174,7 +344,7 @@ describe('tower attacks', () => {
     ],
     ['a high tower gets no extra range against a high target', ['s++g', '.#..'], 5, 1.25, false],
   ])('%s', (_case, rows, cell, range, fires) => {
-    const start = createGame(
+    const start = startFirstWave(
       { ...content, towers: { basic: { ...basic, range } } },
       parseLevel(rows),
     );
@@ -187,7 +357,7 @@ describe('tower attacks', () => {
   });
 
   it('uses the layer of the cell the enemy occupies as it crosses from a ramp onto high ground', () => {
-    const start = createGame(
+    const start = startFirstWave(
       {
         ...content,
         enemies: { grunt: { ...content.enemies.grunt, speed: 3.75 } },
@@ -210,13 +380,13 @@ describe('tower attacks', () => {
   });
 
   it('damages every enemy within the splash radius around the target', () => {
-    const start = createGame(
+    const start = startFirstWave(
       {
         ...content,
         enemies: {
-          still: { speed: 0, hp: 12, bounty: 5 },
-          grunt: { speed: 11.25, hp: 10, bounty: 4 },
-          runner: { speed: 22.5, hp: 12, bounty: 3 },
+          still: { speed: 0, hp: 12, bounty: 5, leakDamage: 1 },
+          grunt: { speed: 11.25, hp: 10, bounty: 4, leakDamage: 1 },
+          runner: { speed: 22.5, hp: 12, bounty: 3, leakDamage: 1 },
         },
         waves: [
           {
@@ -250,12 +420,12 @@ describe('tower attacks', () => {
   });
 
   it('awards each enemy kind’s bounty once even when multiple towers can shoot', () => {
-    const start = createGame(
+    const start = startFirstWave(
       {
         ...content,
         enemies: {
-          grunt: { speed: 0, hp: 4, bounty: 5 },
-          runner: { speed: 0, hp: 3, bounty: 4 },
+          grunt: { speed: 0, hp: 4, bounty: 5, leakDamage: 1 },
+          runner: { speed: 0, hp: 3, bounty: 4, leakDamage: 1 },
         },
         waves: pairedWaves,
         towers: {
@@ -281,15 +451,17 @@ describe('tower attacks', () => {
       { type: 'shot', towerCell: 4, target: { id: 1 } },
       { type: 'killed', enemyId: 1, enemyKind: 'grunt', bounty: 5 },
       { type: 'killed', enemyId: 2, enemyKind: 'runner', bounty: 4 },
+      { type: 'waveCleared', waveNumber: 1, reward: 12 },
+      { type: 'victory', waveNumber: 1 },
     ]);
     expect(result.state.enemies).toEqual([]);
-    expect(result.state.money).toBe(39);
+    expect(result.state.money).toBe(51);
     expect(start.enemies.map((enemy) => enemy.hp)).toEqual([4, 3]);
     expect(start.money).toBe(100);
 
     const after = run(result.state, 60);
     expect(after.events).toEqual([]);
-    expect(after.state.money).toBe(39);
+    expect(after.state.money).toBe(51);
   });
 });
 
@@ -298,7 +470,7 @@ describe('height layers', () => {
   const cliffAndRamp = parseLevel(['S=+g', '.=^#']);
 
   it('changes layer only through the ramp, never across the cliff', () => {
-    const start = createGame(content, cliffAndRamp);
+    const start = startFirstWave(content, cliffAndRamp);
     const cellsVisited = [4, 8, 12, 16].map((ticks) => positions(run(start, ticks).state));
     expect(cellsVisited).toEqual([
       [{ x: 1, y: 0 }],
@@ -306,7 +478,7 @@ describe('height layers', () => {
       [{ x: 2, y: 1 }],
       [{ x: 2, y: 0 }],
     ]);
-    expect(run(start, 20).events).toEqual([{ type: 'leaked', enemyId: 1, enemyKind: 'grunt' }]);
+    expect(run(start, 20).events[0]).toMatchObject({ type: 'leaked', enemyId: 1 });
   });
 
   it('rejects a ramp that could rise toward more than one higher lane cell', () => {
@@ -322,7 +494,7 @@ describe('spawn groups', () => {
   const longCorridor = parseLevel(['S=========================G']);
 
   it('releases each enemy of a group after the delay, one interval apart', () => {
-    const start = createGame(
+    const start = startFirstWave(
       {
         ...content,
         waves: [{ groups: [{ enemy: 'grunt', count: 3, interval: 1, delay: 0.5 }] }],
@@ -337,7 +509,7 @@ describe('spawn groups', () => {
   });
 
   it('is a pure step: the input state is left untouched and replays identically', () => {
-    const start = createGame(content, longCorridor);
+    const start = startFirstWave(content, longCorridor);
     const first = run(start, 30);
     expect(start.tick).toBe(0);
     expect(positions(start)).toEqual([{ x: 0, y: 0 }]);
@@ -439,7 +611,7 @@ describe('placing towers', () => {
     [5, 1],
     [5, 2],
   ])('reserves the enemy’s current and next cells at tick %i (cell %i)', (tick, cell) => {
-    const start = run(createGame(content, parseLevel(['S===G', '====='])), tick).state;
+    const start = run(startFirstWave(content, parseLevel(['S===G', '====='])), tick).state;
     const result = step(start, [
       { type: 'placeTower', kind: 'basic', cell: cell as CellIndex, tick },
     ]);
@@ -450,7 +622,7 @@ describe('placing towers', () => {
 
   it('rejects a tower that would trap an enemy while the entrance is still connected', () => {
     const level = parseLevel(['S=====G', '=.....=', '=======']);
-    const start = run(createGame(content, level), 8).state;
+    const start = run(startFirstWave(content, level), 8).state;
     const behind = step(start, [
       { type: 'placeTower', kind: 'basic', cell: 1 as CellIndex, tick: 8 },
     ]);
@@ -473,7 +645,7 @@ describe('placing towers', () => {
 
   it('immediately routes an active enemy around a newly placed barricade', () => {
     const level = parseLevel(['S====G', '===.==', '======']);
-    const start = run(createGame(content, level), 8).state;
+    const start = run(startFirstWave(content, level), 8).state;
     const cell = 4 as CellIndex;
     const preview = previewPlacement(start, cell, 'basic');
     expect(currentRoute(start)).toEqual([0, 1, 2, 3, 4, 5]);
@@ -497,7 +669,7 @@ describe('placing towers', () => {
       ...content,
       waves: [{ groups: [{ enemy: 'grunt', count: 2, interval: 0, delay: 0 }] }],
     };
-    const start = run(createGame(twoEnemies, level), 5).state;
+    const start = run(startFirstWave(twoEnemies, level), 5).state;
     expect(enemyRouteSegments(start)).toEqual([]);
 
     const rerouted = step(start, [
@@ -531,7 +703,7 @@ describe('placing towers', () => {
   });
 
   it('invalidates previews when enemies enter reserved cells and reuses them mid-edge', () => {
-    const start = createGame(content, parseLevel(['S===G', '=====']));
+    const start = startFirstWave(content, parseLevel(['S===G', '=====']));
     const inMotion = step(start, []).state;
     expect(samePlacementPreviewInputs(inMotion, step(inMotion, []).state)).toBe(true);
 

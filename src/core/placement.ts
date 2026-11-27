@@ -5,6 +5,7 @@ import { type DistanceField, distanceField, nextCell } from './pathing';
 export type PlacementRejection =
   | 'disconnectedRoute'
   | 'enemyOnCell'
+  | 'gameOver'
   | 'insufficientFunds'
   | 'unbuildableCell'
   | 'occupiedCell'

@@ -4,6 +4,7 @@ export interface EnemyDefinition {
   readonly speed: number;
   readonly hp: number;
   readonly bounty: number;
+  readonly leakDamage: number | 'defeat';
 }
 
 /** 一種塔的基本數值，以格與秒撰寫。 */
@@ -33,5 +34,7 @@ export interface Content<K extends string = string> {
   readonly waves: readonly Wave<NoInfer<K>>[];
   readonly towers: Readonly<Record<string, TowerDefinition>>;
   readonly startingMoney: number;
+  readonly startingLives: number;
+  readonly waveClearReward: number;
   readonly heightRangeBonus: number;
 }

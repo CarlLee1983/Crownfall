@@ -7,8 +7,10 @@ export {
 } from './clock';
 export type { Content, EnemyDefinition, SpawnGroup, TowerDefinition, Wave } from './content';
 export {
+  applyCommands,
   type Command,
   createGame,
+  type DefeatReason,
   type Enemy,
   type EnemyId,
   enemyPosition,
@@ -17,6 +19,7 @@ export {
   type StepResult,
   step,
   type Tower,
+  type WaveRejection,
 } from './game';
 export {
   type Cell,
