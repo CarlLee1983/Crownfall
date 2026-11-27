@@ -10,6 +10,7 @@
     "format": "biome check --write .",
     "typecheck": "tsc -p src/core && tsc -p .",
     "test": "vitest run --project rules",
+    "test:smoke": "playwright test",
     "balance": "vitest run --project balance"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.9",
+    "@playwright/test": "^1.65.1",
     "@types/three": "0.187.0",
     "typescript": "^7.0.2",
     "vite": "^8.4.0",
