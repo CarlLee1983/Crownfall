@@ -1,0 +1,83 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": ["**", "!**/dist", "!**/graft", "!**/*.md"]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
+  "linter": {
+    "rules": {
+      "preset": "recommended"
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["src/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "three": "core 不得依賴引擎（ADR 0001）。"
+                },
+                "patterns": [
+                  {
+                    "group": ["three/**", "**/render", "**/render/**"],
+                    "message": "core 不得 import three 或 render（ADR 0001）。"
+                  }
+                ]
+              }
+            },
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "globalThis": "core 不得經 globalThis 繞過決定性與環境禁令。"
+                }
+              }
+            }
+          },
+          "nursery": {
+            "noJsRestrictedProperties": {
+              "level": "error",
+              "options": {
+                "entries": [
+                  {
+                    "object": "Math",
+                    "property": "random",
+                    "message": "core 必須決定性，不得用亂數。"
+                  },
+                  {
+                    "object": "Date",
+                    "property": "now",
+                    "message": "core 的時間一律是 tick。"
+                  },
+                  {
+                    "object": "performance",
+                    "property": "now",
+                    "message": "core 的時間一律是 tick。"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
