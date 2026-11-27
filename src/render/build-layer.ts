@@ -45,11 +45,11 @@ function towerModel(geometry: BufferGeometry, height: number, halfWidth: number,
   };
 }
 
-const BASIC_MODEL = towerModel(new BoxGeometry(0.64, 0.6, 0.64), 0.6, 0.32, 0x57a4da);
+const BASIC_MODEL = towerModel(new BoxGeometry(0.8, 0.75, 0.8), 0.75, 0.4, 0x57a4da);
 const TOWER_MODELS = new Map([
   ['basic', BASIC_MODEL],
-  ['sniper', towerModel(new CylinderGeometry(0.23, 0.32, 0.94, 6), 0.94, 0.32, 0xeeaa48)],
-  ['splash', towerModel(new ConeGeometry(0.42, 0.54, 8), 0.54, 0.42, 0xc381dc)],
+  ['sniper', towerModel(new CylinderGeometry(0.29, 0.4, 1.18, 6), 1.18, 0.4, 0xeeaa48)],
+  ['splash', towerModel(new ConeGeometry(0.44, 0.68, 8), 0.68, 0.44, 0xc381dc)],
 ]);
 
 const LEVEL_MARKER_SIZE = 0.13;

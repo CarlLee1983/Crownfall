@@ -74,7 +74,7 @@ it('keeps the line endpoint on the interpolated enemy body as it moves', () => {
   shots.update(100);
   expect(endpoint()).toEqual([
     expect.closeTo(0.777785, 5),
-    expect.closeTo(0.2, 5),
+    expect.closeTo(0.25, 5),
     expect.closeTo(0.084265, 5),
   ]);
 
@@ -83,7 +83,7 @@ it('keeps the line endpoint on the interpolated enemy body as it moves', () => {
   shots.update(130);
   expect(endpoint()).toEqual([
     expect.closeTo(0.915735, 5),
-    expect.closeTo(0.2, 5),
+    expect.closeTo(0.25, 5),
     expect.closeTo(0.222215, 5),
   ]);
 });
@@ -97,8 +97,8 @@ it('only shows the lethal impact for the tower that lands the killing shot in th
 });
 
 it.each([
-  { surface: 'flat ground', ramp: false, y: 0.2, z: 0.03806 },
-  { surface: 'a ramp', ramp: true, y: 0.494335, z: -0.064839 },
+  { surface: 'flat ground', ramp: false, y: 0.25, z: 0.03806 },
+  { surface: 'a ramp', ramp: true, y: 0.537209, z: -0.090564 },
 ])('keeps a lethal shot at the rounded body center on $surface', ({ ramp, y, z }) => {
   const { enemies, shots, before, state, line, endpoint } = fire(12, { ramp });
   enemies.update(before, state, 0.5);
@@ -137,8 +137,8 @@ it('targets the inclined model and anchors splash at the simulation impact on th
   shots.update(100);
   expect(endpoint()).toEqual([
     expect.closeTo(0.777785, 5),
-    expect.closeTo(0.522058, 5),
-    expect.closeTo(-0.018634, 5),
+    expect.closeTo(0.564932, 5),
+    expect.closeTo(-0.044359, 5),
   ]);
   const ring = shots.group.children.find(
     (child) => child instanceof Mesh && child.geometry instanceof RingGeometry,

@@ -1,11 +1,17 @@
 import {
   BoxGeometry,
+  type BufferGeometry,
   type Camera,
+  CylinderGeometry,
+  ExtrudeGeometry,
   Group,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  PerspectiveCamera,
   PlaneGeometry,
+  Quaternion,
+  Shape,
   Vector3,
 } from 'three';
 import {
@@ -26,19 +32,47 @@ import { LAYER_HEIGHT } from './terrain';
 interface Look {
   readonly size: number;
   readonly color: number;
+  readonly round?: true;
+  readonly cornerCut?: number;
 }
 
 const LOOKS: Readonly<Record<string, Look>> = {
-  grunt: { size: 0.4, color: 0xd9a441 },
-  runner: { size: 0.3, color: 0xe05a8a },
-  tank: { size: 0.65, color: 0x7a4fb0 },
-  boss: { size: 1, color: 0xc83b36 },
+  grunt: { size: 0.5, color: 0xd9a441 },
+  runner: { size: 0.4, color: 0xe05a8a },
+  tank: { size: 0.8, color: 0x7a4fb0, cornerCut: 0.1 },
+  boss: { size: 1, color: 0xc83b36, round: true },
 };
-const DEFAULT_LOOK: Look = { size: 0.4, color: 0xbbbbbb };
+const DEFAULT_LOOK: Look = { size: 0.5, color: 0xbbbbbb };
 const UP = new Vector3(0, 1, 0);
+const BACK = new Vector3(0, 0, 1);
+const BAR_HEIGHT = 0.14;
+const BAR_GAP = 0.08;
 
 function enemyLook(kind: string): Look {
   return LOOKS[kind] ?? DEFAULT_LOOK;
+}
+
+function enemyGeometry({ size, cornerCut, round }: Look): BufferGeometry {
+  const half = size / 2;
+  // The full-width boss needs a round footprint to follow the half-cell radius turns.
+  if (round) return new CylinderGeometry(half, half, size, 16);
+  if (cornerCut === undefined) return new BoxGeometry(size, size, size);
+
+  // Cut the corners so wide enemies can round turns beside a high platform.
+  const inset = half - cornerCut;
+  const footprint = new Shape()
+    .moveTo(-inset, -half)
+    .lineTo(inset, -half)
+    .lineTo(half, -inset)
+    .lineTo(half, inset)
+    .lineTo(inset, half)
+    .lineTo(-inset, half)
+    .lineTo(-half, inset)
+    .lineTo(-half, -inset)
+    .closePath();
+  return new ExtrudeGeometry(footprint, { depth: size, bevelEnabled: false })
+    .rotateX(-Math.PI / 2)
+    .translate(0, -half, 0);
 }
 
 function smoothUnit(value: number): number {
@@ -133,7 +167,7 @@ function supportingPlane(level: Level, point: GridPoint, half: number, normal: V
 
 interface EnemyView {
   readonly group: Group;
-  readonly body: Mesh<BoxGeometry, MeshLambertMaterial>;
+  readonly body: Mesh<BufferGeometry, MeshLambertMaterial>;
   readonly bar: Group;
   readonly fill: Mesh<PlaneGeometry, MeshBasicMaterial>;
   readonly barWidth: number;
@@ -154,6 +188,11 @@ export interface EnemyLayer {
 export function createEnemyLayer(camera: Camera): EnemyLayer {
   const group = new Group();
   const normal = new Vector3();
+  const cameraUp = new Vector3();
+  const cameraBack = new Vector3();
+  const viewOffset = new Vector3();
+  const cameraUpInBody = new Vector3();
+  const inverseTilt = new Quaternion();
   const views = new Map<EnemyId, EnemyView>();
   let motions = new Map<EnemyId, EnemyMotion>();
   let observed: GameState | undefined;
@@ -164,15 +203,11 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
   const viewFor = (id: EnemyId, look: Look): EnemyView => {
     const existing = views.get(id);
     if (existing !== undefined) return existing;
-    const body = new Mesh(
-      new BoxGeometry(look.size, look.size, look.size),
-      new MeshLambertMaterial({ color: look.color }),
-    );
+    const body = new Mesh(enemyGeometry(look), new MeshLambertMaterial({ color: look.color }));
     const barWidth = Math.max(0.52, look.size);
     const bar = new Group();
-    bar.position.y = look.size + 0.16;
     const background = new Mesh(barGeometry, barBackground);
-    background.scale.set(barWidth + 0.06, 0.14, 1);
+    background.scale.set(barWidth + 0.06, BAR_HEIGHT, 1);
     const fill = new Mesh(barGeometry, barFill);
     fill.scale.y = 0.08;
     fill.position.z = 0.01;
@@ -212,17 +247,41 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
   const update = (previous: GameState, current: GameState, alpha: number): void => {
     if (observed === undefined || observed.tick < previous.tick) observe(previous);
     observe(current);
+    cameraUp.copy(UP).applyQuaternion(camera.quaternion);
+    cameraBack.copy(BACK).applyQuaternion(camera.quaternion);
     for (const enemy of current.enemies) {
       const motion = motions.get(enemy.id);
       if (motion === undefined) continue;
       const point = sampleEnemyMotion(motion, previous === current ? 1 : alpha);
       const look = enemyLook(enemy.kind);
       const view = viewFor(enemy.id, look);
-      const ground = supportingPlane(current.level, point, look.size / 2, normal);
+      const half = look.size / 2;
+      const ground = supportingPlane(current.level, point, half, normal);
       view.group.position.set(point.x, ground, point.y);
       view.body.quaternion.setFromUnitVectors(UP, normal);
-      view.body.position.copy(normal).multiplyScalar(look.size / 2);
+      view.body.position.copy(normal).multiplyScalar(half);
       view.bar.quaternion.copy(camera.quaternion);
+      // Project the tilted body bounds onto the camera's up axis to clear its silhouette.
+      inverseTilt.copy(view.body.quaternion).invert();
+      cameraUpInBody.copy(cameraUp);
+      let perspectiveScale = 1;
+      if (camera instanceof PerspectiveCamera) {
+        viewOffset.copy(view.group.position).add(view.body.position).sub(camera.position);
+        const depth = -viewOffset.dot(cameraBack);
+        const radius = half * Math.sqrt(3);
+        if (depth > radius) {
+          // Account for depth shifting the apparent height of the nearer corners.
+          cameraUpInBody.addScaledVector(cameraBack, viewOffset.dot(cameraUp) / depth);
+          perspectiveScale = depth / (depth - radius);
+        }
+      }
+      cameraUpInBody.applyQuaternion(inverseTilt);
+      const bodyTop =
+        half *
+        (Math.abs(cameraUpInBody.x) + Math.abs(cameraUpInBody.y) + Math.abs(cameraUpInBody.z));
+      view.bar.position
+        .copy(view.body.position)
+        .addScaledVector(cameraUp, bodyTop * perspectiveScale + BAR_GAP + BAR_HEIGHT / 2);
 
       const { maxHp } = enemy;
       const ratio = maxHp > 0 ? Math.min(1, Math.max(0, enemy.hp / maxHp)) : 0;
