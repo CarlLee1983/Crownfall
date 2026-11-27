@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HUD 原型</title>
+<!--
+  PROTOTYPE：用完即丟，不合併進 main。
+  回答「HUD 與操作流程」：三種結構完全不同的 HUD，以 ?variant=A|B|C 切換（底部白色膠囊或 ←／→）。
+  兩條規則和 HUD 結構無關，另外用開關切換：?early=1 開啟提前叫波，?speeds=3 提供 1×／2×／3×。
+  假設：先用 2D 俯視代替 3D 斜俯視；要評的是 HUD 的位置與操作流程，不是鏡頭。高度用色階與峭壁粗線表示。
+  數值是「波次設計與調參方法」的起始表，關卡是 D 折返寬區。
+-->
+<style>
+  :root { --bg:#14161a; --panel:#1f232a; --panel2:#2a2f38; --line:#3a404b; --text:#e8e6e1; --dim:#9aa0a8; --accent:#e0b44c; --bad:#e0605a; --good:#6cc07a; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; min-height:100%; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,-apple-system,"PingFang TC",sans-serif; }
+  #root { padding:12px 12px 70px; }
+  canvas { display:block; border-radius:4px; }
+  .stage { position:relative; flex:none; width:800px; height:560px; }
+  button { font:inherit; color:inherit; background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer; }
+  button:hover:not(:disabled) { border-color:var(--accent); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  button.on { background:var(--accent); color:#1a1a1a; border-color:var(--accent); }
+  .dim { color:var(--dim); }
+  .num, b { font-variant-numeric:tabular-nums; }
+  .ico { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:3px; vertical-align:-1px; }
+  .grp { white-space:nowrap; margin-right:8px; }
+  kbd { font:11px ui-monospace,monospace; background:#0008; border:1px solid var(--line); border-radius:3px; padding:0 4px; color:var(--dim); }
+  .float-msg { position:fixed; pointer-events:none; color:#fff; padding:4px 9px; border-radius:4px; font-size:13px; z-index:60; white-space:nowrap; animation:fm 1.6s forwards; }
+  .float-msg.bad { background:var(--bad); } .float-msg.good { background:#2f7a3c; }
+  @keyframes fm { 0% { opacity:0; transform:translate(-50%,-90%); } 10% { opacity:1; transform:translate(-50%,-130%); } 80% { opacity:1; } 100% { opacity:0; transform:translate(-50%,-170%); } }
+  .end { position:absolute; inset:0; background:rgba(10,12,15,.75); display:flex; align-items:center; justify-content:center; z-index:30; }
+  .end:empty { display:none; }
+  .end .box { background:var(--panel); padding:28px 40px; border-radius:10px; text-align:center; min-width:320px; box-shadow:0 10px 40px #000a; }
+  .end h2 { margin:0 0 8px; font-size:30px; }
+  .end .row { display:flex; gap:10px; justify-content:center; margin-top:20px; }
+  .end button { padding:10px 18px; font-size:15px; }
+
+  /* ---- A 側欄商店 ---- */
+  .va { display:flex; gap:12px; align-items:flex-start; }
+  .va .side { width:290px; background:var(--panel); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:14px; min-height:560px; }
+  .va h4 { margin:0 0 6px; font-size:12px; color:var(--dim); font-weight:600; letter-spacing:.05em; }
+  .va .stats { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .va .stat { background:var(--panel2); border-radius:6px; padding:6px 10px; }
+  .va .stat b { font-size:20px; display:block; }
+  .va .stat.wide { grid-column:span 2; }
+  .va .card { display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:6px; text-align:left; }
+  .va .card .sw { width:14px; height:14px; border-radius:3px; display:inline-block; margin-right:8px; vertical-align:-2px; }
+  .va .sel { background:var(--panel2); border-radius:6px; padding:10px; }
+  .va .sel .btns { display:flex; gap:6px; margin-top:8px; } .va .sel .btns button { flex:1; }
+  .va .log { min-height:22px; color:var(--bad); }
+  .va .log.good { color:var(--good); }
+  .va .ctrl { margin-top:auto; display:flex; flex-direction:column; gap:8px; }
+  .va .speed { display:flex; gap:4px; } .va .speed button { flex:1; }
+  .va .bigwave { padding:12px; font-size:16px; font-weight:600; background:#3b5f2d; border-color:#5c8a48; }
+
+  /* ---- B 上下條＋情境卡 ---- */
+  .vb { display:flex; flex-direction:column; width:800px; }
+  .vb .strip { background:var(--panel); display:flex; align-items:center; gap:16px; padding:8px 12px; }
+  .vb .top { border-radius:8px 8px 0 0; }
+  .vb .top .k { color:var(--dim); margin-right:4px; }
+  .vb .top b { font-size:17px; }
+  .vb .top .next { flex:1; font-size:13px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .vb .top .speed { display:flex; gap:2px; } .vb .top .speed button { padding:3px 8px; }
+  .vb .bottom { border-radius:0 0 8px 8px; justify-content:center; padding:10px; }
+  .vb .slot { width:118px; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 6px; position:relative; }
+  .vb .slot .sw { width:22px; height:22px; border-radius:4px; }
+  .vb .slot kbd { position:absolute; top:4px; left:6px; }
+  .vb .slot.poor { opacity:.5; }
+  .vb .bwave { margin-left:auto; padding:14px 20px; font-size:16px; font-weight:600; background:#3b5f2d; border-color:#5c8a48; }
+  .vb .ctx { position:absolute; width:190px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px; z-index:10; box-shadow:0 6px 22px #000a; }
+  .vb .ctx:empty { display:none; }
+  .vb .ctx .btns { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .vb .ctx .x { position:absolute; top:4px; right:6px; padding:0 6px; border:none; background:none; color:var(--dim); }
+
+  /* ---- C 地圖優先 ---- */
+  .vc .corner { position:absolute; background:rgba(20,22,26,.82); border-radius:8px; padding:6px 12px; z-index:5; display:flex; gap:14px; align-items:center; }
+  .vc .bl { left:8px; bottom:8px; } .vc .br { right:8px; bottom:8px; }
+  .vc .corner b { font-size:18px; }
+  .vc .corner .speed { display:flex; gap:2px; } .vc .corner .speed button { padding:2px 8px; }
+  .vc .flag { position:absolute; left:4px; top:76px; transform:translateY(-100%); z-index:6; background:rgba(20,22,26,.9); border:1px solid var(--accent); border-radius:8px; padding:6px 8px; font-size:12px; max-width:250px; }
+  .vc .flag::after { content:""; position:absolute; left:12px; bottom:-7px; border:7px solid transparent; border-bottom:0; border-top-color:var(--accent); }
+  .vc .flag button { width:100%; margin-top:5px; font-weight:600; background:#3b5f2d; border-color:#5c8a48; }
+  .vc .radial { position:absolute; width:0; height:0; z-index:12; }
+  .vc .radial .opt { position:absolute; transform:translate(-50%,-50%); width:78px; padding:5px 4px; border-radius:10px; text-align:center; font-size:12px; line-height:1.25; background:var(--panel); box-shadow:0 4px 14px #000a; }
+  .vc .radial .opt.poor { opacity:.55; }
+  .vc .radial .opt .sw { display:block; width:14px; height:14px; border-radius:3px; margin:0 auto 2px; }
+  .vc .radial .mid { position:absolute; transform:translate(-50%,-50%); width:28px; height:28px; padding:0; border-radius:50%; }
+  .vc .radial .info { position:absolute; transform:translate(-50%,0); white-space:nowrap; background:rgba(20,22,26,.9); border-radius:6px; padding:3px 8px; font-size:12px; }
+
+  /* ---- 原型切換列（不屬於被評估的設計） ---- */
+  #devbar { position:fixed; left:50%; bottom:10px; transform:translateX(-50%); background:#f4f4f4; color:#111; border-radius:999px; padding:6px 14px; display:flex; gap:8px; align-items:center; box-shadow:0 4px 18px rgba(0,0,0,.6); z-index:100; font-size:13px; white-space:nowrap; }
+  #devbar button { background:#fff; color:#111; border:1px solid #bbb; padding:3px 9px; border-radius:999px; }
+  #devbar button.on { background:#111; color:#fff; border-color:#111; }
+  #devbar .sep { width:1px; height:18px; background:#bbb; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="devbar"></div>
+
+<script id="sim">
+// ===== 模擬核心：不碰 DOM，Node 也能跑 =====
+const W = 20, H = 14, TICK = 1 / 30;
+const HEIGHT_BONUS = 1.5, START_GOLD = 100, START_LIVES = 20, CLEAR_BONUS = 30, SELL_RATE = 0.7, MAIN_WAVES = 10;
+const TOWERS = {
+  basic:  { key: '1', name: '基本塔', short: '基', cost: 50,  range: 2.5, damage: 4,  rate: 2.0, splash: 0,   color: '#3d7be8' },
+  sniper: { key: '2', name: '狙擊塔', short: '狙', cost: 100, range: 4.5, damage: 20, rate: 0.6, splash: 0,   color: '#9150d6' },
+  splash: { key: '3', name: '範圍塔', short: '範', cost: 80,  range: 2.0, damage: 6,  rate: 1.0, splash: 1.1, color: '#e07032' },
+};
+const TOWER_KEYS = Object.keys(TOWERS);
+const ENEMIES = {
+  grunt:  { name: '雜兵', hp: 22,   speed: 1.6, bounty: 5,  leak: 1,        color: '#6b6b6b', r: 0.22 },
+  runner: { name: '快兵', hp: 12,   speed: 2.9, bounty: 4,  leak: 1,        color: '#2a9d8f', r: 0.17 },
+  tank:   { name: '坦克', hp: 95,   speed: 0.9, bounty: 15, leak: 2,        color: '#a52a2a', r: 0.3 },
+  boss:   { name: 'Boss', hp: 1200, speed: 0.7, bounty: 0,  leak: Infinity, color: '#111111', r: 0.42 },
+};
+const G = (type, count, gap, delay = 0) => ({ type, count, gap, delay });
+const WAVES = [
+  [G('grunt', 8, 1.0)],
+  [G('grunt', 8, 0.9), G('runner', 6, 0.5, 6)],
+  [G('grunt', 10, 0.8), G('tank', 1, 0, 8.5)],
+  [G('grunt', 12, 0.7), G('runner', 8, 0.4, 3), G('tank', 2, 2.5, 6)],
+  [G('grunt', 14, 0.8)],
+  [G('runner', 24, 0.35), G('grunt', 6, 0.8, 4)],
+  [G('grunt', 12, 0.7), G('runner', 6, 0.4, 4)],
+  [G('tank', 6, 2.5), G('grunt', 10, 0.7, 3)],
+  [G('grunt', 18, 0.5), G('runner', 14, 0.3, 2), G('tank', 5, 2.0, 4)],
+  [G('grunt', 10, 0.7), G('runner', 8, 0.4, 4), G('boss', 1, 0, 8)],
+];
+// 無盡：第 11 波起輪流套用第 4–9 波的組成，每輪血量 ×1.15、每組數量 +1。
+function waveDef(n) {
+  if (n <= MAIN_WAVES) return { groups: WAVES[n - 1], hpMul: 1 };
+  const k = n - MAIN_WAVES - 1, round = Math.floor(k / 6) + 1;
+  return { groups: WAVES[3 + (k % 6)].map((g) => ({ ...g, count: g.count + round })), hpMul: 1.15 ** round };
+}
+
+const ROWS = [
+  '...............#####',
+  '...=======.....#####',
+  'S=========.....#+++g',
+  '...=======.....#+###',
+  '...=======.....#+###',
+  '...=======.....#+###',
+  '...=...........#+###',
+  '...=######.....#+###',
+  '...=######.....#+###',
+  '...=...........#+###',
+  '...============^+###',
+  '...............#####',
+  '...............#####',
+  '...............#####',
+];
+const LEGEND = {
+  '.': { level: 0, walk: false, build: true },
+  '#': { level: 1, walk: false, build: true },
+  '=': { level: 0, walk: true,  build: true },
+  '+': { level: 1, walk: true,  build: true },
+  '^': { level: 0, walk: true,  build: false, ramp: true },
+  'S': { level: 0, walk: true,  build: false, spawn: true },
+  'g': { level: 1, walk: true,  build: false, goal: true },
+};
+
+const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+const cx = (i) => (i % W) + 0.5;
+const cy = (i) => Math.floor(i / W) + 0.5;
+const dist2 = (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2;
+
+function parseLayout(rows) {
+  const cells = [];
+  let spawn = -1, goal = -1;
+  rows.forEach((row, y) => [...row].forEach((ch, x) => {
+    const c = LEGEND[ch], i = y * W + x;
+    if (c.spawn) spawn = i;
+    if (c.goal) goal = i;
+    cells.push({ ...c });
+  }));
+  return { cells, spawn, goal };
+}
+function neighbors(i) {
+  const x = i % W, y = Math.floor(i / W), out = [];
+  for (const [dx, dy] of DIRS) {
+    const nx = x + dx, ny = y + dy;
+    if (nx >= 0 && nx < W && ny >= 0 && ny < H) out.push(ny * W + nx);
+  }
+  return out;
+}
+function canStep(cells, a, b) {
+  const A = cells[a], B = cells[b];
+  if (!A.walk || !B.walk) return false;
+  return A.level === B.level || A.ramp || B.ramp;
+}
+function isCliff(cells, a, b) {
+  return cells[a].level !== cells[b].level && !(cells[a].walk && cells[b].walk && (cells[a].ramp || cells[b].ramp));
+}
+function flowField(map, blocked) {
+  const d = new Array(W * H).fill(Infinity);
+  d[map.goal] = 0;
+  const q = [map.goal];
+  for (let h = 0; h < q.length; h++) {
+    const i = q[h];
+    for (const n of neighbors(i)) {
+      if (d[n] !== Infinity || blocked.has(n) || !canStep(map.cells, i, n)) continue;
+      d[n] = d[i] + 1;
+      q.push(n);
+    }
+  }
+  return d;
+}
+function nextCell(dist, i) {
+  let best = -1;
+  for (const n of neighbors(i)) if (dist[n] < dist[i] && (best < 0 || dist[n] < dist[best])) best = n;
+  return best;
+}
+function routeFrom(dist, start) {
+  if (dist[start] === Infinity) return [];
+  const r = [start];
+  let i = start;
+  while (dist[i] > 0) { i = nextCell(dist, i); r.push(i); }
+  return r;
+}
+
+const towerRange = (t) => TOWERS[t.type].range + 0.3 * (t.lv - 1);
+const towerDamage = (t) => TOWERS[t.type].damage * 1.5 ** (t.lv - 1);
+const rangeAgainst = (t, targetLevel) => towerRange(t) + Math.max(0, t.h - targetLevel) * HEIGHT_BONUS;
+// 第 2 級是基本價的 60%，第 3 級是 100%。
+const upgradeCost = (t) => (t.lv >= 3 ? null : Math.round(TOWERS[t.type].cost * (t.lv === 1 ? 0.6 : 1.0)));
+
+class Sim {
+  constructor(rules) {
+    this.rules = rules;
+    this.map = parseLayout(ROWS);
+    this.towers = new Map();
+    this.enemies = [];
+    this.shots = [];
+    this.events = [];
+    this.gold = START_GOLD; this.lives = START_LIVES;
+    this.waveNum = 0; this.active = []; this.everStarted = false;
+    this.endless = false; this.over = null; this.lostAt = 0; this.lostBy = null;
+    this.nextId = 1;
+    this.recompute();
+  }
+  blockedSet(extra) {
+    const s = new Set([...this.towers.keys()].filter((i) => this.map.cells[i].walk));
+    if (extra !== undefined) s.add(extra);
+    return s;
+  }
+  recompute() {
+    this.dist = flowField(this.map, this.blockedSet());
+    this.route = routeFrom(this.dist, this.map.spawn);
+  }
+  refund(t) { return this.everStarted ? Math.floor(t.paid * SELL_RATE) : t.paid; }
+  hasNextWave() { return this.endless || this.waveNum < MAIN_WAVES; }
+  pending() { return this.enemies.length + this.active.reduce((s, w) => s + w.queue.length, 0); }
+  check(idx, type, ignoreGold = false) {
+    const c = this.map.cells[idx];
+    if (!c.build) return { ok: false, reason: c.ramp ? '坡道不能建塔' : '入口和終點不能建塔' };
+    if (this.towers.has(idx)) return { ok: false, reason: '這格已經有塔' };
+    if (!ignoreGold && this.gold < TOWERS[type].cost) return { ok: false, reason: `金錢不足（要 ${TOWERS[type].cost}）` };
+    if (!c.walk) return { ok: true, blocker: false, route: this.route };
+    if (this.enemies.some((e) => e.cell === idx || e.next === idx)) return { ok: false, reason: '敵人正在這格上' };
+    const d = flowField(this.map, this.blockedSet(idx));
+    if (d[this.map.spawn] === Infinity) return { ok: false, reason: '會讓入口到終點斷線' };
+    if (this.enemies.some((e) => d[e.cell] === Infinity)) return { ok: false, reason: '會困住場上的敵人' };
+    return { ok: true, blocker: true, route: routeFrom(d, this.map.spawn) };
+  }
+  place(idx, type) {
+    if (this.over) return { ok: false, reason: '遊戲已結束' };
+    const r = this.check(idx, type);
+    if (!r.ok) return r;
+    this.gold -= TOWERS[type].cost;
+    this.towers.set(idx, { type, lv: 1, cd: 0, h: this.map.cells[idx].level, paid: TOWERS[type].cost });
+    this.recompute();
+    for (const e of this.enemies) e.next = -1;
+    return r;
+  }
+  upgrade(idx) {
+    const t = this.towers.get(idx);
+    if (!t) return { ok: false, reason: '沒有選中的塔' };
+    const c = upgradeCost(t);
+    if (c === null) return { ok: false, reason: '已經是最高級' };
+    if (this.gold < c) return { ok: false, reason: `金錢不足（要 ${c}）` };
+    this.gold -= c; t.lv++; t.paid += c;
+    return { ok: true };
+  }
+  sell(idx) {
+    const t = this.towers.get(idx);
+    if (!t) return { ok: false, reason: '沒有選中的塔' };
+    const refund = this.refund(t);
+    this.gold += refund;
+    this.towers.delete(idx);
+    this.recompute();
+    for (const e of this.enemies) e.next = -1;
+    return { ok: true, refund };
+  }
+  canStartWave() {
+    if (this.over) return { ok: false, reason: '遊戲已結束' };
+    if (!this.hasNextWave()) return { ok: false, reason: '已經是最後一波' };
+    if (this.active.length && !this.rules.earlyCall) return { ok: false, reason: '波次進行中，要等這波結束' };
+    return { ok: true };
+  }
+  startWave() {
+    const c = this.canStartWave();
+    if (!c.ok) return c;
+    const n = ++this.waveNum, def = waveDef(n), queue = [];
+    for (const g of def.groups) for (let k = 0; k < g.count; k++) queue.push({ type: g.type, t: g.delay + k * g.gap });
+    queue.sort((a, b) => a.t - b.t);
+    this.active.push({ n, queue, t: 0, live: 0, hpMul: def.hpMul });
+    this.everStarted = true;
+    return { ok: true, n };
+  }
+  lose(by) {
+    this.over = 'lost'; this.lostBy = by;
+    this.lostAt = this.active.length ? Math.max(...this.active.map((w) => w.n)) : this.waveNum;
+  }
+  step(dt) {
+    if (this.over) return;
+    for (const w of this.active) {
+      w.t += dt;
+      while (w.queue.length && w.queue[0].t <= w.t) {
+        const { type } = w.queue.shift(), s = this.map.spawn, hp = Math.round(ENEMIES[type].hp * w.hpMul);
+        this.enemies.push({ id: this.nextId++, type, hp, maxHp: hp, wave: w, x: cx(s), y: cy(s), cell: s, next: -1 });
+        w.live++;
+      }
+    }
+    for (const e of this.enemies) this.moveEnemy(e, dt);
+    for (const e of this.enemies.filter((x) => x.leaked)) {
+      e.wave.live--;
+      if (e.type === 'boss') { this.lives = 0; this.lose('boss'); return; }
+      this.lives -= ENEMIES[e.type].leak;
+      this.events.push({ kind: 'leak', text: `${ENEMIES[e.type].name}漏怪 −${ENEMIES[e.type].leak} 命` });
+    }
+    this.enemies = this.enemies.filter((e) => !e.leaked);
+    for (const [idx, t] of this.towers) this.fire(idx, t, dt);
+    this.enemies = this.enemies.filter((e) => {
+      if (e.hp > 0) return true;
+      this.gold += ENEMIES[e.type].bounty; e.wave.live--;
+      return false;
+    });
+    this.shots = this.shots.filter((s) => (s.ttl -= dt) > 0);
+    if (this.lives <= 0) { this.lives = 0; this.lose('lives'); return; }
+    let won = false;
+    this.active = this.active.filter((w) => {
+      if (w.queue.length || w.live > 0) return true;
+      this.gold += CLEAR_BONUS;
+      this.events.push({ kind: 'clear', text: `第 ${w.n} 波清除　清波獎勵 +${CLEAR_BONUS}` });
+      if (w.n === MAIN_WAVES && !this.endless) won = true;
+      return false;
+    });
+    if (won && !this.active.length) this.over = 'won';
+  }
+  moveEnemy(e, dt) {
+    let left = ENEMIES[e.type].speed * dt;
+    while (left > 0) {
+      if (e.cell === this.map.goal) { e.leaked = true; return; }
+      if (e.next < 0) e.next = nextCell(this.dist, e.cell);
+      const tx = cx(e.next), ty = cy(e.next), d = Math.hypot(tx - e.x, ty - e.y);
+      if (d > left) { e.x += (tx - e.x) / d * left; e.y += (ty - e.y) / d * left; return; }
+      e.x = tx; e.y = ty; left -= d; e.cell = e.next; e.next = -1;
+    }
+  }
+  remaining(e) {
+    const n = e.next >= 0 ? e.next : e.cell;
+    return this.dist[n] + Math.hypot(cx(n) - e.x, cy(n) - e.y);
+  }
+  fire(idx, t, dt) {
+    t.cd -= dt;
+    if (t.cd > 0) return;
+    const spec = TOWERS[t.type], tx = cx(idx), ty = cy(idx);
+    let target = null, bestRem = Infinity;
+    for (const e of this.enemies) {
+      if (e.hp <= 0) continue;
+      const r = rangeAgainst(t, this.map.cells[e.cell].level);
+      if (dist2(tx, ty, e.x, e.y) > r * r) continue;
+      const rem = this.remaining(e);
+      if (rem < bestRem) { bestRem = rem; target = e; }
+    }
+    if (!target) return;
+    t.cd = 1 / spec.rate;
+    const dmg = towerDamage(t);
+    if (spec.splash) { for (const e of this.enemies) if (dist2(e.x, e.y, target.x, target.y) <= spec.splash ** 2) e.hp -= dmg; }
+    else target.hp -= dmg;
+    this.shots.push({ x1: tx, y1: ty, x2: target.x, y2: target.y, color: spec.color, splash: spec.splash, ttl: 0.08 });
+  }
+}
+if (typeof module !== 'undefined') module.exports = { Sim, TOWERS, WAVES, waveDef, upgradeCost, TICK };
+</script>
+
+<script>
+// ===== 畫面與輸入 =====
+const CELL = 40;
+const params = new URLSearchParams(location.search);
+const RULES = { earlyCall: params.get('early') === '1', speedSet: params.get('speeds') === '3' ? [1, 2, 3] : [1, 2] };
+let sim, ui;
+function newGame() {
+  sim = new Sim(RULES);
+  ui = { placing: null, selected: -1, hover: -1, radial: null, preview: null, speedIdx: 0, paused: false, mouse: { x: 0, y: 0 }, log: null };
+}
+newGame();
+
+const canvas = document.createElement('canvas');
+canvas.width = W * CELL; canvas.height = H * CELL;
+const ctx = canvas.getContext('2d');
+const $ = (id) => document.getElementById(id);
+function setHTML(el, html) { if (el && el._h !== html) { el.innerHTML = html; el._h = html; } }
+function cellAt(ev) {
+  const r = canvas.getBoundingClientRect();
+  const x = Math.floor((ev.clientX - r.left) / r.width * W), y = Math.floor((ev.clientY - r.top) / r.height * H);
+  return x >= 0 && y >= 0 && x < W && y < H ? y * W + x : -1;
+}
+function cellClient(idx) {
+  const r = canvas.getBoundingClientRect();
+  return { x: r.left + cx(idx) / W * r.width, y: r.top + cy(idx) / H * r.height };
+}
+function floatMsg(text, at, kind = 'bad') {
+  const el = document.createElement('div');
+  el.className = `float-msg ${kind}`; el.textContent = text;
+  el.style.left = `${at.x}px`; el.style.top = `${at.y}px`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1600);
+}
+
+// ---- 共用片段 ----
+const swatch = (type) => `<span class="sw" style="background:${TOWERS[type].color}"></span>`;
+function groupsHTML(def) {
+  return def.groups.map((g) => `<span class="grp"><span class="ico" style="background:${ENEMIES[g.type].color}"></span>${ENEMIES[g.type].name}×${g.count}</span>`).join('')
+    + (def.hpMul > 1 ? `<span class="dim">血量 ×${def.hpMul.toFixed(2)}</span>` : '');
+}
+const waveLabel = () => (sim.endless ? `第 ${sim.waveNum} 波（無盡）` : `第 ${sim.waveNum} / ${MAIN_WAVES} 波`);
+function waveButton() {
+  const n = sim.waveNum + 1;
+  if (sim.over) return { disabled: true, label: '—' };
+  if (!sim.hasNextWave()) return { disabled: true, label: `最後一波（剩 ${sim.pending()} 隻）` };
+  if (sim.active.length && !RULES.earlyCall) return { disabled: true, label: `進行中（剩 ${sim.pending()} 隻）` };
+  if (sim.active.length) return { disabled: false, label: `提前叫第 ${n} 波` };
+  return { disabled: false, label: `開始第 ${n} 波` };
+}
+function nextWaveHTML() {
+  if (!sim.hasNextWave()) return '<span class="dim">沒有下一波</span>';
+  return `<span class="dim">第 ${sim.waveNum + 1} 波：</span>${groupsHTML(waveDef(sim.waveNum + 1))}`;
+}
+function speedHTML() {
+  return `<button data-act="pause" class="${ui.paused ? 'on' : ''}" title="Space">⏸</button>`
+    + RULES.speedSet.map((s, i) => `<button data-act="speed:${i}" class="${!ui.paused && i === ui.speedIdx ? 'on' : ''}" title="F 切換">${s}×</button>`).join('');
+}
+function towerFacts(idx) {
+  const t = sim.towers.get(idx), uc = upgradeCost(t);
+  return {
+    t, name: TOWERS[t.type].name, uc,
+    refund: sim.refund(t), rule: sim.everStarted ? '70%' : '全額',
+    stats: `射程 ${towerRange(t).toFixed(1)}${t.h ? `（對低地 +${HEIGHT_BONUS}）` : ''}・傷害 ${towerDamage(t).toFixed(0)}`,
+  };
+}
+function endHTML() {
+  if (sim.over === 'won') return `<div class="box"><h2>守住了王冠</h2><p>撐過 ${MAIN_WAVES} 波，剩 ${sim.lives} 條命</p><div class="row"><button data-act="continue" class="on">繼續（無盡模式）</button><button data-act="restart">重新開始</button></div></div>`;
+  if (sim.over === 'lost') {
+    const how = sim.lostBy === 'boss' ? 'Boss 抵達終點' : '生命歸零';
+    return `<div class="box"><h2>王冠陷落</h2><p>${how}</p><p style="font-size:20px">撐到第 <b>${sim.lostAt}</b> 波${sim.lostAt > MAIN_WAVES ? '（無盡）' : ''}</p><div class="row"><button data-act="restart" class="on">重新開始</button></div></div>`;
+  }
+  return '';
+}
+
+// ---- 指令：被拒絕時交給變體顯示 ----
+function reject(reason, at) { V.reject(reason, at); }
+function tryPlace(idx, type, at) { const r = sim.place(idx, type); if (!r.ok) reject(r.reason, at); return r; }
+function tryUpgrade(at) { const r = sim.upgrade(ui.selected); if (!r.ok) reject(r.reason, at); return r; }
+function trySell(at) { const r = sim.sell(ui.selected); if (r.ok) { ui.selected = -1; ui.radial = null; } else reject(r.reason, at); return r; }
+function tryWave(at) { const r = sim.startWave(); if (!r.ok) reject(r.reason, at); return r; }
+function cycleSpeed() { if (ui.paused) ui.paused = false; else ui.speedIdx = (ui.speedIdx + 1) % RULES.speedSet.length; }
+function cancelAll() { ui.placing = null; ui.selected = -1; ui.radial = null; ui.preview = null; }
+
+function act(a, at) {
+  const [k, v] = a.split(':');
+  if (k === 'tower') { ui.placing = ui.placing === v ? null : v; ui.selected = -1; }
+  else if (k === 'build') { if (tryPlace(ui.radial.idx, v, at).ok) { ui.radial = null; ui.preview = null; } }
+  else if (k === 'upgrade') tryUpgrade(at);
+  else if (k === 'sell') trySell(at);
+  else if (k === 'wave') tryWave(at);
+  else if (k === 'pause') ui.paused = !ui.paused;
+  else if (k === 'speed') { ui.speedIdx = +v; ui.paused = false; }
+  else if (k === 'close') cancelAll();
+  else if (k === 'continue') { sim.endless = true; sim.over = null; }
+  else if (k === 'restart') newGame();
+}
+
+// ---- 三種變體 ----
+const VARIANTS = {
+  A: {
+    name: '側欄商店',
+    mount(root) {
+      root.innerHTML = `<div class="va"><div class="stage" id="stage"><div class="end" id="end"></div></div>
+        <div class="side">
+          <div class="stats"><div class="stat">生命<b id="lv"></b></div><div class="stat">金錢<b id="gd"></b></div><div class="stat wide" id="wv"></div></div>
+          <div><h4>建造　<kbd>1</kbd>–<kbd>3</kbd>，Shift 連放，右鍵或 <kbd>Esc</kbd> 取消</h4><div id="shop"></div></div>
+          <div id="sel"></div>
+          <div><h4>下一波</h4><div id="next"></div></div>
+          <div class="log" id="log"></div>
+          <div class="ctrl"><div class="speed" id="speed"></div><button class="bigwave" id="wave" data-act="wave"></button></div>
+        </div></div>`;
+    },
+    sync() {
+      $('lv').textContent = sim.lives; $('gd').textContent = sim.gold; $('wv').textContent = waveLabel();
+      setHTML($('shop'), TOWER_KEYS.map((k) => `<button class="card ${ui.placing === k ? 'on' : ''}" data-act="tower:${k}" ${sim.gold < TOWERS[k].cost ? 'style="opacity:.5"' : ''}><span>${swatch(k)}<kbd>${TOWERS[k].key}</kbd> ${TOWERS[k].name}</span><b>${TOWERS[k].cost}</b></button>`).join(''));
+      if (ui.selected >= 0) {
+        const f = towerFacts(ui.selected);
+        setHTML($('sel'), `<h4>選中</h4><div class="sel"><b>${f.name}</b> Lv${f.t.lv}<div class="dim">${f.stats}</div><div class="btns">
+          <button data-act="upgrade" ${f.uc === null ? 'disabled' : ''}>${f.uc === null ? '已滿級' : `升級 −${f.uc}`} <kbd>U</kbd></button>
+          <button data-act="sell">賣出 +${f.refund}（${f.rule}）<kbd>S</kbd></button></div></div>`);
+      } else setHTML($('sel'), `<h4>選中</h4><div class="dim">點地圖上的塔看升級與賣出</div>`);
+      setHTML($('next'), nextWaveHTML());
+      const log = ui.log && ui.log.until > performance.now() ? ui.log : null;
+      $('log').className = `log ${log && log.kind === 'good' ? 'good' : ''}`;
+      $('log').textContent = log ? log.text : '';
+      setHTML($('speed'), speedHTML());
+      const b = waveButton(); $('wave').disabled = b.disabled; $('wave').innerHTML = `${b.label} <kbd>N</kbd>`;
+    },
+    click: towerFirstClick,
+    reject(text) { ui.log = { text, kind: 'bad', until: performance.now() + 2500 }; },
+    notify(text, kind) { ui.log = { text, kind, until: performance.now() + 2500 }; },
+  },
+  B: {
+    name: '上下條＋情境卡',
+    mount(root) {
+      root.innerHTML = `<div class="vb">
+        <div class="strip top"><span><span class="k">生命</span><b id="lv"></b></span><span><span class="k">金錢</span><b id="gd"></b></span><span id="wv"></span>
+          <span class="next" id="next"></span><span class="speed" id="speed"></span></div>
+        <div class="stage" id="stage"><div class="ctx" id="ctx"></div><div class="end" id="end"></div></div>
+        <div class="strip bottom"><div id="bar" style="display:flex;gap:6px"></div><button class="bwave" id="wave" data-act="wave"></button></div></div>`;
+    },
+    sync() {
+      $('lv').textContent = sim.lives; $('gd').textContent = sim.gold; $('wv').textContent = waveLabel();
+      setHTML($('next'), `下一波 ${nextWaveHTML()}`);
+      setHTML($('speed'), speedHTML());
+      setHTML($('bar'), TOWER_KEYS.map((k) => `<button class="slot ${ui.placing === k ? 'on' : ''} ${sim.gold < TOWERS[k].cost ? 'poor' : ''}" data-act="tower:${k}"><kbd>${TOWERS[k].key}</kbd>${swatch(k)}<span>${TOWERS[k].name}</span><b>${TOWERS[k].cost}</b></button>`).join(''));
+      const b = waveButton(); $('wave').disabled = b.disabled; $('wave').innerHTML = `${b.label} <kbd>N</kbd>`;
+      const ctx = $('ctx');
+      if (ui.selected >= 0) {
+        const f = towerFacts(ui.selected), x = ui.selected % W, y = Math.floor(ui.selected / W);
+        const left = x > W - 6 ? (x * CELL - 196) : ((x + 1) * CELL + 6);
+        ctx.style.left = `${left}px`; ctx.style.top = `${Math.min(Math.max(0, y * CELL - 20), H * CELL - 150)}px`;
+        setHTML(ctx, `<button class="x" data-act="close">✕</button><b>${f.name}</b> Lv${f.t.lv}<div class="dim" style="font-size:12px">${f.stats}</div><div class="btns">
+          <button data-act="upgrade" ${f.uc === null ? 'disabled' : ''}>${f.uc === null ? '已滿級' : `升到 Lv${f.t.lv + 1}　−${f.uc}`} <kbd>U</kbd></button>
+          <button data-act="sell">賣出　+${f.refund}（${f.rule}） <kbd>S</kbd></button></div>`);
+      } else setHTML(ctx, '');
+    },
+    click: towerFirstClick,
+    reject(text, at) { floatMsg(text, at || ui.mouse); },
+    notify(text, kind) { const r = $('wv').getBoundingClientRect(); floatMsg(text, { x: r.left + r.width / 2, y: r.bottom + 34 }, kind); },
+  },
+  C: {
+    name: '地圖優先（環形選單＋入口旗）',
+    mount(root) {
+      root.innerHTML = `<div class="vc"><div class="stage" id="stage">
+        <div class="corner bl"><span>生命 <b id="lv"></b></span><span>金錢 <b id="gd"></b></span></div>
+        <div class="corner br"><span id="wv"></span><span class="speed" id="speed"></span></div>
+        <div class="flag" id="flag"></div>
+        <div class="radial" id="radial"></div>
+        <div class="end" id="end"></div></div>
+        <p class="dim">點空地叫出建造環；點塔叫出升級／賣出環；點入口旗開波。右鍵或 <kbd>Esc</kbd> 關閉。環開著時 <kbd>1</kbd>–<kbd>3</kbd> 直接蓋。</p></div>`;
+    },
+    sync() {
+      $('lv').textContent = sim.lives; $('gd').textContent = sim.gold; $('wv').textContent = waveLabel();
+      setHTML($('speed'), speedHTML());
+      const b = waveButton();
+      setHTML($('flag'), `${nextWaveHTML()}<button data-act="wave" ${b.disabled ? 'disabled' : ''}>⚑ ${b.label}</button>`);
+      const rad = $('radial'), R = ui.radial;
+      if (!R) { setHTML(rad, ''); return; }
+      rad.style.left = `${cx(R.idx) * CELL}px`; rad.style.top = `${cy(R.idx) * CELL}px`;
+      const at = (deg, r = 58) => `left:${Math.cos(deg * Math.PI / 180) * r}px;top:${Math.sin(deg * Math.PI / 180) * r}px`;
+      if (R.kind === 'build') {
+        setHTML(rad, TOWER_KEYS.map((k, i) => `<button class="opt ${sim.gold < TOWERS[k].cost ? 'poor' : ''}" style="${at(-90 + i * 120)}" data-act="build:${k}" data-preview="${k}">${swatch(k)}${TOWERS[k].name}<br><b>${TOWERS[k].cost}</b></button>`).join('')
+          + `<button class="mid" data-act="close">✕</button>`);
+      } else {
+        const f = towerFacts(R.idx);
+        setHTML(rad, `<button class="opt" style="${at(-140)}" data-act="upgrade" ${f.uc === null ? 'disabled' : ''}>升級<br><b>${f.uc === null ? '已滿級' : `−${f.uc}`}</b></button>
+          <button class="opt" style="${at(-40)}" data-act="sell">賣出<br><b>+${f.refund}</b> <span class="dim">${f.rule}</span></button>
+          <button class="mid" data-act="close">✕</button>
+          <div class="info" style="top:30px">${f.name} Lv${f.t.lv}・${f.stats}</div>`);
+      }
+    },
+    click(idx, ev) {
+      if (ui.radial) { cancelAll(); return; }
+      if (idx < 0) return;
+      if (sim.towers.has(idx)) { ui.selected = idx; ui.radial = { idx, kind: 'tower' }; return; }
+      const r = sim.check(idx, 'basic', true);
+      if (!r.ok && r.reason !== '會讓入口到終點斷線' && r.reason !== '敵人正在這格上' && r.reason !== '會困住場上的敵人') { reject(r.reason, cellClient(idx)); return; }
+      ui.radial = { idx, kind: 'build' };
+    },
+    reject(text, at) { floatMsg(text, (ui.radial && cellClient(ui.radial.idx)) || at || ui.mouse); },
+    notify(text, kind) { const r = $('flag').getBoundingClientRect(); floatMsg(text, { x: r.left + r.width / 2 + 60, y: r.top + 10 }, kind); },
+  },
+};
+function towerFirstClick(idx, ev) {
+  if (idx < 0) return;
+  if (ui.placing) { const r = tryPlace(idx, ui.placing, { x: ev.clientX, y: ev.clientY }); if (r.ok && !ev.shiftKey) ui.placing = null; return; }
+  ui.selected = sim.towers.has(idx) ? idx : -1;
+}
+
+let variantKey = VARIANTS[params.get('variant')] ? params.get('variant') : 'A';
+let V = VARIANTS[variantKey];
+const root = $('root');
+function setParam(k, v) { const u = new URL(location.href); if (v === null) u.searchParams.delete(k); else u.searchParams.set(k, v); history.replaceState(null, '', u); }
+function loadVariant(k) {
+  variantKey = k; V = VARIANTS[k]; setParam('variant', k);
+  cancelAll();
+  V.mount(root);
+  $('stage').prepend(canvas);
+  renderDevbar();
+}
+
+// ---- 輸入 ----
+root.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]');
+  if (b && !b.disabled) act(b.dataset.act, { x: e.clientX, y: e.clientY });
+});
+root.addEventListener('mouseover', (e) => {
+  const p = e.target.closest('[data-preview]');
+  ui.preview = p && ui.radial ? { idx: ui.radial.idx, type: p.dataset.preview } : null;
+});
+canvas.addEventListener('mousemove', (ev) => { ui.hover = cellAt(ev); ui.mouse = { x: ev.clientX, y: ev.clientY }; });
+canvas.addEventListener('mouseleave', () => { ui.hover = -1; });
+canvas.addEventListener('click', (ev) => V.click(cellAt(ev), ev));
+canvas.addEventListener('contextmenu', (ev) => { ev.preventDefault(); cancelAll(); });
+addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    const keys = Object.keys(VARIANTS), d = e.key === 'ArrowLeft' ? -1 : 1;
+    loadVariant(keys[(keys.indexOf(variantKey) + d + keys.length) % keys.length]); return;
+  }
+  const type = TOWER_KEYS.find((k) => TOWERS[k].key === e.key);
+  if (type) { if (variantKey === 'C') { if (ui.radial && ui.radial.kind === 'build') act(`build:${type}`); } else act(`tower:${type}`); return; }
+  const k = e.key.toLowerCase();
+  if (e.key === ' ') { e.preventDefault(); ui.paused = !ui.paused; }
+  else if (k === 'n' || e.key === 'Enter') tryWave(null);
+  else if (k === 'f') cycleSpeed();
+  else if (k === 'u') tryUpgrade(ui.selected >= 0 ? cellClient(ui.selected) : null);
+  else if (k === 's') trySell(ui.selected >= 0 ? cellClient(ui.selected) : null);
+  else if (e.key === 'Escape') cancelAll();
+});
+
+// ---- 原型切換列 ----
+const devbar = $('devbar');
+function renderDevbar() {
+  const keys = Object.keys(VARIANTS);
+  devbar.innerHTML = `<button data-d="prev">◀</button><b>${variantKey}・${V.name}</b><button data-d="next">▶</button><span class="sep"></span>
+    提前叫波 <button data-d="early" class="${RULES.earlyCall ? 'on' : ''}">${RULES.earlyCall ? '開' : '關'}</button>
+    倍速 <button data-d="s2" class="${RULES.speedSet.length === 2 ? 'on' : ''}">1·2×</button><button data-d="s3" class="${RULES.speedSet.length === 3 ? 'on' : ''}">1·2·3×</button><span class="sep"></span>
+    測試 <button data-d="gold">+500 金</button><button data-d="win">直接勝利</button><button data-d="lose">直接敗北</button>`;
+  devbar._keys = keys;
+}
+devbar.addEventListener('click', (e) => {
+  const d = e.target.closest('[data-d]')?.dataset.d, keys = devbar._keys;
+  if (!d) return;
+  if (d === 'prev' || d === 'next') loadVariant(keys[(keys.indexOf(variantKey) + (d === 'prev' ? -1 : 1) + keys.length) % keys.length]);
+  if (d === 'early') { RULES.earlyCall = !RULES.earlyCall; setParam('early', RULES.earlyCall ? '1' : null); }
+  if (d === 's2' || d === 's3') { RULES.speedSet = d === 's3' ? [1, 2, 3] : [1, 2]; ui.speedIdx = Math.min(ui.speedIdx, RULES.speedSet.length - 1); setParam('speeds', d === 's3' ? '3' : null); }
+  if (d === 'gold') sim.gold += 500;
+  if (d === 'win') { sim.waveNum = MAIN_WAVES; sim.active = []; sim.enemies = []; sim.everStarted = true; sim.over = 'won'; }
+  if (d === 'lose') { sim.lives = 0; sim.lose('lives'); }
+  renderDevbar();
+});
+
+// ---- 繪圖 ----
+function draw() {
+  const { cells } = sim.map;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (let i = 0; i < W * H; i++) {
+    const c = cells[i], x = (i % W) * CELL, y = Math.floor(i / W) * CELL;
+    ctx.fillStyle = c.ramp ? '#a8946a' : c.walk ? (c.level ? '#d6c89c' : '#b8a679') : (c.level ? '#7a9a5c' : '#4f6d40');
+    ctx.fillRect(x, y, CELL, CELL);
+    if (c.ramp) { ctx.strokeStyle = '#0003'; ctx.lineWidth = 2; for (let k = 8; k < CELL; k += 8) { ctx.beginPath(); ctx.moveTo(x + k, y + 4); ctx.lineTo(x + k, y + CELL - 4); ctx.stroke(); } }
+    ctx.strokeStyle = '#0000001a'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
+  }
+  ctx.strokeStyle = '#1b2414'; ctx.lineWidth = 4;
+  for (let i = 0; i < W * H; i++) {
+    const x = i % W, y = Math.floor(i / W);
+    if (x < W - 1 && isCliff(cells, i, i + 1)) { ctx.beginPath(); ctx.moveTo((x + 1) * CELL, y * CELL); ctx.lineTo((x + 1) * CELL, (y + 1) * CELL); ctx.stroke(); }
+    if (y < H - 1 && isCliff(cells, i, i + W)) { ctx.beginPath(); ctx.moveTo(x * CELL, (y + 1) * CELL); ctx.lineTo((x + 1) * CELL, (y + 1) * CELL); ctx.stroke(); }
+  }
+  ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#c0392b'; ctx.fillText('▶', cx(sim.map.spawn) * CELL, cy(sim.map.spawn) * CELL);
+  ctx.fillStyle = '#f1c40f'; ctx.fillText('♛', cx(sim.map.goal) * CELL, cy(sim.map.goal) * CELL);
+  drawRoute(sim.route, 'rgba(255,255,255,.45)', [4, 6]);
+
+  const ghost = ui.preview || (ui.placing && ui.hover >= 0 ? { idx: ui.hover, type: ui.placing } : null);
+  if (ghost) drawGhost(ghost);
+  if (ui.selected >= 0 && sim.towers.has(ui.selected)) {
+    const t = sim.towers.get(ui.selected);
+    drawRange(ui.selected, rangeAgainst(t, 0), 'rgba(224,180,76,.9)');
+  }
+  for (const [idx, t] of sim.towers) {
+    const x = (idx % W) * CELL, y = Math.floor(idx / W) * CELL;
+    ctx.fillStyle = TOWERS[t.type].color; ctx.fillRect(x + 5, y + 5, CELL - 10, CELL - 10);
+    if (sim.map.cells[idx].walk) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(x + 5, y + 5, CELL - 10, CELL - 10); }
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 15px system-ui'; ctx.fillText(TOWERS[t.type].short, x + CELL / 2, y + CELL / 2 - 2);
+    for (let k = 0; k < t.lv; k++) { ctx.fillRect(x + 10 + k * 8, y + CELL - 11, 5, 4); }
+    if (idx === ui.selected) { ctx.strokeStyle = '#e0b44c'; ctx.lineWidth = 3; ctx.strokeRect(x + 2, y + 2, CELL - 4, CELL - 4); }
+  }
+  for (const e of sim.enemies) {
+    const s = ENEMIES[e.type], px = e.x * CELL, py = e.y * CELL, r = s.r * CELL;
+    ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+    if (e.type === 'boss') { ctx.strokeStyle = '#f1c40f'; ctx.lineWidth = 2; ctx.stroke(); }
+    ctx.fillStyle = '#0008'; ctx.fillRect(px - r, py - r - 6, r * 2, 3);
+    ctx.fillStyle = '#5fd35f'; ctx.fillRect(px - r, py - r - 6, r * 2 * Math.max(0, e.hp / e.maxHp), 3);
+  }
+  for (const s of sim.shots) {
+    ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(s.x1 * CELL, s.y1 * CELL); ctx.lineTo(s.x2 * CELL, s.y2 * CELL); ctx.stroke();
+    if (s.splash) { ctx.beginPath(); ctx.arc(s.x2 * CELL, s.y2 * CELL, s.splash * CELL, 0, Math.PI * 2); ctx.stroke(); }
+  }
+  if (ui.hover >= 0 && !ui.radial) { ctx.strokeStyle = '#fff8'; ctx.lineWidth = 2; ctx.strokeRect((ui.hover % W) * CELL + 1, Math.floor(ui.hover / W) * CELL + 1, CELL - 2, CELL - 2); }
+  if (ui.paused && !sim.over) { ctx.fillStyle = '#0006'; ctx.fillRect(0, 0, canvas.width, 34); ctx.fillStyle = '#fff'; ctx.font = 'bold 16px system-ui'; ctx.fillText('暫停中（Space 繼續）', canvas.width / 2, 17); }
+}
+function drawRoute(route, color, dash) {
+  if (route.length < 2) return;
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash(dash);
+  ctx.beginPath(); route.forEach((c, k) => (k ? ctx.lineTo(cx(c) * CELL, cy(c) * CELL) : ctx.moveTo(cx(c) * CELL, cy(c) * CELL))); ctx.stroke();
+  ctx.setLineDash([]);
+}
+function drawRange(idx, r, color) {
+  ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx(idx) * CELL, cy(idx) * CELL, r * CELL, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+}
+// 射程圈以車道最低層（0 層）為基準：高台上的塔畫出含高度優勢的圈。
+function drawGhost({ idx, type }) {
+  const r = sim.check(idx, type, true), poor = sim.gold < TOWERS[type].cost, ok = r.ok && !poor;
+  const x = (idx % W) * CELL, y = Math.floor(idx / W) * CELL, h = sim.map.cells[idx].level;
+  drawRange(idx, TOWERS[type].range + h * HEIGHT_BONUS, ok ? 'rgba(255,255,255,.8)' : 'rgba(224,96,90,.9)');
+  ctx.globalAlpha = 0.6; ctx.fillStyle = ok ? TOWERS[type].color : '#e0605a'; ctx.fillRect(x + 5, y + 5, CELL - 10, CELL - 10); ctx.globalAlpha = 1;
+  let label = !r.ok ? r.reason : poor ? `金錢不足（要 ${TOWERS[type].cost}）` : '';
+  if (r.ok && r.blocker) {
+    drawRoute(r.route, '#ff9f43', [6, 4]);
+    const delta = r.route.length - sim.route.length;
+    label = `路障：路線 ${delta >= 0 ? '+' : ''}${delta} 格${label ? `・${label}` : ''}`;
+  } else if (r.ok && h > 0) label = `高台：對低地射程 +${HEIGHT_BONUS}${label ? `・${label}` : ''}`;
+  if (label) {
+    ctx.font = '13px system-ui'; const w = ctx.measureText(label).width + 12, lx = Math.min(Math.max(x + CELL / 2, w / 2), canvas.width - w / 2), ly = ui.preview ? Math.min(y + CELL / 2 + 92, canvas.height - 12) : y > 30 ? y - 12 : y + CELL + 12;
+    ctx.fillStyle = '#000b'; ctx.fillRect(lx - w / 2, ly - 10, w, 20); ctx.fillStyle = ok ? '#fff' : '#ffb3ae'; ctx.fillText(label, lx, ly);
+  }
+}
+
+// ---- 主迴圈 ----
+let last = performance.now(), acc = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (!ui.paused) { acc += dt * RULES.speedSet[ui.speedIdx]; while (acc >= TICK) { sim.step(TICK); acc -= TICK; } }
+  for (const ev of sim.events.splice(0)) V.notify(ev.text, ev.kind === 'clear' ? 'good' : 'bad');
+  if (ui.selected >= 0 && !sim.towers.has(ui.selected)) { ui.selected = -1; if (ui.radial?.kind === 'tower') ui.radial = null; }
+  draw(); V.sync(); setHTML($('end'), endHTML());
+  requestAnimationFrame(frame);
+}
+loadVariant(variantKey);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
