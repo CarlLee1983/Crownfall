@@ -106,6 +106,7 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   await page.keyboard.press('Escape');
 
   const waveControls = page.getByRole('region', { name: '波次與時間控制' });
+  await expect(waveControls.getByText('骷髏兵 ×8', { exact: true })).toBeVisible();
   // While paused, starting the wave spawns its first enemy without advancing the world.
   await waveControls.getByRole('button', { name: '暫停' }).click();
   await expect(waveControls.getByRole('button', { name: '繼續' })).toBeVisible();

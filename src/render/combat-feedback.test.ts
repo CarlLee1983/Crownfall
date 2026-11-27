@@ -93,7 +93,7 @@ it('keeps all six death fragments on the world layer', () => {
 });
 
 it.each([
-  ['grunt', 0xffe7a4],
+  ['grunt', 0xe0ac4f],
   ['runner', 0xb5ec69],
   ['tank', 0xffad73],
   ['boss', 0xf37b55],

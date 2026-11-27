@@ -18,7 +18,7 @@ export const LAYER_HEIGHT = 0.6;
 const COLOURS = {
   low: 0x5f774a,
   high: 0xabaeba,
-  laneLow: 0x878997,
+  laneLow: 0xc0b1a0,
   laneHigh: 0x9194a3,
   spawn: 0xad6158,
   goal: 0x648bb4,
