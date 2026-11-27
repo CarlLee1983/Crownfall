@@ -15,26 +15,27 @@
       </section>
       <p id="build-preview"></p>
       <p id="build-feedback" role="status"></p>
-      <section id="game-vitals" aria-label="生命與金錢">
-        <span>生命 <strong id="game-lives"></strong></span>
-        <span>金錢 <strong id="build-balance"></strong></span>
-      </section>
-      <section id="wave-flag" aria-label="入口旗" hidden>
-        <p id="wave-preview"></p>
-        <button id="start-wave" type="button" aria-keyshortcuts="N">開波 <kbd>N</kbd></button>
-      </section>
-      <section id="game-controls" aria-label="波次與時間控制">
-        <p id="wave-number"></p>
-        <button id="pause" type="button" aria-keyshortcuts="Space">暫停</button>
-        <button id="speed" type="button" aria-keyshortcuts="F" aria-label="切換倍速">1×</button>
-      </section>
+      <div id="wave-flag" role="img" aria-label="入口旗" hidden></div>
+      <div id="game-hud">
+        <section id="game-vitals" aria-label="生命與金錢">
+          <span>生命 <strong id="game-lives"></strong></span>
+          <span>金錢 <strong id="build-balance"></strong></span>
+        </section>
+        <section id="game-controls" aria-label="波次與時間控制">
+          <p id="wave-number"></p>
+          <p id="wave-preview"></p>
+          <button id="start-wave" type="button" aria-keyshortcuts="N">開波 <kbd>N</kbd></button>
+          <button id="pause" type="button" aria-keyshortcuts="Space">暫停</button>
+          <button id="speed" type="button" aria-keyshortcuts="F" aria-label="切換倍速">1×</button>
+        </section>
+      </div>
       <p id="wave-feedback" role="status"></p>
       <dialog id="game-help" aria-labelledby="help-title">
         <h1 id="help-title">操作說明</h1>
         <ul>
           <li>點空地打開建造環，選擇塔種或按 <kbd>1</kbd>～<kbd>3</kbd> 建塔。</li>
           <li>點塔打開升級／賣出環，按 <kbd>U</kbd> 升級、<kbd>S</kbd> 賣出。</li>
-          <li>點入口旗上的「開波」或按 <kbd>N</kbd> 開始下一波。</li>
+          <li>點右下方的「開波」或按 <kbd>N</kbd> 開始下一波。</li>
           <li>按 <kbd>Space</kbd> 暫停或繼續，按 <kbd>F</kbd> 切換倍速。</li>
           <li>按住滑鼠左鍵拖曳或按方向鍵平移鏡頭，滾動滾輪縮放。</li>
         </ul>

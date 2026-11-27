@@ -81,7 +81,6 @@ export function createBuildHud(
   const detail = element('build-preview');
   const feedback = element('build-feedback');
   const balance = element('build-balance');
-  const waveFlag = element('wave-flag');
   const raycaster = new Raycaster();
   const pointer = new Vector2();
   const projectCell = cellProjection(camera);
@@ -205,16 +204,7 @@ export function createBuildHud(
     const x = centeredX(ring, point.x);
     const above = point.y - height + gap;
     const below = point.y - gap;
-    const flag = managing && !waveFlag.hidden ? waveFlag.getBoundingClientRect() : undefined;
-    const halfWidth = ring.offsetWidth / 2;
-    const overlapsFlag =
-      flag !== undefined &&
-      x - halfWidth < flag.right &&
-      x + halfWidth > flag.left &&
-      above < flag.bottom &&
-      above + height > flag.top;
-    const placeBelow =
-      above < EDGE_MARGIN || (overlapsFlag && below + height + EDGE_MARGIN <= window.innerHeight);
+    const placeBelow = above < EDGE_MARGIN;
     const top = placeBelow ? below : above;
     ring.classList.toggle('below-cell', placeBelow);
     ring.style.left = `${x}px`;
@@ -234,7 +224,7 @@ export function createBuildHud(
       if (
         managing &&
         event.target instanceof Element &&
-        event.target.closest('#game-controls, #wave-flag') !== null
+        event.target.closest('#game-controls') !== null
       )
         return;
       if (chosen !== undefined) close();
