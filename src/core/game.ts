@@ -1,5 +1,5 @@
 import { TICKS_PER_SECOND } from './clock';
-import type { Content } from './content';
+import type { Content, EnemyDefinition, TowerDefinition } from './content';
 import { type CellIndex, cellAt, cellIndex, cellPoint, type GridPoint, type Level } from './level';
 import { type DistanceField, distanceField, nextCell } from './pathing';
 import { checkPlacement, type PlacementRejection, rangeBonusForLayers } from './placement';
@@ -32,6 +32,11 @@ interface EnemyRules {
   readonly speedPerTick: number;
   readonly maxHp: number;
   readonly bounty: number;
+  readonly leakDamage: EnemyDefinition['leakDamage'];
+}
+
+interface TowerRules extends TowerDefinition {
+  readonly ticksPerShot: number | undefined;
 }
 
 interface PendingSpawn {
@@ -43,8 +48,16 @@ export interface GameState {
   readonly tick: number;
   readonly level: Level;
   readonly money: number;
+  readonly lives: number;
+  readonly phase: 'preparation' | 'wave' | 'victory' | 'defeat';
+  /** 已開始的波次數。 */
+  readonly waveNumber: number;
+  readonly defeatReason: DefeatReason | undefined;
+  readonly waveClearReward: number;
+  /** 各波的出兵清單，tick 相對於開波時計算。 */
+  readonly waves: readonly (readonly PendingSpawn[])[];
   readonly towers: readonly Tower[];
-  readonly towerDefinitions: Content['towers'];
+  readonly towerDefinitions: Readonly<Record<string, TowerRules>>;
   readonly heightRangeBonus: number;
   readonly enemyRules: Readonly<Record<string, EnemyRules>>;
   readonly distance: DistanceField;
@@ -54,13 +67,19 @@ export interface GameState {
   readonly pendingSpawns: readonly PendingSpawn[];
 }
 
-export type Command = {
-  readonly type: 'placeTower';
-  /** 要套用這筆指令的輸入狀態 tick。 */
-  readonly tick: number;
-  readonly cell: CellIndex;
-  readonly kind: string;
-};
+export type DefeatReason = 'noLives' | 'bossLeaked';
+type WaveStartRejection = 'waveInProgress' | 'noNextWave' | 'gameOver';
+export type WaveRejection = 'wrongTick' | WaveStartRejection;
+
+export type Command =
+  | {
+      readonly type: 'placeTower';
+      /** 要套用這筆指令的輸入狀態 tick。 */
+      readonly tick: number;
+      readonly cell: CellIndex;
+      readonly kind: string;
+    }
+  | { readonly type: 'startWave'; readonly tick: number };
 
 export type GameEvent =
   | {
@@ -75,7 +94,16 @@ export type GameEvent =
       readonly enemyKind: string;
       readonly bounty: number;
     }
-  | { readonly type: 'leaked'; readonly enemyId: EnemyId; readonly enemyKind: string }
+  | {
+      readonly type: 'leaked';
+      readonly enemyId: EnemyId;
+      readonly enemyKind: string;
+      readonly livesLost: number;
+    }
+  | { readonly type: 'waveCleared'; readonly waveNumber: number; readonly reward: number }
+  | { readonly type: 'victory'; readonly waveNumber: number }
+  | { readonly type: 'defeat'; readonly waveNumber: number; readonly reason: DefeatReason }
+  | { readonly type: 'waveRejected'; readonly reason: WaveRejection }
   | { readonly type: 'rejected'; readonly cell: CellIndex; readonly reason: PlacementRejection };
 
 export interface StepResult {
@@ -99,42 +127,89 @@ export function createGame(content: Content, level: Level): GameState {
         speedPerTick: definition.speed / TICKS_PER_SECOND,
         maxHp: definition.hp,
         bounty: definition.bounty,
+        leakDamage: definition.leakDamage,
       },
     ]),
   );
 
-  // 還沒有開波指令，第一波在開局時直接開始。
-  const firstWave = content.waves[0]?.groups ?? [];
-  const pendingSpawns = firstWave
-    .flatMap((group) => {
-      if (enemyRules[group.enemy] === undefined)
-        throw new Error(`未知的敵人種類「${group.enemy}」`);
-      return Array.from({ length: group.count }, (_, i) => ({
-        kind: group.enemy,
-        tick: secondsToTicks(group.delay + i * group.interval),
-      }));
-    })
-    .sort((a, b) => a.tick - b.tick);
+  const towerDefinitions = Object.fromEntries(
+    Object.entries(content.towers).map(([kind, definition]) => [
+      kind,
+      {
+        ...definition,
+        ticksPerShot:
+          definition.shotsPerSecond > 0
+            ? Math.max(1, TICKS_PER_SECOND / definition.shotsPerSecond)
+            : undefined,
+      },
+    ]),
+  );
 
-  return spawnDue({
+  const waves = content.waves.map(({ groups }) =>
+    groups
+      .flatMap((group) => {
+        if (!Object.hasOwn(enemyRules, group.enemy)) {
+          throw new Error(`未知的敵人種類「${group.enemy}」`);
+        }
+        return Array.from({ length: group.count }, (_, i) => ({
+          kind: group.enemy,
+          tick: secondsToTicks(group.delay + i * group.interval),
+        }));
+      })
+      .sort((a, b) => a.tick - b.tick),
+  );
+
+  const lives = Math.max(0, content.startingLives);
+  return {
     tick: 0,
     level,
     money: content.startingMoney,
+    lives,
+    phase: lives === 0 ? 'defeat' : 'preparation',
+    waveNumber: 0,
+    defeatReason: lives === 0 ? 'noLives' : undefined,
+    waveClearReward: content.waveClearReward,
+    waves,
     towers: [],
-    towerDefinitions: content.towers,
+    towerDefinitions,
     heightRangeBonus: content.heightRangeBonus,
     enemyRules,
     distance,
     enemies: [],
     nextEnemyId: 1 as EnemyId,
-    pendingSpawns,
-  });
+    pendingSpawns: [],
+  };
 }
 
-export function step(state: GameState, commands: readonly Command[]): StepResult {
+function nextWave(state: GameState): readonly PendingSpawn[] | WaveStartRejection {
+  if (state.phase === 'victory' || state.phase === 'defeat') return 'gameOver';
+  if (state.phase === 'wave') return 'waveInProgress';
+  return state.waves[state.waveNumber] ?? 'noNextWave';
+}
+
+export function waveStartRejection(state: GameState): WaveStartRejection | undefined {
+  const wave = nextWave(state);
+  return typeof wave === 'string' ? wave : undefined;
+}
+
+export function applyCommands(state: GameState, commands: readonly Command[]): StepResult {
   const events: GameEvent[] = [];
   let current = state;
   for (const command of commands) {
+    if (command.type === 'startWave') {
+      const wave = command.tick === current.tick ? nextWave(current) : 'wrongTick';
+      if (typeof wave === 'string') {
+        events.push({ type: 'waveRejected', reason: wave });
+      } else {
+        current = spawnDue({
+          ...current,
+          phase: 'wave',
+          waveNumber: current.waveNumber + 1,
+          pendingSpawns: wave.map(({ kind, tick }) => ({ kind, tick: current.tick + tick })),
+        });
+      }
+      continue;
+    }
     if (command.tick !== current.tick) {
       events.push({ type: 'rejected', cell: command.cell, reason: 'wrongTick' });
       continue;
@@ -151,18 +226,58 @@ export function step(state: GameState, commands: readonly Command[]): StepResult
       distance: placement.distance,
     };
   }
-  const combat = attack(current);
-  current = combat.state;
-  for (const event of combat.events) events.push(event);
-  const enemies = current.enemies.flatMap((enemy) => {
+  return { state: current, events };
+}
+
+export function step(state: GameState, commands: readonly Command[]): StepResult {
+  const applied = applyCommands(state, commands);
+  if (applied.state.phase === 'victory' || applied.state.phase === 'defeat') return applied;
+  if (applied.state.phase === 'preparation') {
+    return { state: { ...applied.state, tick: applied.state.tick + 1 }, events: applied.events };
+  }
+
+  const { state: current, events: combatEvents } = attack(applied.state);
+  const events = [...applied.events, ...combatEvents];
+  const tick = current.tick + 1;
+  let lives = current.lives;
+  const enemies: Enemy[] = [];
+  for (const [index, enemy] of current.enemies.entries()) {
     const moved = advanceEnemy(current, enemy);
-    if (moved === 'leaked') {
-      events.push({ type: 'leaked', enemyId: enemy.id, enemyKind: enemy.kind });
-      return [];
+    if (moved !== 'leaked') {
+      enemies.push(moved);
+      continue;
     }
-    return [moved];
-  });
-  return { state: spawnDue({ ...current, tick: current.tick + 1, enemies }), events };
+    const { leakDamage } = enemyRulesFor(current, enemy.kind);
+    const livesLost = leakDamage === 'defeat' ? 0 : Math.min(lives, leakDamage);
+    lives -= livesLost;
+    events.push({ type: 'leaked', enemyId: enemy.id, enemyKind: enemy.kind, livesLost });
+    const reason = leakDamage === 'defeat' ? 'bossLeaked' : lives === 0 ? 'noLives' : undefined;
+    if (reason !== undefined) {
+      events.push({ type: 'defeat', waveNumber: current.waveNumber, reason });
+      return {
+        state: {
+          ...current,
+          tick,
+          lives,
+          enemies: [...enemies, ...current.enemies.slice(index + 1)],
+          phase: 'defeat',
+          defeatReason: reason,
+        },
+        events,
+      };
+    }
+  }
+  const next = spawnDue({ ...current, tick, lives, enemies });
+  if (next.enemies.length > 0 || next.pendingSpawns.length > 0) return { state: next, events };
+
+  const reward = next.waveClearReward;
+  events.push({ type: 'waveCleared', waveNumber: next.waveNumber, reward });
+  const won = next.waveNumber === next.waves.length;
+  if (won) events.push({ type: 'victory', waveNumber: next.waveNumber });
+  return {
+    state: { ...next, phase: won ? 'victory' : 'preparation', money: next.money + reward },
+    events,
+  };
 }
 
 function attack(state: GameState): StepResult {
@@ -172,7 +287,7 @@ function attack(state: GameState): StepResult {
   const towers = state.towers.map((tower) => {
     if (tower.nextShotTick > state.tick) return tower;
     const definition = state.towerDefinitions[tower.kind];
-    if (definition === undefined || !(definition.shotsPerSecond > 0)) return tower;
+    if (definition?.ticksPerShot === undefined) return tower;
 
     const origin = cellPoint(state.level, tower.cell);
     let target: Enemy | undefined;
@@ -215,8 +330,8 @@ function attack(state: GameState): StepResult {
     const resumed = state.tick > tower.nextShotTick;
     const firingStartTick = resumed ? state.tick : tower.firingStartTick;
     const shotsSinceFiringStart = resumed ? 1 : tower.shotsSinceFiringStart + 1;
-    const ticksPerShot = Math.max(1, TICKS_PER_SECOND / definition.shotsPerSecond);
-    const nextShotTick = firingStartTick + Math.ceil(shotsSinceFiringStart * ticksPerShot);
+    const nextShotTick =
+      firingStartTick + Math.ceil(shotsSinceFiringStart * definition.ticksPerShot);
     return { ...tower, firingStartTick, shotsSinceFiringStart, nextShotTick };
   });
   return { state: events.length > 0 ? { ...state, money, towers, enemies } : state, events };

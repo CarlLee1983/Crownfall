@@ -14,11 +14,23 @@ const SPLASH_COLOR = 0xf395ff;
 export function createShotLayer() {
   const group = new Group();
   const ringGeometry = new RingGeometry(0.93, 1, 48).rotateX(-Math.PI / 2);
-  const active = new Set<{
+  type Shot = {
     readonly start: number;
     readonly line: Line2;
     readonly ring: Mesh<RingGeometry, MeshBasicMaterial> | undefined;
-  }>();
+  };
+  const active = new Set<Shot>();
+
+  function remove(shot: Shot): void {
+    group.remove(shot.line);
+    shot.line.geometry.dispose();
+    shot.line.material.dispose();
+    if (shot.ring !== undefined) {
+      group.remove(shot.ring);
+      shot.ring.material.dispose();
+    }
+    active.delete(shot);
+  }
 
   function onEvents(events: readonly GameEvent[], state: GameState, frameTime: number): void {
     for (const event of events) {
@@ -67,16 +79,9 @@ export function createShotLayer() {
       }
       if (elapsed < (shot.ring === undefined ? SHOT_DURATION_MS : SPLASH_DURATION_MS)) continue;
 
-      group.remove(shot.line);
-      shot.line.geometry.dispose();
-      shot.line.material.dispose();
-      if (shot.ring !== undefined) {
-        group.remove(shot.ring);
-        shot.ring.material.dispose();
-      }
-      active.delete(shot);
+      remove(shot);
     }
   }
 
-  return { group, onEvents, update };
+  return { group, onEvents, update, reset: () => active.forEach(remove) };
 }

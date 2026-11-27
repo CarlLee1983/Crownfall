@@ -9,6 +9,7 @@ import { createEnemyLayer } from './render/enemies';
 import { startLoop } from './render/loop';
 import { createShotLayer } from './render/shots';
 import { createTerrain } from './render/terrain';
+import { createWaveHud } from './render/wave-hud';
 import './render/hud.css';
 
 const canvas = document.getElementById('game');
@@ -46,16 +47,27 @@ onResize();
 
 const initial = createGame(content, level);
 const hud = createBuildHud(canvas, camera, initial, (cell, kind) => {
-  enqueue((tick) => ({ type: 'placeTower', cell, kind, tick }));
+  loop.enqueue((tick) => ({ type: 'placeTower', cell, kind, tick }));
 });
-const { enqueue } = startLoop({
+const waveHud = createWaveHud(canvas, camera, content.waves, {
+  startWave: () => loop.enqueue((tick) => ({ type: 'startWave', tick })),
+  setSpeed: (speed) => loop.setSpeed(speed),
+  restart: () => {
+    hud.reset();
+    shots.reset();
+    loop.reset(createGame(content, level));
+  },
+});
+const loop = startLoop({
   initial,
   onEvents: (events, current, frameTime) => {
     hud.onEvents(events);
+    waveHud.onEvents(events, frameTime);
     shots.onEvents(events, current, frameTime);
   },
   draw: (previous, current, alpha, frameTime) => {
     builds.update(previous, current, alpha, hud.update(current));
+    waveHud.update(current, frameTime);
     enemies.update(previous, current, alpha);
     shots.update(frameTime);
     renderer.render(scene, camera);

@@ -19,6 +19,7 @@ const LOOKS: Readonly<Record<string, Look>> = {
   grunt: { size: 0.4, color: 0xd9a441 },
   runner: { size: 0.3, color: 0xe05a8a },
   tank: { size: 0.65, color: 0x7a4fb0 },
+  boss: { size: 1, color: 0xc83b36 },
 };
 const DEFAULT_LOOK: Look = { size: 0.4, color: 0xbbbbbb };
 

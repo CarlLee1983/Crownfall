@@ -19,8 +19,7 @@ body {
 #build-ring,
 #build-anchor,
 #build-feedback,
-#build-preview,
-#build-money {
+#build-preview {
   position: fixed;
 }
 
@@ -32,7 +31,7 @@ body {
 }
 
 #build-ring {
-  z-index: 1;
+  z-index: 2;
   width: min(266px, calc(100vw - 16px));
   pointer-events: none;
 }
@@ -150,8 +149,7 @@ body {
 }
 
 #build-preview:not(:empty),
-#build-feedback,
-#build-money {
+#build-feedback {
   background: #172029;
 }
 
@@ -169,16 +167,142 @@ body {
   border: 1px solid #9c734a;
 }
 
-#build-money {
-  bottom: 12px;
-  left: 12px;
-  margin: 0;
+#game-vitals,
+#game-controls,
+#wave-flag,
+#wave-feedback:where(:not(:empty)),
+#game-result {
   padding: 5px 12px;
+  background: #172029;
   border: 1px solid #536373;
   border-radius: 6px;
-  font-weight: 650;
 }
 
-#build-balance {
-  margin-left: 5px;
+#game-vitals,
+#game-controls,
+#wave-flag,
+#wave-feedback {
+  position: fixed;
+}
+
+#game-vitals,
+#game-controls {
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+#game-vitals {
+  left: 12px;
+  gap: 14px;
+}
+
+#game-lives {
+  color: #f6b1a8;
+}
+
+#game-controls {
+  right: 12px;
+}
+
+#wave-number {
+  margin: 0 4px 0 0;
+}
+
+#wave-flag {
+  z-index: 1;
+  width: max-content;
+  max-width: min(240px, calc(100vw - 44px));
+  padding: 8px 10px;
+  transform: translate(-50%, -100%);
+  border-color: #bc816b;
+  box-shadow: 0 3px 10px #0006;
+  text-align: center;
+}
+
+#wave-flag::after {
+  position: absolute;
+  bottom: -8px;
+  left: calc(50% - 7px);
+  border: 7px solid transparent;
+  border-top-color: #bc816b;
+  border-bottom: 0;
+  content: "";
+}
+
+#wave-flag.below-entrance {
+  transform: translateX(-50%);
+}
+
+#wave-flag.below-entrance::after {
+  top: -8px;
+  bottom: auto;
+  transform: rotate(180deg);
+}
+
+#wave-preview {
+  margin: 0 0 6px;
+}
+
+#game-controls button,
+#wave-flag button,
+#game-result button {
+  padding: 3px 8px;
+  border: 1px solid #7890a0;
+  border-radius: 4px;
+  color: inherit;
+  background: #263746;
+  font: inherit;
+  cursor: pointer;
+}
+
+#wave-flag button:disabled {
+  border-color: #536373;
+  color: #a6adb2;
+  background: #20272e;
+  cursor: default;
+}
+
+#wave-flag kbd {
+  color: #cbd4dd;
+}
+
+#wave-feedback {
+  z-index: 2;
+  top: 12px;
+  left: 50%;
+  max-width: calc(100vw - 48px);
+  margin: 0;
+  transform: translateX(-50%);
+  color: #ffe0a2;
+  text-align: center;
+  white-space: pre-line;
+  pointer-events: none;
+}
+
+#game-result {
+  max-width: min(320px, calc(100vw - 68px));
+  padding: 20px 28px;
+  color: inherit;
+  text-align: center;
+  overscroll-behavior: contain;
+}
+
+#game-result::backdrop {
+  overflow: hidden;
+  background: #0a1119b3;
+  overscroll-behavior: contain;
+}
+
+#result-title {
+  margin: 0;
+}
+
+@media (max-width: 390px) {
+  #game-vitals {
+    bottom: 54px;
+  }
 }

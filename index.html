@@ -15,7 +15,27 @@
       </section>
       <p id="build-preview"></p>
       <p id="build-feedback" role="status"></p>
-      <p id="build-money">金錢 <span id="build-balance"></span></p>
+      <section id="game-vitals" aria-label="生命與金錢">
+        <span>生命 <strong id="game-lives"></strong></span>
+        <span>金錢 <strong id="build-balance"></strong></span>
+      </section>
+      <section id="wave-flag" aria-label="入口旗" hidden>
+        <p id="wave-preview"></p>
+        <button id="start-wave" type="button" aria-keyshortcuts="N">開波 <kbd>N</kbd></button>
+      </section>
+      <section id="game-controls" aria-label="波次與時間控制">
+        <p id="wave-number"></p>
+        <button id="pause" type="button" aria-keyshortcuts="Space">暫停</button>
+        <button id="speed" type="button" aria-keyshortcuts="F" aria-label="切換倍速">1×</button>
+      </section>
+      <p id="wave-feedback" role="status"></p>
+      <dialog id="game-result" aria-labelledby="result-title" closedby="none">
+        <h1 id="result-title">遊戲結果</h1>
+        <p id="result-detail"></p>
+        <form method="dialog">
+          <button id="restart" type="submit" autofocus>重新開始</button>
+        </form>
+      </dialog>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
