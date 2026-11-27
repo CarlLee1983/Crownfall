@@ -7,7 +7,6 @@ async function hasEnemyBodyAtEntrance(page: Page): Promise<boolean> {
   const screenshot = await page.screenshot({
     // First stretch of lane at the configured viewport.
     clip: { x: 579, y: 460, width: 91, height: 92 },
-    style: '#wave-flag { visibility: hidden !important; }',
   });
   return page.evaluate(
     async (png) => {
@@ -70,9 +69,12 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   await page.keyboard.press('Escape');
 
   expect(await hasEnemyBodyAtEntrance(page)).toBe(false);
-  const startWave = page.getByRole('button', { name: /開波/ });
+  const waveControls = page.getByRole('region', { name: '波次與時間控制' });
+  const startWave = waveControls.getByRole('button', { name: /開波/ });
+  await expect(startWave).toBeEnabled();
   await startWave.click();
   await expect(startWave).toBeDisabled();
+  await expect(waveControls.getByText(/^剩餘敵人 [1-9]\d*$/)).toBeVisible();
   await expect
     .poll(() => hasEnemyBodyAtEntrance(page), {
       message: 'An enemy body appears near the entrance',

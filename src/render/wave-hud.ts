@@ -1,11 +1,13 @@
 import type { Camera } from 'three';
 import {
+  cellAt,
   continueRejection,
   type GameEvent,
   type GameState,
   queryWave,
   waveStartRejection,
 } from '../core';
+import { neighbors } from '../core/level';
 import { cellProjection, element, isGameDialogOpen, updateText } from './hud-dom';
 
 const ENEMY_NAMES: Readonly<Record<string, string>> = {
@@ -190,19 +192,21 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
       }
 
       if (result.open) result.close();
-      const point = projectCell(state.level, state.level.spawn, canvas.getBoundingClientRect());
-      flag.hidden = point === undefined;
-      if (point === undefined) return;
-
       updateText(preview, previewText(state));
 
-      const halfWidth = flag.offsetWidth / 2;
-      const x = Math.max(halfWidth, Math.min(point.x, window.innerWidth - halfWidth));
-      const above = point.y >= flag.offsetHeight + 24;
-      flag.classList.toggle('below-entrance', !above);
-      flag.style.left = `${x}px`;
-      flag.style.top = `${point.y + (above ? -12 : 12)}px`;
-      flag.style.setProperty('--wave-flag-arrow-offset', `${point.x - x}px`);
+      const { level } = state;
+      const flagCell = neighbors(level, level.spawn).find(
+        ({ index }) => !cellAt(level, index).lane,
+      );
+      const point = projectCell(
+        level,
+        flagCell?.index ?? level.spawn,
+        canvas.getBoundingClientRect(),
+      );
+      flag.hidden = point === undefined;
+      if (point === undefined) return;
+      flag.style.left = `${point.x}px`;
+      flag.style.top = `${point.y}px`;
     },
   };
 }
