@@ -46,6 +46,7 @@ function previewText(state: GameState): string {
 }
 
 export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions: WaveActions) {
+  element('game-version').textContent = `版本 ${__APP_VERSION__}`;
   const lives = element('game-lives');
   const waveNumber = element('wave-number');
   const flag = element('wave-flag');

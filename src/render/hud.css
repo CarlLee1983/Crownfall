@@ -261,6 +261,7 @@ body {
 
 #game-vitals,
 #game-controls,
+#game-version,
 #wave-feedback:where(:not(:empty)),
 #game-help,
 #game-result {
@@ -283,6 +284,19 @@ body {
   justify-content: space-between;
   gap: 8px;
   pointer-events: none;
+}
+
+#game-status {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+#game-version {
+  margin: 0;
+  color: #cbd4dd;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
 }
 
 #game-vitals,
@@ -427,7 +441,7 @@ body {
     flex-direction: column;
   }
 
-  #game-vitals {
+  #game-status {
     align-self: start;
   }
 }
