@@ -29,6 +29,19 @@
         <button id="speed" type="button" aria-keyshortcuts="F" aria-label="切換倍速">1×</button>
       </section>
       <p id="wave-feedback" role="status"></p>
+      <dialog id="game-help" aria-labelledby="help-title">
+        <h1 id="help-title">操作說明</h1>
+        <ul>
+          <li>點空地打開建造環，選擇塔種或按 <kbd>1</kbd>～<kbd>3</kbd> 建塔。</li>
+          <li>點塔打開升級／賣出環，按 <kbd>U</kbd> 升級、<kbd>S</kbd> 賣出。</li>
+          <li>點入口旗上的「開波」或按 <kbd>N</kbd> 開始下一波。</li>
+          <li>按 <kbd>Space</kbd> 暫停或繼續，按 <kbd>F</kbd> 切換倍速。</li>
+          <li>按住滑鼠左鍵拖曳或按方向鍵平移鏡頭，滾動滾輪縮放。</li>
+        </ul>
+        <form method="dialog">
+          <button type="submit" autofocus>開始遊戲</button>
+        </form>
+      </dialog>
       <dialog id="game-result" aria-labelledby="result-title" closedby="none">
         <h1 id="result-title">遊戲結果</h1>
         <p id="result-detail"></p>

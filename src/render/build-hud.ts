@@ -12,7 +12,7 @@ import {
   type RejectionReason,
   samePlacementPreviewInputs,
 } from '../core';
-import { cellProjection, element, updateText } from './hud-dom';
+import { cellProjection, element, isGameDialogOpen, updateText } from './hud-dom';
 import { LAYER_HEIGHT } from './terrain';
 
 const REASONS: Record<RejectionReason, string> = {
@@ -296,7 +296,8 @@ export function createBuildHud(
   });
 
   document.addEventListener('keydown', (event) => {
-    if (chosen === undefined || event.defaultPrevented || event.isComposing) return;
+    if (chosen === undefined || event.defaultPrevented || event.isComposing || isGameDialogOpen())
+      return;
     if (event.key === 'Escape') {
       event.preventDefault();
       close();
