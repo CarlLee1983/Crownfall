@@ -11,8 +11,8 @@ import {
 const MS_PER_TICK = 1000 / TICKS_PER_SECOND;
 
 interface FrameTime {
-  readonly wall: number;
-  readonly game: number;
+  readonly wallMs: number;
+  readonly gameMs: number;
 }
 
 export interface LoopOptions {
@@ -64,21 +64,24 @@ export function startLoop({ initial, onEvents, draw }: LoopOptions): LoopSession
       const result = step(current, takeCommands());
       current = result.state;
       elapsedTicks++;
-      onEvents(result.events, previous, current, { wall: now, game: elapsedTicks * MS_PER_TICK });
+      onEvents(result.events, previous, current, {
+        wallMs: now,
+        gameMs: elapsedTicks * MS_PER_TICK,
+      });
     }
     if (speed === 0 && pending.length > 0) {
       const beforeCommands = current;
       const result = applyCommands(current, takeCommands());
       current = result.state;
       onEvents(result.events, beforeCommands, current, {
-        wall: now,
-        game: elapsedTicks * MS_PER_TICK + accumulatedMs,
+        wallMs: now,
+        gameMs: elapsedTicks * MS_PER_TICK + accumulatedMs,
       });
     }
 
     draw(previous, current, accumulatedMs / MS_PER_TICK, {
-      wall: now,
-      game: elapsedTicks * MS_PER_TICK + accumulatedMs,
+      wallMs: now,
+      gameMs: elapsedTicks * MS_PER_TICK + accumulatedMs,
     });
     requestAnimationFrame(frame);
   };

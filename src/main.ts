@@ -76,13 +76,13 @@ const loop = startLoop({
   initial,
   onEvents: (events, previous, current, time) => {
     hud.onEvents(events);
-    waveHud.onEvents(events, time.wall);
-    shots.onEvents(events, current, time.game);
-    combat.onEvents(events, previous, time.game);
+    waveHud.onEvents(events, time.wallMs);
+    shots.onEvents(events, current, time.gameMs);
+    combat.onEvents(events, previous, time.gameMs);
     enemies.observe(current);
   },
   draw: (previous, current, alpha, time) => {
-    const feedback = combat.update(time.game, !allowShake.matches);
+    const feedback = combat.update(time.gameMs, !allowShake.matches);
     terrain.setCastleFlash(feedback.castleFlash);
     const shaking = feedback.shake.lengthSq() > 0;
     if (shaking) {
@@ -93,8 +93,8 @@ const loop = startLoop({
     }
     enemies.update(previous, current, alpha, feedback.hitFlash);
     builds.update(previous, current, alpha, hud.update(current), enemies.routeMotions());
-    waveHud.update(current, time.wall);
-    shots.update(time.game);
+    waveHud.update(current, time.wallMs);
+    shots.update(time.gameMs);
     combatHud.update(feedback);
     renderer.render(scene, camera);
     if (shaking) {

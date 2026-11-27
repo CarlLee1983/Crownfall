@@ -3,6 +3,8 @@ import type { EnemyId, GameEvent, GameState } from '../core';
 import { type EnemyLayer, enemyColor } from './enemies';
 
 const HIT_FLASH_MS = 100;
+const HIT_FLASH_GAP_MS = 50;
+const HIT_FLASH_STRENGTH = 0.5;
 const LEAK_FLASH_MS = 300;
 const LEAK_SHAKE_MS = 190;
 const FRAGMENT_MS = 480;
@@ -23,7 +25,8 @@ export function createCombatFeedback(
     readonly heading: number;
     readonly start: number;
   }>();
-  const hits = new Map<EnemyId, number>();
+  // null means the flash has not been visible in a frame yet.
+  const hits = new Map<EnemyId, number | null>();
   let leakStart = -Infinity;
   const bounties = new Set<{
     readonly id: EnemyId;
@@ -60,7 +63,16 @@ export function createCombatFeedback(
   function onEvents(events: readonly GameEvent[], previous: GameState, gameTime: number): void {
     if (events.some(({ type }) => type === 'leaked')) leakStart = gameTime;
     for (const event of events) {
-      if (event.type === 'shot') hits.set(event.target.id, gameTime);
+      if (event.type === 'shot') {
+        const id = event.target.id;
+        const start = hits.get(id);
+        if (
+          start === undefined ||
+          (start !== null && gameTime - start >= HIT_FLASH_MS + HIT_FLASH_GAP_MS)
+        ) {
+          hits.set(id, null);
+        }
+      }
       if (event.type !== 'killed') continue;
       hits.delete(event.enemyId);
       const position = new Vector3();
@@ -93,7 +105,8 @@ export function createCombatFeedback(
 
   function update(gameTime: number, reducedMotion: boolean) {
     for (const [id, start] of hits) {
-      if (gameTime - start >= HIT_FLASH_MS) hits.delete(id);
+      if (start === null) hits.set(id, gameTime);
+      else if (gameTime - start >= HIT_FLASH_MS + HIT_FLASH_GAP_MS) hits.delete(id);
     }
     const sinceLeak = gameTime - leakStart;
     const leak = Math.max(0, 1 - sinceLeak / LEAK_FLASH_MS);
@@ -117,7 +130,9 @@ export function createCombatFeedback(
     return {
       hitFlash: (id: EnemyId) => {
         const start = hits.get(id);
-        return start === undefined ? 0 : 1 - (gameTime - start) / HIT_FLASH_MS;
+        return start == null
+          ? 0
+          : HIT_FLASH_STRENGTH * Math.max(0, 1 - (gameTime - start) / HIT_FLASH_MS);
       },
       castleFlash: leak,
       lifePulse: leak * 0.38,

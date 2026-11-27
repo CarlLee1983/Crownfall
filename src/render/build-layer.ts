@@ -45,7 +45,14 @@ function towerModel(geometry: BufferGeometry, height: number, halfWidth: number,
   };
 }
 
-const BASIC_MODEL = towerModel(new BoxGeometry(0.8, 0.75, 0.8), 0.75, 0.4, 0x57a4da);
+const BASIC_HEIGHT = 0.75;
+const BASIC_HALF_WIDTH = 0.4;
+const BASIC_MODEL = towerModel(
+  new BoxGeometry(BASIC_HALF_WIDTH * 2, BASIC_HEIGHT, BASIC_HALF_WIDTH * 2),
+  BASIC_HEIGHT,
+  BASIC_HALF_WIDTH,
+  0x57a4da,
+);
 const TOWER_MODELS = new Map([
   ['basic', BASIC_MODEL],
   ['sniper', towerModel(new CylinderGeometry(0.29, 0.4, 1.18, 6), 1.18, 0.4, 0xeeaa48)],

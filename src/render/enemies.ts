@@ -6,12 +6,12 @@ import {
   CylinderGeometry,
   ExtrudeGeometry,
   Group,
+  Matrix3,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
   PerspectiveCamera,
   PlaneGeometry,
-  Quaternion,
   Shape,
   Vector3,
 } from 'three';
@@ -86,7 +86,8 @@ function smoothUnit(value: number): number {
   return t * t * (3 - 2 * t);
 }
 
-function supportingPlane(level: Level, point: GridPoint, half: number, normal: Vector3): number {
+function supportingPlane(level: Level, point: GridPoint, look: Look, normal: Vector3): number {
+  const half = look.size / 2;
   const x = Math.round(point.x);
   const y = Math.round(point.y);
   const dx = point.x - x;
@@ -135,7 +136,7 @@ function supportingPlane(level: Level, point: GridPoint, half: number, normal: V
 
   // Support the actual projected footprint. Clearance can be lowest at either edge or at
   // the crest, where the rising plane meets the upper flat.
-  const reach = half / length;
+  const reach = look.round ? half : half / length;
   const crest = Math.max(-reach, Math.min(reach, 0.5 - along));
   const supportAt = (offset: number): number =>
     LAYER_HEIGHT * Math.min(1, Math.max(0, 0.5 + along + offset)) - slope * offset;
@@ -171,6 +172,19 @@ function supportingPlane(level: Level, point: GridPoint, half: number, normal: V
   return height;
 }
 
+function supportBody(
+  level: Level,
+  point: GridPoint,
+  look: Look,
+  normal: Vector3,
+  offset: Vector3,
+): number {
+  const ground = supportingPlane(level, point, look, normal);
+  const half = look.size / 2;
+  offset.copy(look.round ? UP : normal).multiplyScalar(half);
+  return ground;
+}
+
 interface EnemyView {
   readonly group: Group;
   readonly body: Mesh<BufferGeometry, MeshLambertMaterial>;
@@ -204,7 +218,7 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
   const cameraBack = new Vector3();
   const viewOffset = new Vector3();
   const cameraUpInBody = new Vector3();
-  const inverseTilt = new Quaternion();
+  const bodyTransform = new Matrix3();
   const views = new Map<EnemyId, EnemyView>();
   let motions = new Map<EnemyId, EnemyMotion>();
   let observed: GameState | undefined;
@@ -216,6 +230,7 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     const existing = views.get(id);
     if (existing !== undefined) return existing;
     const body = new Mesh(enemyGeometry(look), new MeshLambertMaterial({ color: look.color }));
+    body.matrixAutoUpdate = false;
     const barWidth = Math.max(0.52, look.size);
     const bar = new Group();
     const background = new Mesh(barGeometry, barBackground);
@@ -272,26 +287,33 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
       view.body.material.emissive.copy(WHITE);
       view.body.material.emissiveIntensity = flash * 0.35;
       const half = look.size / 2;
-      const ground = supportingPlane(current.level, point, half, normal);
+      const ground = supportBody(current.level, point, look, normal, view.body.position);
       view.group.position.set(point.x, ground, point.y);
-      view.body.quaternion.setFromUnitVectors(UP, normal);
-      view.body.position.copy(normal).multiplyScalar(half);
+      if (!look.round) view.body.quaternion.setFromUnitVectors(UP, normal);
+      view.body.updateMatrix();
+      const slopeX = look.round ? -normal.x / normal.y : 0;
+      const slopeZ = look.round ? -normal.z / normal.y : 0;
+      if (look.round) {
+        // Shear the boss vertically so its base rests on the slope without widening its footprint.
+        view.body.matrix.elements[1] = slopeX;
+        view.body.matrix.elements[9] = slopeZ;
+      }
       view.bar.quaternion.copy(camera.quaternion);
       // Project the tilted body bounds onto the camera's up axis to clear its silhouette.
-      inverseTilt.copy(view.body.quaternion).invert();
+      bodyTransform.setFromMatrix4(view.body.matrix).transpose();
       cameraUpInBody.copy(cameraUp);
       let perspectiveScale = 1;
       if (camera instanceof PerspectiveCamera) {
         viewOffset.copy(view.group.position).add(view.body.position).sub(camera.position);
         const depth = -viewOffset.dot(cameraBack);
-        const radius = half * Math.sqrt(3);
+        const radius = half * (Math.sqrt(3) + Math.hypot(slopeX, slopeZ));
         if (depth > radius) {
           // Account for depth shifting the apparent height of the nearer corners.
           cameraUpInBody.addScaledVector(cameraBack, viewOffset.dot(cameraUp) / depth);
           perspectiveScale = depth / (depth - radius);
         }
       }
-      cameraUpInBody.applyQuaternion(inverseTilt);
+      cameraUpInBody.applyMatrix3(bodyTransform);
       const bodyTop =
         half *
         (Math.abs(cameraUpInBody.x) + Math.abs(cameraUpInBody.y) + Math.abs(cameraUpInBody.z));
@@ -313,9 +335,7 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
   };
 
   const bodyPosition = (level: Level, point: GridPoint, kind: string, output: Vector3) => {
-    const half = enemyLook(kind).size / 2;
-    const ground = supportingPlane(level, point, half, output);
-    output.multiplyScalar(half);
+    const ground = supportBody(level, point, enemyLook(kind), normal, output);
     return output.set(point.x + output.x, ground + output.y, point.y + output.z);
   };
 

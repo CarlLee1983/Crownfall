@@ -1,16 +1,24 @@
 import { PerspectiveCamera } from 'three';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { type Content, createGame, type EnemyId, parseLevel, step } from '../core';
 import { cellIndex } from '../core/level';
 import { createCombatFeedback } from './combat-feedback';
 import { createEnemyLayer } from './enemies';
+import { startLoop } from './loop';
 
-function setup({ bounty = 5, count = 1, damage = 12, placeTower = true, immediate = false } = {}) {
+function fixture({
+  bounty = 5,
+  count = 1,
+  damage = 12,
+  immediate = false,
+  speed = 15,
+  shotsPerSecond = 1,
+} = {}) {
   const content = {
-    enemies: { grunt: { speed: 15, hp: 12, bounty, leakDamage: 1 } },
+    enemies: { grunt: { speed, hp: 12, bounty, leakDamage: 1 } },
     waves: [{ groups: [{ enemy: 'grunt', count, interval: 0, delay: immediate ? 0 : 1 / 30 }] }],
     towers: {
-      splash: { name: 'Splash', cost: 10, range: 3, damage, shotsPerSecond: 1, splashRadius: 1 },
+      splash: { name: 'Splash', cost: 10, range: 3, damage, shotsPerSecond, splashRadius: 1 },
     },
     towerUpgrades: { costPercents: [60, 100], damageMultiplier: 1, rangeBonus: 0 },
     startingMoney: 100,
@@ -19,7 +27,16 @@ function setup({ bounty = 5, count = 1, damage = 12, placeTower = true, immediat
     heightRangeBonus: 0,
   } satisfies Content;
   const level = parseLevel(['S=G', '...']);
-  const initial = createGame(content, level);
+  return createGame(content, level);
+}
+
+function setup({
+  placeTower = true,
+  ...options
+}: Parameters<typeof fixture>[0] & {
+  placeTower?: boolean;
+} = {}) {
+  const initial = fixture(options);
   const enemies = createEnemyLayer(new PerspectiveCamera());
   const feedback = createCombatFeedback(enemies);
   let previous = initial;
@@ -42,6 +59,7 @@ function setup({ bounty = 5, count = 1, damage = 12, placeTower = true, immediat
       feedback.onEvents(result.events, previous, gameTime);
       enemies.observe(current);
       enemies.update(previous, current, 1);
+      return result.events;
     },
   };
 }
@@ -94,7 +112,7 @@ it('triggers one shake for several leaks in the same tick', () => {
 it('flashes only the primary target of a splash shot and clears the flash after 100ms', () => {
   const { feedback, advance } = setup({ count: 2, damage: 4 });
   advance(100);
-  expect(feedback.update(100, false).hitFlash(1 as EnemyId)).toBe(1);
+  expect(feedback.update(100, false).hitFlash(1 as EnemyId)).toBeGreaterThan(0);
   expect(feedback.update(100, false).hitFlash(2 as EnemyId)).toBe(0);
   expect(feedback.update(200, false).hitFlash(1 as EnemyId)).toBe(0);
 });
@@ -109,4 +127,73 @@ it('keeps feedback fixed at the same game time and removes it after its lifetime
   expect(feedback.group.children[0]?.position).toEqual(position);
   expect(feedback.update(820, false).bounties).toEqual([]);
   expect(feedback.group.children).toHaveLength(0);
+});
+
+it('shows a hit after a late 2× frame, freezes it on pause, and fades it in game time', () => {
+  const initial = fixture({ damage: 4, immediate: true, speed: 1 });
+  const feedback = createCombatFeedback(createEnemyLayer(new PerspectiveCamera()));
+  let nextFrame: FrameRequestCallback = () => {
+    throw new Error('No animation frame was scheduled');
+  };
+  let flash = 0;
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    nextFrame = callback;
+  });
+  try {
+    const loop = startLoop({
+      initial,
+      onEvents: (events, previous, _current, time) => {
+        feedback.onEvents(events, previous, time.gameMs);
+      },
+      draw: (_previous, _current, _alpha, time) => {
+        flash = feedback.update(time.gameMs, false).hitFlash(initial.nextEnemyId);
+      },
+    });
+    loop.enqueue((tick) => ({
+      type: 'placeTower',
+      cell: cellIndex(3, 0, 1),
+      kind: 'splash',
+      tick,
+    }));
+    loop.enqueue((tick) => ({ type: 'startWave', tick }));
+    loop.setSpeed(2);
+    nextFrame(0);
+    nextFrame(70);
+    expect(flash).toBeGreaterThan(0);
+    const firstFlash = flash;
+
+    loop.setSpeed(0);
+    nextFrame(80);
+    nextFrame(280);
+    expect(flash).toBe(firstFlash);
+
+    loop.setSpeed(2);
+    nextFrame(290);
+    nextFrame(315);
+    expect(flash).toBeGreaterThan(0);
+    expect(flash).toBeLessThan(firstFlash);
+    nextFrame(341);
+    expect(flash).toBe(0);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it('preserves the target color and leaves a gap even when towers keep hitting it', () => {
+  const { feedback, advance } = setup({ damage: 1, speed: 1, shotsPerSecond: 15 });
+  const shot = advance(0).find((event) => event.type === 'shot');
+  if (shot === undefined) throw new Error('Expected a shot');
+  const id = shot.target.id;
+  const initial = feedback.update(0, false).hitFlash(id);
+  expect(initial).toBeGreaterThan(0);
+  expect(initial).toBeLessThan(1);
+  advance(33);
+  advance(67);
+  expect(feedback.update(100, false).hitFlash(id)).toBe(0);
+  advance(100);
+  advance(133);
+  expect(feedback.update(133, false).hitFlash(id)).toBe(0);
+  advance(167);
+  advance(200);
+  expect(feedback.update(200, false).hitFlash(id)).toBeGreaterThan(0);
 });
