@@ -4,15 +4,14 @@ import { prepareHexagonModel } from './build-hexagon-model';
 import { buildSceneryModels } from './build-scenery-model';
 import { buildTowerModels } from './build-tower-models';
 import { buildEnemyModels } from './enemy-models';
+import { pinnedModelUrl } from './pinned-model';
 
 const io = new NodeIO(fetch).setAllowNetwork(true);
 await buildEnemyModels(io);
 
 const archer = manifest.assets.find(({ id }) => id === 'tower-archer');
-if (archer?.source.commit === undefined) throw new Error('缺少弓箭塔的來源版本');
-const archerUpstream = new URL(archer.source.url_or_tool);
-const archerInput = `https://raw.githubusercontent.com${archerUpstream.pathname}/${archer.source.commit}/${archer.source.prompt_or_source_record}`;
-const archerDocument = await io.read(archerInput);
+if (archer === undefined) throw new Error('缺少弓箭塔的來源記錄');
+const archerDocument = await io.read(pinnedModelUrl(archer.source));
 await prepareHexagonModel(archerDocument);
 await io.write(archer.path, archerDocument);
 console.log(`${archer.path} (${io.lastWriteBytes} bytes)`);

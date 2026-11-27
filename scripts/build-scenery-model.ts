@@ -3,6 +3,7 @@ import { simplify } from '@gltf-transform/functions';
 import { MeshoptSimplifier } from 'meshoptimizer';
 import manifest from '../docs/art/asset-manifest.json';
 import { prepareHexagonModel } from './build-hexagon-model';
+import { pinnedModelUrl } from './pinned-model';
 
 // Castle masonry has split vertices at UV seams. Permit collapses across those seams
 // to keep the towers and outer silhouette within the 1,500-triangle budget.
@@ -37,10 +38,7 @@ async function prepareSceneryModel(document: Document, id: string): Promise<void
 export async function buildSceneryModels(io: NodeIO): Promise<void> {
   for (const asset of manifest.assets.filter(({ id }) => id.startsWith('prop-'))) {
     const { id, source, path } = asset;
-    if (source.commit === undefined) throw new Error(`缺少 ${id} 的來源版本`);
-    const upstream = new URL(source.url_or_tool);
-    const input = `https://raw.githubusercontent.com${upstream.pathname}/${source.commit}/${source.prompt_or_source_record}`;
-    const document = await io.read(input);
+    const document = await io.read(pinnedModelUrl(source));
     await prepareSceneryModel(document, id);
     await io.write(path, document);
     console.log(`${path} (${io.lastWriteBytes} bytes)`);

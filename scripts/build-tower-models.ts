@@ -3,23 +3,13 @@ import { copyToDocument, unpartition } from '@gltf-transform/functions';
 import { OctahedronGeometry } from 'three';
 import manifest from '../docs/art/asset-manifest.json';
 import { prepareHexagonModel } from './build-hexagon-model';
-
-interface PinnedModel {
-  readonly url_or_tool: string;
-  readonly commit: string;
-  readonly prompt_or_source_record: string;
-}
-
-function sourceUrl(source: PinnedModel): string {
-  const repository = new URL(source.url_or_tool).pathname;
-  return `https://raw.githubusercontent.com${repository}/${source.commit}/${source.prompt_or_source_record}`;
-}
+import { type PinnedModelSource, pinnedModelUrl } from './pinned-model';
 
 async function mountCrossbow(
   io: NodeIO,
   tower: Document,
   scene: Scene,
-  source: PinnedModel,
+  source: PinnedModelSource,
 ): Promise<void> {
   const roof = tower
     .getRoot()
@@ -30,7 +20,7 @@ async function mountCrossbow(
   roof.dispose();
   const platformTop = getBounds(scene).max[1];
 
-  const weapon = await io.read(sourceUrl(source));
+  const weapon = await io.read(pinnedModelUrl(source));
   const sourceNode = weapon.getRoot().getDefaultScene()?.listChildren()[0];
   if (sourceNode === undefined) throw new Error('弩砲原檔缺少模型');
   const crossbow = copyToDocument(tower, weapon, [sourceNode]).get(sourceNode);
@@ -77,8 +67,8 @@ function addCrystal(tower: Document, scene: Scene): void {
 export async function buildTowerModels(io: NodeIO): Promise<void> {
   for (const id of ['tower-ballista', 'tower-mage']) {
     const asset = manifest.assets.find((candidate) => candidate.id === id);
-    if (asset?.source.commit === undefined) throw new Error(`${id} 缺少來源版本`);
-    const tower = await io.read(sourceUrl({ ...asset.source, commit: asset.source.commit }));
+    if (asset === undefined) throw new Error(`${id} 缺少來源記錄`);
+    const tower = await io.read(pinnedModelUrl(asset.source));
     const scene = tower.getRoot().getDefaultScene();
     if (scene === null) throw new Error(`${id} 缺少預設場景`);
     if (id === 'tower-ballista') {

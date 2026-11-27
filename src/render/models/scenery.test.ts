@@ -1,6 +1,7 @@
 import { NodeIO } from '@gltf-transform/core';
 import { expect, it } from 'vitest';
 import manifest from '../../../docs/art/asset-manifest.json';
+import { countModelTriangles } from './model-triangles';
 
 const scenery = manifest.assets.filter(({ id }) => id.startsWith('prop-'));
 
@@ -25,10 +26,7 @@ it.each(scenery)(
       expect(sampler?.getMinFilter()).toBe(9728);
       expect(sampler?.getMagFilter()).toBe(9728);
     }
-    const triangles = root
-      .listMeshes()
-      .flatMap((mesh) => mesh.listPrimitives())
-      .reduce((count, primitive) => count + (primitive.getIndices()?.getCount() ?? 0) / 3, 0);
+    const triangles = countModelTriangles(root);
     expect(triangles).toBeGreaterThan(0);
     expect(triangles).toBeLessThanOrEqual(1500);
   },

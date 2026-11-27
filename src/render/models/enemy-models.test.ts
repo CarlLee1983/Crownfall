@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { NodeIO, TextureInfo } from '@gltf-transform/core';
 import sharp from 'sharp';
 import { expect, it } from 'vitest';
+import { countModelTriangles } from './model-triangles';
 
 const loadouts = [
   { id: 'enemy-skeleton', maxKiB: 375, equipment: [] },
@@ -51,16 +52,7 @@ it.each(loadouts)(
       expect(hand && joints.has(hand)).toBe(true);
     }
 
-    // Count mesh instances so both blades count against the triangle limit.
-    const primitiveCount = root
-      .listNodes()
-      .flatMap((node) => node.getMesh()?.listPrimitives() ?? [])
-      .reduce((count, primitive) => {
-        const vertices = primitive.getIndices() ?? primitive.getAttribute('POSITION');
-        if (vertices === null) throw new Error('Skeleton primitive has no vertices');
-        return count + vertices.getCount() / 3;
-      }, 0);
-    expect(primitiveCount).toBeLessThanOrEqual(5500);
+    expect(countModelTriangles(root)).toBeLessThanOrEqual(5500);
     const textures = root.listTextures();
     expect(textures).not.toHaveLength(0);
     for (const texture of textures) {

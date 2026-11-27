@@ -11,6 +11,7 @@ import {
 import { MeshoptSimplifier } from 'meshoptimizer';
 import sharp from 'sharp';
 import manifest from '../docs/art/asset-manifest.json';
+import { pinnedModelUrl } from './pinned-model';
 
 const enemies = [
   { id: 'enemy-skeleton', ratio: 1, lift: 0.06 },
@@ -22,12 +23,10 @@ const enemies = [
 export async function buildEnemyModels(io: NodeIO): Promise<void> {
   for (const { id, ratio, lift } of enemies) {
     const asset = manifest.assets.find((item) => item.id === id);
-    if (asset?.source.commit === undefined) throw new Error(`${id} 缺少來源版本`);
+    if (asset === undefined) throw new Error(`${id} 缺少來源記錄`);
 
     const { path, source } = asset;
-    const upstream = new URL(source.url_or_tool);
-    const base = `https://raw.githubusercontent.com${upstream.pathname}/${source.commit}`;
-    const document = await io.read(`${base}/${source.prompt_or_source_record}`);
+    const document = await io.read(pinnedModelUrl(source));
     const root = document.getRoot();
     const animations = root.listAnimations();
     const walk = animations.find((clip) => clip.getName() === 'Walking_A');
@@ -53,7 +52,7 @@ export async function buildEnemyModels(io: NodeIO): Promise<void> {
     for (const [slotName, accessoryPath] of Object.entries(source.equipment ?? {})) {
       const slot = root.listNodes().find((node) => node.getName() === slotName);
       if (slot === undefined) throw new Error(`${id} 原檔缺少 ${slotName}`);
-      const accessory = await io.read(`${base}/${accessoryPath}`);
+      const accessory = await io.read(pinnedModelUrl(source, accessoryPath));
       const props = mergeDocuments(document, accessory);
       for (const accessoryScene of accessory.getRoot().listScenes()) {
         for (const child of accessoryScene.listChildren()) {

@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { getBounds, NodeIO, TextureInfo } from '@gltf-transform/core';
 import sharp from 'sharp';
 import { expect, it } from 'vitest';
+import { countModelTriangles } from './model-triangles';
 
 it.each([
   ['tower-archer', 'building_tower_A_blue'],
@@ -12,15 +13,7 @@ it.each([
   expect(binary.byteLength).toBeLessThanOrEqual(128 * 1024);
   const root = (await new NodeIO().readBinary(binary)).getRoot();
   expect(root.listNodes().map((node) => node.getName())).toContain(building);
-  let triangles = 0;
-  for (const mesh of root.listMeshes()) {
-    for (const primitive of mesh.listPrimitives()) {
-      const vertices = primitive.getIndices() ?? primitive.getAttribute('POSITION');
-      if (vertices === null) throw new Error('Tower primitive has no vertices');
-      triangles += vertices.getCount() / 3;
-    }
-  }
-  expect(triangles).toBeLessThanOrEqual(3000);
+  expect(countModelTriangles(root)).toBeLessThanOrEqual(3000);
   const material = root.listMaterials().find((candidate) => candidate.getBaseColorTexture());
   const texture = material?.getBaseColorTexture();
   const image = texture?.getImage();
