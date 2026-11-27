@@ -6,15 +6,16 @@ import {
   currentRoute,
   type GameEvent,
   type GameState,
-  type PlacementRejection,
   pickCell,
   previewPlacement,
+  queryTower,
+  type RejectionReason,
   samePlacementPreviewInputs,
 } from '../core';
 import { cellProjection, element, updateText } from './hud-dom';
 import { LAYER_HEIGHT } from './terrain';
 
-const REASONS: Record<PlacementRejection, string> = {
+const REASONS: Record<RejectionReason, string> = {
   insufficientFunds: '金錢不足',
   disconnectedRoute: '會讓入口到終點斷線',
   trappedEnemy: '會困住場上的敵人',
@@ -22,14 +23,37 @@ const REASONS: Record<PlacementRejection, string> = {
   unbuildableCell: '入口、終點與坡道不能建塔',
   occupiedCell: '這格已經有塔',
   unknownTower: '找不到這種塔',
-  wrongTick: '建造時機已過',
+  wrongTick: '操作時機已過',
   gameOver: '遊戲已結束',
+  maxLevel: '這座塔已達滿級',
+  noTower: '這格沒有塔',
 };
 const FEEDBACK_DURATION_MS = 2600;
 const EDGE_MARGIN = 8;
 const RING_GAP = 24;
 
 type ScreenPoint = { x: number; y: number };
+type TowerAction = 'upgradeTower' | 'sellTower';
+
+interface BuildActions {
+  placeTower(cell: CellIndex, kind: string): void;
+  manageTower(cell: CellIndex, action: TowerAction): void;
+  pickTower(raycaster: Raycaster): CellIndex | undefined;
+}
+
+function towerActionButton(label: string, shortcut: string) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'tower-action';
+  button.setAttribute('aria-keyshortcuts', shortcut);
+  const key = document.createElement('kbd');
+  key.setAttribute('aria-hidden', 'true');
+  key.textContent = shortcut;
+  const price = document.createElement('span');
+  price.className = 'tower-price';
+  button.append(`${label} `, key, price);
+  return { button, price };
+}
 
 function describePreview(state: GameState, cell: CellIndex, kind: string) {
   const preview = previewPlacement(state, cell, kind);
@@ -49,7 +73,7 @@ export function createBuildHud(
   canvas: HTMLCanvasElement,
   camera: Camera,
   initial: GameState,
-  placeTower: (cell: CellIndex, kind: string) => void,
+  actions: BuildActions,
 ) {
   const ring = element('build-ring');
   const anchor = element('build-anchor');
@@ -57,11 +81,22 @@ export function createBuildHud(
   const detail = element('build-preview');
   const feedback = element('build-feedback');
   const balance = element('build-balance');
+  const waveFlag = element('wave-flag');
   const raycaster = new Raycaster();
   const pointer = new Vector2();
   const projectCell = cellProjection(camera);
+  const towerPanel = document.createElement('div');
+  towerPanel.className = 'tower-panel';
+  towerPanel.hidden = true;
+  const towerDetails = document.createElement('p');
+  towerDetails.id = 'tower-details';
+  const upgrade = towerActionButton('升級', 'U');
+  const sell = towerActionButton('賣出', 'S');
+  towerPanel.append(towerDetails, upgrade.button, sell.button);
+  ring.append(towerPanel);
   let state = initial;
   let chosen: CellIndex | undefined;
+  let managing = false;
   let notice: { cell: CellIndex; until: number } | undefined;
   let cached:
     | {
@@ -75,6 +110,7 @@ export function createBuildHud(
   const close = (): void => {
     const focusInsideRing = ring.contains(document.activeElement);
     chosen = undefined;
+    managing = false;
     cached = undefined;
     ring.hidden = true;
     anchor.hidden = true;
@@ -84,8 +120,30 @@ export function createBuildHud(
 
   const submit = (kind: string): void => {
     if (chosen === undefined) return;
-    placeTower(chosen, kind);
+    actions.placeTower(chosen, kind);
     close();
+  };
+
+  const manage = (action: TowerAction): void => {
+    if (managing && chosen !== undefined) actions.manageTower(chosen, action);
+  };
+  upgrade.button.addEventListener('click', () => manage('upgradeTower'));
+  sell.button.addEventListener('click', () => manage('sellTower'));
+
+  const refreshTower = (tower: NonNullable<ReturnType<typeof queryTower>>): void => {
+    const name = state.towerDefinitions[tower.kind]?.name ?? tower.kind;
+    updateText(
+      towerDetails,
+      `${name} · 等級 ${tower.level}\n對低地射程 ${tower.range} · 傷害 ${tower.damage}`,
+    );
+    const price = tower.upgradeCost;
+    updateText(upgrade.price, price === null ? '已滿級' : `${price} 金`);
+    upgrade.button.classList.toggle('unaffordable', price !== null && price > state.money);
+    const refundRule = tower.refundPercent === 100 ? '全額' : `${tower.refundPercent}%`;
+    updateText(sell.price, `+${tower.refund}（${refundRule}）`);
+    if (price === null && document.activeElement === upgrade.button)
+      sell.button.focus({ preventScroll: true });
+    upgrade.button.disabled = price === null;
   };
 
   const choices = Object.entries(initial.towerDefinitions).map(([kind, definition], index) => {
@@ -143,15 +201,28 @@ export function createBuildHud(
     anchor.style.left = `${point.x}px`;
     anchor.style.top = `${point.y}px`;
     const height = ring.offsetHeight;
-    const below = point.y - height + RING_GAP < EDGE_MARGIN;
-    const top = below ? point.y - RING_GAP : point.y - height + RING_GAP;
-    ring.classList.toggle('below-cell', below);
-    ring.style.left = `${centeredX(ring, point.x)}px`;
+    const gap = managing ? -12 : RING_GAP;
+    const x = centeredX(ring, point.x);
+    const above = point.y - height + gap;
+    const below = point.y - gap;
+    const flag = managing && !waveFlag.hidden ? waveFlag.getBoundingClientRect() : undefined;
+    const halfWidth = ring.offsetWidth / 2;
+    const overlapsFlag =
+      flag !== undefined &&
+      x - halfWidth < flag.right &&
+      x + halfWidth > flag.left &&
+      above < flag.bottom &&
+      above + height > flag.top;
+    const placeBelow =
+      above < EDGE_MARGIN || (overlapsFlag && below + height + EDGE_MARGIN <= window.innerHeight);
+    const top = placeBelow ? below : above;
+    ring.classList.toggle('below-cell', placeBelow);
+    ring.style.left = `${x}px`;
     ring.style.top = `${Math.max(EDGE_MARGIN, Math.min(top, window.innerHeight - height - EDGE_MARGIN))}px`;
-    return { point, below };
+    return { point, below: placeBelow };
   };
 
-  const showReason = (cell: CellIndex, reason: PlacementRejection): void => {
+  const showReason = (cell: CellIndex, reason: RejectionReason): void => {
     notice = { cell, until: performance.now() + FEEDBACK_DURATION_MS };
     // Keep the live region in the DOM and touch it only when there is new feedback.
     feedback.textContent = REASONS[reason];
@@ -159,11 +230,17 @@ export function createBuildHud(
 
   document.addEventListener('click', (event) => {
     if (event.composedPath().includes(ring)) return;
-    if (chosen !== undefined) {
-      close();
+    if (event.target !== canvas) {
+      if (
+        managing &&
+        event.target instanceof Element &&
+        event.target.closest('#game-controls, #wave-flag') !== null
+      )
+        return;
+      if (chosen !== undefined) close();
       return;
     }
-    if (event.target !== canvas || choices[0] === undefined) return;
+    if (state.phase === 'victory' || state.phase === 'defeat') return;
     const bounds = canvas.getBoundingClientRect();
     pointer.set(
       ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
@@ -171,21 +248,42 @@ export function createBuildHud(
     );
     raycaster.setFromCamera(pointer, camera);
     const { origin, direction } = raycaster.ray;
-    const cell = pickCell(state.level, {
-      origin: { x: origin.x, y: origin.y / LAYER_HEIGHT, z: origin.z },
-      direction: { x: direction.x, y: direction.y / LAYER_HEIGHT, z: direction.z },
-    });
-    if (cell === undefined) return;
-
-    const { reason } = previewPlacement(state, cell, choices[0].kind);
-    if (reason === 'unbuildableCell' || reason === 'occupiedCell') {
-      showReason(cell, reason);
+    const cell =
+      actions.pickTower(raycaster) ??
+      pickCell(state.level, {
+        origin: { x: origin.x, y: origin.y / LAYER_HEIGHT, z: origin.z },
+        direction: { x: direction.x, y: direction.y / LAYER_HEIGHT, z: direction.z },
+      });
+    const tower = cell === undefined ? null : queryTower(state, cell);
+    if (chosen !== undefined && (tower === null || chosen === cell)) {
+      close();
       return;
     }
+    if (cell === undefined) return;
+    if (tower === null) {
+      const first = choices[0];
+      if (first === undefined) return;
+      const { reason } = previewPlacement(state, cell, first.kind);
+      if (reason === 'unbuildableCell' || reason === 'occupiedCell') {
+        showReason(cell, reason);
+        return;
+      }
+    }
+
     chosen = cell;
+    managing = tower !== null;
     notice = undefined;
     feedback.textContent = '';
     detail.textContent = '';
+    options.hidden = managing;
+    towerPanel.hidden = !managing;
+    ring.setAttribute('aria-label', managing ? '升級／賣出環' : '建造環');
+    if (tower === null) {
+      ring.removeAttribute('aria-describedby');
+    } else {
+      ring.setAttribute('aria-describedby', towerDetails.id);
+      refreshTower(tower);
+    }
     ring.hidden = false;
     anchor.hidden = false;
     if (positionRing(cell, bounds) !== undefined) ring.focus({ preventScroll: true });
@@ -205,6 +303,13 @@ export function createBuildHud(
       return;
     }
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (managing) {
+      const key = event.key.toLowerCase();
+      if (key !== 'u' && key !== 's') return;
+      event.preventDefault();
+      manage(key === 'u' ? 'upgradeTower' : 'sellTower');
+      return;
+    }
     const choice = choices.find(({ shortcut }) => shortcut === event.key);
     if (choice === undefined) return;
     event.preventDefault();
@@ -225,6 +330,7 @@ export function createBuildHud(
     update(current: GameState) {
       state = current;
       updateText(balance, String(state.money));
+      if (chosen !== undefined && (state.phase === 'victory' || state.phase === 'defeat')) close();
       if (chosen === undefined && notice === undefined) return undefined;
       const bounds = canvas.getBoundingClientRect();
       if (notice !== undefined) {
@@ -234,11 +340,25 @@ export function createBuildHud(
         } else {
           const point = projectCell(state.level, notice.cell, bounds);
           feedback.style.visibility = point === undefined ? 'hidden' : '';
-          if (point !== undefined) positionNear(feedback, point, 12, false);
+          if (point !== undefined) {
+            const belowRing =
+              managing && notice.cell === chosen && ring.classList.contains('below-cell');
+            positionNear(feedback, point, 12, belowRing);
+          }
         }
       }
       const cell = chosen;
       if (cell === undefined) return undefined;
+      if (managing) {
+        const tower = queryTower(state, cell);
+        if (tower === null) {
+          close();
+          return undefined;
+        }
+        refreshTower(tower);
+        if (positionRing(cell, bounds) === undefined) return undefined;
+        return { cell, range: tower.range };
+      }
       const position = positionRing(cell, bounds);
       if (position === undefined) return undefined;
 

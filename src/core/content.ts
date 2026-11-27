@@ -17,6 +17,13 @@ export interface TowerDefinition {
   readonly splashRadius?: number;
 }
 
+export interface TowerUpgrades {
+  /** 依序為升第 2 級、第 3 級的基本塔價百分比。 */
+  readonly costPercents: readonly [number, number];
+  readonly damageMultiplier: number;
+  readonly rangeBonus: number;
+}
+
 /** 一組出兵：同種敵人依間隔出現，延遲相對開波計算（秒）。 */
 export interface SpawnGroup<K extends string = string> {
   readonly enemy: K;
@@ -33,6 +40,7 @@ export interface Content<K extends string = string> {
   readonly enemies: Readonly<Record<K, EnemyDefinition>>;
   readonly waves: readonly Wave<NoInfer<K>>[];
   readonly towers: Readonly<Record<string, TowerDefinition>>;
+  readonly towerUpgrades: TowerUpgrades;
   readonly startingMoney: number;
   readonly startingLives: number;
   readonly waveClearReward: number;

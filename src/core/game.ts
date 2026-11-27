@@ -1,5 +1,5 @@
 import { TICKS_PER_SECOND } from './clock';
-import type { Content, EnemyDefinition, TowerDefinition } from './content';
+import type { Content, EnemyDefinition, TowerDefinition, TowerUpgrades } from './content';
 import { type CellIndex, cellAt, cellIndex, cellPoint, type GridPoint, type Level } from './level';
 import { type DistanceField, distanceField, nextCell } from './pathing';
 import { checkPlacement, type PlacementRejection, rangeBonusForLayers } from './placement';
@@ -23,6 +23,10 @@ export interface Tower {
   readonly kind: string;
   /** 塔所在格的高度層。 */
   readonly layer: number;
+  readonly level: number;
+  readonly invested: number;
+  /** 放置當下已開始的波次數。 */
+  readonly waveNumberAtPlacement: number;
   readonly nextShotTick: number;
   readonly firingStartTick: number;
   readonly shotsSinceFiringStart: number;
@@ -58,6 +62,7 @@ export interface GameState {
   readonly waves: readonly (readonly PendingSpawn[])[];
   readonly towers: readonly Tower[];
   readonly towerDefinitions: Readonly<Record<string, TowerRules>>;
+  readonly towerUpgrades: TowerUpgrades;
   readonly heightRangeBonus: number;
   readonly enemyRules: Readonly<Record<string, EnemyRules>>;
   readonly distance: DistanceField;
@@ -70,6 +75,7 @@ export interface GameState {
 export type DefeatReason = 'noLives' | 'bossLeaked';
 type WaveStartRejection = 'waveInProgress' | 'noNextWave' | 'gameOver';
 export type WaveRejection = 'wrongTick' | WaveStartRejection;
+export type RejectionReason = PlacementRejection | 'maxLevel' | 'noTower';
 
 export type Command =
   | {
@@ -79,6 +85,8 @@ export type Command =
       readonly cell: CellIndex;
       readonly kind: string;
     }
+  | { readonly type: 'upgradeTower'; readonly tick: number; readonly cell: CellIndex }
+  | { readonly type: 'sellTower'; readonly tick: number; readonly cell: CellIndex }
   | { readonly type: 'startWave'; readonly tick: number };
 
 export type GameEvent =
@@ -104,7 +112,18 @@ export type GameEvent =
   | { readonly type: 'victory'; readonly waveNumber: number }
   | { readonly type: 'defeat'; readonly waveNumber: number; readonly reason: DefeatReason }
   | { readonly type: 'waveRejected'; readonly reason: WaveRejection }
-  | { readonly type: 'rejected'; readonly cell: CellIndex; readonly reason: PlacementRejection };
+  | { readonly type: 'rejected'; readonly cell: CellIndex; readonly reason: RejectionReason };
+
+export interface TowerDetails {
+  readonly kind: string;
+  readonly level: number;
+  /** 對指定目標高度層的射程。 */
+  readonly range: number;
+  readonly damage: number;
+  readonly upgradeCost: number | null;
+  readonly refund: number;
+  readonly refundPercent: 100 | 70;
+}
 
 export interface StepResult {
   readonly state: GameState;
@@ -172,6 +191,7 @@ export function createGame(content: Content, level: Level): GameState {
     waves,
     towers: [],
     towerDefinitions,
+    towerUpgrades: content.towerUpgrades,
     heightRangeBonus: content.heightRangeBonus,
     enemyRules,
     distance,
@@ -190,6 +210,39 @@ function nextWave(state: GameState): readonly PendingSpawn[] | WaveStartRejectio
 export function waveStartRejection(state: GameState): WaveStartRejection | undefined {
   const wave = nextWave(state);
   return typeof wave === 'string' ? wave : undefined;
+}
+
+function towerRange(state: GameState, tower: Tower, rules: TowerRules, targetLayer: number) {
+  const upgraded = rules.range + (tower.level - 1) * state.towerUpgrades.rangeBonus;
+  return upgraded + rangeBonusForLayers(state, tower.layer, targetLayer);
+}
+
+function towerDamage(state: GameState, tower: Tower, rules: TowerRules) {
+  return rules.damage * state.towerUpgrades.damageMultiplier ** (tower.level - 1);
+}
+
+export function queryTower(
+  state: GameState,
+  cell: CellIndex,
+  targetLayer = 0,
+): TowerDetails | null {
+  const tower = state.towers.find((candidate) => candidate.cell === cell);
+  if (tower === undefined) return null;
+  const rules = state.towerDefinitions[tower.kind];
+  if (rules === undefined) return null;
+
+  const costPercent = state.towerUpgrades.costPercents[tower.level - 1];
+  const refundPercent = state.waveNumber === tower.waveNumberAtPlacement ? 100 : 70;
+  return {
+    kind: tower.kind,
+    level: tower.level,
+    range: towerRange(state, tower, rules, targetLayer),
+    damage: towerDamage(state, tower, rules),
+    upgradeCost: costPercent === undefined ? null : (rules.cost * costPercent) / 100,
+    refund:
+      refundPercent === 100 ? tower.invested : Math.floor((tower.invested * refundPercent) / 100),
+    refundPercent,
+  };
 }
 
 export function applyCommands(state: GameState, commands: readonly Command[]): StepResult {
@@ -212,6 +265,44 @@ export function applyCommands(state: GameState, commands: readonly Command[]): S
     }
     if (command.tick !== current.tick) {
       events.push({ type: 'rejected', cell: command.cell, reason: 'wrongTick' });
+      continue;
+    }
+    if (command.type !== 'placeTower') {
+      if (current.phase === 'victory' || current.phase === 'defeat') {
+        events.push({ type: 'rejected', cell: command.cell, reason: 'gameOver' });
+        continue;
+      }
+      const details = queryTower(current, command.cell);
+      if (details === null) {
+        events.push({ type: 'rejected', cell: command.cell, reason: 'noTower' });
+        continue;
+      }
+      if (command.type === 'sellTower') {
+        const towers = current.towers.filter((tower) => tower.cell !== command.cell);
+        const distance = cellAt(current.level, command.cell).lane
+          ? distanceField(current.level, new Set(towers.map((tower) => tower.cell)))
+          : current.distance;
+        current = { ...current, money: current.money + details.refund, towers, distance };
+        continue;
+      }
+      const cost = details.upgradeCost;
+      if (cost === null) {
+        events.push({ type: 'rejected', cell: command.cell, reason: 'maxLevel' });
+        continue;
+      }
+      if (current.money < cost) {
+        events.push({ type: 'rejected', cell: command.cell, reason: 'insufficientFunds' });
+        continue;
+      }
+      current = {
+        ...current,
+        money: current.money - cost,
+        towers: current.towers.map((tower) =>
+          tower.cell === command.cell
+            ? { ...tower, level: tower.level + 1, invested: tower.invested + cost }
+            : tower,
+        ),
+      };
       continue;
     }
     const placement = checkPlacement(current, command.cell, command.kind);
@@ -297,7 +388,7 @@ function attack(state: GameState): StepResult {
       const point = enemyPosition(state, enemy);
       const targetCell = cellIndex(state.level.width, Math.round(point.x), Math.round(point.y));
       const targetLayer = cellAt(state.level, targetCell).layer;
-      const radius = definition.range + rangeBonusForLayers(state, tower.layer, targetLayer);
+      const radius = towerRange(state, tower, definition, targetLayer);
       if (Math.hypot(point.x - origin.x, point.y - origin.y) > radius) continue;
       const remaining =
         (state.distance[enemy.to] ?? Number.POSITIVE_INFINITY) +
@@ -309,7 +400,8 @@ function attack(state: GameState): StepResult {
     }
     if (target === undefined) return tower;
 
-    const { damage, splashRadius } = definition;
+    const damage = towerDamage(state, tower, definition);
+    const { splashRadius } = definition;
     const impact = enemyPosition(state, target);
     events.push({ type: 'shot', towerCell: tower.cell, target, splashRadius });
     enemies = enemies.flatMap((enemy) => {

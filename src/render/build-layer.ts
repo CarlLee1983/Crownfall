@@ -7,6 +7,8 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  type Object3D,
+  type Raycaster,
   RingGeometry,
 } from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
@@ -57,6 +59,7 @@ interface BuildPreview {
 
 interface BuildLayer {
   readonly group: Group;
+  pickTower(raycaster: Raycaster, terrain: Object3D): CellIndex | undefined;
   update(previous: GameState, state: GameState, alpha: number, preview?: BuildPreview): void;
 }
 
@@ -127,6 +130,7 @@ function sameTowerLayout(
 export function createBuildLayer(): BuildLayer {
   const group = new Group();
   const towers = new Group();
+  const towerCells = new Map<Object3D, CellIndex>();
   const solid = new Line2(
     new LineGeometry(),
     new LineMaterial({ color: 0x1e6e78, linewidth: 4, alphaToCoverage: true }),
@@ -170,12 +174,14 @@ export function createBuildLayer(): BuildLayer {
     const levelChanged = lastState?.level !== state.level;
     if (levelChanged || !sameTowerLayout(lastState?.towers, state.towers)) {
       towers.clear();
+      towerCells.clear();
       for (const tower of state.towers) {
         const { geometry, material } = TOWER_MODELS.get(tower.kind) ?? BASIC_MODEL;
         const mesh = new Mesh(geometry, material);
         const { x, y } = cellPoint(state.level, tower.cell);
         mesh.position.set(x, tower.layer * LAYER_HEIGHT, y);
         towers.add(mesh);
+        towerCells.set(mesh, tower.cell);
       }
     }
     if (levelChanged || lastState?.distance !== state.distance) {
@@ -219,5 +225,17 @@ export function createBuildLayer(): BuildLayer {
     previousProposal = proposal;
   };
 
-  return { group, update };
+  return {
+    group,
+    pickTower(raycaster, terrain) {
+      const hit = raycaster.intersectObjects(towers.children, false)[0];
+      if (hit === undefined) return undefined;
+      // Only select a model visible in front of terrain; grid picking stays in the core.
+      const ground = raycaster.intersectObject(terrain)[0];
+      return ground === undefined || ground.distance > hit.distance
+        ? towerCells.get(hit.object)
+        : undefined;
+    },
+    update,
+  };
 }

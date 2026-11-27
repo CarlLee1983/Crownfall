@@ -57,6 +57,98 @@ body {
   border: 0;
 }
 
+#build-options[hidden] {
+  display: none;
+}
+
+#build-ring:has(.tower-panel:not([hidden])) {
+  width: min(368px, calc(100vw - 16px));
+}
+
+.tower-panel:not([hidden]) {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  gap: 7px;
+}
+
+.below-cell .tower-panel {
+  align-items: start;
+}
+
+#tower-details,
+.tower-action {
+  margin: 0;
+  padding: 7px 8px;
+  color: inherit;
+  background: #1a222d;
+  border: 1px solid #536373;
+  border-radius: 8px;
+  text-align: center;
+  box-shadow: 0 3px 10px #0006;
+}
+
+#tower-details {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  margin-bottom: 18px;
+  white-space: pre-line;
+  font-variant-numeric: tabular-nums;
+}
+
+.below-cell #tower-details {
+  align-self: end;
+  margin-top: 18px;
+  margin-bottom: 0;
+}
+
+.tower-action {
+  min-width: 0;
+  min-height: 44px;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.tower-action:last-child {
+  grid-column: 3;
+}
+
+.tower-action:where(:not(:disabled)):hover,
+.tower-action:focus-visible {
+  outline: 2px solid #f4f1e6;
+  outline-offset: 2px;
+}
+
+.tower-action:disabled,
+.tower-action.unaffordable {
+  color: #a6adb2;
+  background: #252a31;
+}
+
+.tower-action:disabled {
+  cursor: default;
+}
+
+.tower-price {
+  display: block;
+  color: #f1d992;
+  font-size: 0.86em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tower-action:disabled .tower-price,
+.tower-action.unaffordable .tower-price {
+  color: inherit;
+}
+
+.tower-action kbd {
+  color: #cbd4dd;
+  font-size: 0.8em;
+}
+
 .build-choice {
   flex: 1;
   display: grid;

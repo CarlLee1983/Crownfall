@@ -46,8 +46,10 @@ window.addEventListener('resize', onResize);
 onResize();
 
 const initial = createGame(content, level);
-const hud = createBuildHud(canvas, camera, initial, (cell, kind) => {
-  loop.enqueue((tick) => ({ type: 'placeTower', cell, kind, tick }));
+const hud = createBuildHud(canvas, camera, initial, {
+  placeTower: (cell, kind) => loop.enqueue((tick) => ({ type: 'placeTower', cell, kind, tick })),
+  manageTower: (cell, type) => loop.enqueue((tick) => ({ type, cell, tick })),
+  pickTower: (raycaster) => builds.pickTower(raycaster, terrain),
 });
 const waveHud = createWaveHud(canvas, camera, content.waves, {
   startWave: () => loop.enqueue((tick) => ({ type: 'startWave', tick })),
