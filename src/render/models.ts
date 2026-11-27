@@ -1,14 +1,9 @@
-import { type AnimationClip, LoadingManager, type Object3D } from 'three';
+import { LoadingManager } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import skeletonUrl from './models/enemy-skeleton.glb?url';
-
-export interface LoadedEnemyModel {
-  readonly scene: Object3D;
-  readonly walk: AnimationClip;
-}
+import { loadEnemyModels } from './enemy-model-assets';
 
 export interface LoadedModels {
-  readonly enemies: { readonly grunt: LoadedEnemyModel };
+  readonly enemies: Awaited<ReturnType<typeof loadEnemyModels>>;
 }
 
 export async function loadModels(): Promise<LoadedModels> {
@@ -18,9 +13,7 @@ export async function loadModels(): Promise<LoadedModels> {
   manager.onError = () => {
     resourceFailed = true;
   };
-  const { scene, animations } = await new GLTFLoader(manager).loadAsync(skeletonUrl);
-  if (resourceFailed) throw new Error('骷髏兵模型的資源載入失敗');
-  const walk = animations.find(({ name }) => name === 'Walking_A');
-  if (walk === undefined) throw new Error('骷髏兵模型缺少 Walking_A');
-  return { enemies: { grunt: { scene, walk } } };
+  const enemies = await loadEnemyModels(new GLTFLoader(manager));
+  if (resourceFailed) throw new Error('敵人模型的資源載入失敗');
+  return { enemies };
 }

@@ -29,22 +29,24 @@ import {
 } from '../core';
 import { cellIndex, neighbors } from '../core/level';
 import { createEnemyModel } from './enemy-model';
+import type { LoadedEnemyModel } from './enemy-model-assets';
 import { type EnemyMotion, enemyHeading, enemyMotion, sampleEnemyMotion } from './enemy-motion';
 import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
-import type { LoadedEnemyModel } from './models';
 import { LAYER_HEIGHT } from './terrain';
 
 interface Look {
   readonly size: number;
   readonly round?: true;
   readonly cornerCut?: number;
+  readonly modelScale?: number;
 }
 
 const LOOKS: Readonly<Record<string, Look>> = {
   grunt: { size: 0.5 },
   runner: { size: 0.4 },
   tank: { size: 0.8, cornerCut: 0.1 },
-  boss: { size: 1, round: true },
+  // The equipped walk has a native diameter of 2.71; scale it to the one-cell proxy.
+  boss: { size: 1, round: true, modelScale: 0.37 },
 };
 const DEFAULT_LOOK: Look = { size: 0.5 };
 const GLOW_COLORS: ReadonlyMap<string, number> = new Map([
@@ -248,7 +250,8 @@ export function createEnemyLayer(
     body.layers.set(WORLD_LAYER);
     body.matrixAutoUpdate = false;
     const asset = models[kind];
-    const visual = asset && createEnemyModel(asset, -look.size / 2, enemyGlowColor(kind));
+    const visual =
+      asset && createEnemyModel(asset, -look.size / 2, enemyGlowColor(kind), look.modelScale);
     if (visual !== undefined) {
       body.material.colorWrite = body.material.depthWrite = false;
       body.add(visual.model);
