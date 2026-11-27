@@ -53,6 +53,9 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   await expect(page.locator('link[rel="stylesheet"]')).toHaveAttribute('href', /^\.\/assets\//);
   await page.getByRole('button', { name: '開始遊戲' }).click();
 
+  const version = process.env.APP_VERSION ?? 'dev';
+  await expect(page.getByText(`版本 ${version}`, { exact: true })).toBeVisible();
+
   const canvas = page.getByLabel('Crownfall 關卡');
   await expect(canvas).toBeVisible();
   await canvas.click({ position: openTile });
