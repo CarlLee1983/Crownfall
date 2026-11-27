@@ -5,6 +5,7 @@ import {
   type Command,
   type Content,
   canAffordTower,
+  continueRejection,
   createGame,
   currentRoute,
   enemyPosition,
@@ -358,6 +359,128 @@ it('replays a full command log identically through the final tick', () => {
   const first = replay();
   expect(first.state).toMatchObject({ lives: 8, money: 99, phase: 'victory', tick: 9 });
   expect(replay().trace).toEqual(first.trace);
+});
+
+describe('endless mode', () => {
+  it('keeps short campaigns at victory when the endless templates are missing', () => {
+    const initial = createGame({ ...content, waves: [{ groups: [] }] }, parseLevel(['SG']));
+    const won = step(initial, [{ type: 'startWave', tick: 0 }]).state;
+    expect(won.phase).toBe('victory');
+    expect(continueRejection(won)).toBe('noNextWave');
+    expect(step(won, [{ type: 'continueEndless', tick: won.tick }])).toEqual({
+      state: won,
+      events: [{ type: 'continueRejected', reason: 'noNextWave' }],
+    });
+  });
+
+  it('continues only from victory with the current tick and preserves the completed campaign', () => {
+    const level = parseLevel(['SG', '..']);
+    const campaign = { ...content, waves: Array.from({ length: 10 }, () => ({ groups: [] })) };
+    const initial = createGame(campaign, level);
+    const cell = 2 as CellIndex;
+    const built = step(initial, [{ type: 'placeTower', cell, kind: 'basic', tick: 0 }]).state;
+    const early = step(built, [{ type: 'continueEndless', tick: built.tick }]);
+    expect(early.events).toEqual([{ type: 'continueRejected', reason: 'notVictory' }]);
+    expect(early.state).toMatchObject({ phase: 'preparation', waveNumber: 0, endless: false });
+
+    let state = early.state;
+    for (let i = 0; i < 9; i++) {
+      state = step(state, [{ type: 'startWave', tick: state.tick }]).state;
+    }
+    const won = step(state, [{ type: 'startWave', tick: state.tick }]);
+    expect(won.events).toContainEqual({ type: 'victory', waveNumber: 10 });
+    const stale = step(won.state, [{ type: 'continueEndless', tick: won.state.tick - 1 }]);
+    expect(stale).toEqual({
+      state: won.state,
+      events: [{ type: 'continueRejected', reason: 'wrongTick' }],
+    });
+
+    const continued = step(won.state, [{ type: 'continueEndless', tick: won.state.tick }]);
+    expect(continued.events).toEqual([]);
+    expect(continued.state).toMatchObject({
+      phase: 'preparation',
+      waveNumber: 10,
+      endless: true,
+      money: 190,
+      lives: 10,
+      towers: won.state.towers,
+    });
+
+    const lost = createGame({ ...campaign, startingLives: 0 }, level);
+    expect(step(lost, [{ type: 'continueEndless', tick: 0 }])).toEqual({
+      state: lost,
+      events: [{ type: 'continueRejected', reason: 'notVictory' }],
+    });
+  });
+
+  it('cycles through waves 4–9 and compounds group sizes and enemy HP at wave 17', () => {
+    const campaign = {
+      ...content,
+      startingLives: 100,
+      enemies: {
+        grunt: { ...content.enemies.grunt, hp: 20, speed: 0.3 },
+        tank: { ...content.enemies.grunt, hp: 40, speed: 0.3 },
+      },
+      waves: [
+        { groups: [] },
+        { groups: [] },
+        { groups: [] },
+        {
+          groups: [
+            { enemy: 'grunt', count: 2, interval: 0.1, delay: 0 },
+            { enemy: 'tank', count: 1, interval: 0.2, delay: 0.1 },
+          ],
+        },
+        { groups: [{ enemy: 'grunt', count: 3, interval: 0, delay: 0 }] },
+        { groups: [{ enemy: 'tank', count: 1, interval: 0, delay: 0 }] },
+        { groups: [{ enemy: 'grunt', count: 4, interval: 0, delay: 0 }] },
+        { groups: [{ enemy: 'tank', count: 2, interval: 0, delay: 0 }] },
+        { groups: [{ enemy: 'grunt', count: 6, interval: 0, delay: 0 }] },
+        { groups: [{ enemy: 'tank', count: 1, interval: 0, delay: 0 }] },
+      ],
+    } satisfies Content;
+    let state = createGame(campaign, parseLevel(['SG']));
+    const open = (before: GameState) => step(before, [{ type: 'startWave', tick: before.tick }]);
+    for (let i = 0; i < 9; i++) state = run(open(state).state, 110).state;
+    const finale = open(state);
+    expect(finale.state.enemies).toMatchObject([{ kind: 'tank', hp: 40 }]);
+    const won = run(finale.state, 110).state;
+    expect(won).toMatchObject({ phase: 'victory', waveNumber: 10 });
+    state = step(won, [{ type: 'continueEndless', tick: won.tick }]).state;
+
+    const expected = [
+      { waveNumber: 11, grunts: 3, tanks: 2, gruntHp: 23, tankHp: 46 },
+      { waveNumber: 12, grunts: 4, tanks: 0, gruntHp: 23, tankHp: 46 },
+      { waveNumber: 13, grunts: 0, tanks: 2, gruntHp: 23, tankHp: 46 },
+      { waveNumber: 14, grunts: 5, tanks: 0, gruntHp: 23, tankHp: 46 },
+      { waveNumber: 15, grunts: 0, tanks: 3, gruntHp: 23, tankHp: 46 },
+      { waveNumber: 16, grunts: 7, tanks: 0, gruntHp: 23, tankHp: 46 },
+      { waveNumber: 17, grunts: 4, tanks: 3, gruntHp: 26.45, tankHp: 52.9 },
+    ];
+    for (const { waveNumber, grunts, tanks, gruntHp, tankHp } of expected) {
+      const opened = open(state).state;
+      expect(opened).toMatchObject({ phase: 'wave', waveNumber });
+      if (waveNumber === 11) {
+        expect(opened.enemies.map(({ kind }) => kind)).toEqual(['grunt']);
+        expect(run(opened, 2).state.enemies.map(({ kind }) => kind)).toEqual([
+          'grunt',
+          'grunt',
+          'tank',
+        ]);
+      }
+      const spawned = run(opened, 16).state;
+      expect(spawned.enemies.filter(({ kind }) => kind === 'grunt')).toHaveLength(grunts);
+      expect(spawned.enemies.filter(({ kind }) => kind === 'tank')).toHaveLength(tanks);
+      for (const enemy of spawned.enemies) {
+        expect(enemy.hp).toBeCloseTo(enemy.kind === 'grunt' ? gruntHp : tankHp);
+        expect(enemy.maxHp).toBe(enemy.hp);
+      }
+      const cleared = run(spawned, 110);
+      expect(cleared.events).toContainEqual({ type: 'waveCleared', waveNumber, reward: 12 });
+      expect(cleared.state).toMatchObject({ phase: 'preparation', waveNumber, endless: true });
+      state = cleared.state;
+    }
+  });
 });
 
 function startFirstWave(gameContent: Content, level: Level): GameState {
