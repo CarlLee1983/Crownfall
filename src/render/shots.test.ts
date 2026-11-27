@@ -3,6 +3,7 @@ import { Line2 } from 'three/addons/lines/Line2.js';
 import { expect, it } from 'vitest';
 import { type Content, createGame, parseLevel, step } from '../core';
 import { cellIndex } from '../core/level';
+import { createBuildLayer } from './build-layer';
 import { createEnemyLayer } from './enemies';
 import { createShotLayer } from './shots';
 
@@ -34,7 +35,7 @@ function fire(
     heightRangeBonus: 0,
   } satisfies Content;
   const enemies = createEnemyLayer(new PerspectiveCamera());
-  const shots = createShotLayer(enemies);
+  const shots = createShotLayer(enemies, createBuildLayer().towerHeight);
   const level = parseLevel(ramp ? ['S^.', '.g.'] : ['S=.', '.G.']);
   const initial = createGame(content, level);
   const first = step(initial, [{ type: 'startWave', tick: 0 }]).state;

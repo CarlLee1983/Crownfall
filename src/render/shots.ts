@@ -10,7 +10,6 @@ import {
   type GameState,
   groundHeight,
 } from '../core';
-import { towerHeight } from './build-layer';
 import type { EnemyLayer } from './enemies';
 import { WORLD_LAYER } from './layers';
 import { LAYER_HEIGHT } from './terrain';
@@ -28,7 +27,10 @@ function killsTarget(events: readonly GameEvent[], shotIndex: number, target: En
   return false;
 }
 
-export function createShotLayer(enemies: Pick<EnemyLayer, 'impactPosition' | 'targetPosition'>) {
+export function createShotLayer(
+  enemies: Pick<EnemyLayer, 'impactPosition' | 'targetPosition'>,
+  towerHeight: (kind: string) => number,
+) {
   const group = new Group();
   const endpoint = new Vector3();
   const ringGeometry = new RingGeometry(0.93, 1, 48).rotateX(-Math.PI / 2);

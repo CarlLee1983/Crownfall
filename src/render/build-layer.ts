@@ -7,6 +7,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  type Object3D,
   RingGeometry,
 } from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
@@ -32,6 +33,7 @@ import { type EnemyMotion, enemyMotion, sampleEnemyMotion } from './enemy-motion
 import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
 import { sampleRoute } from './route-curve';
 import { LAYER_HEIGHT } from './terrain';
+import type { LoadedTowerModel } from './tower-model';
 
 const SOLID_ROUTE_LIFT = 0.035;
 // 每格取八段，包含邊中點，讓圓弧與坡面轉折都有取樣點。
@@ -54,11 +56,15 @@ const BASIC_MODEL = towerModel(
   BASIC_HALF_WIDTH,
   0x57a4da,
 );
-const TOWER_MODELS = new Map([
+const PROXY_MODELS = new Map([
   ['basic', BASIC_MODEL],
   ['sniper', towerModel(new CylinderGeometry(0.29, 0.4, 1.18, 6), 1.18, 0.4, 0xeeaa48)],
   ['splash', towerModel(new ConeGeometry(0.44, 0.68, 8), 0.68, 0.44, 0xc381dc)],
 ]);
+
+type TowerModel = ReturnType<typeof towerModel> & { readonly scene?: Object3D };
+
+const HIDDEN_PROXY = new MeshLambertMaterial({ colorWrite: false, depthWrite: false });
 
 const LEVEL_MARKER_SIZE = 0.13;
 const LEVEL_MARKER_GAP = 0.08;
@@ -68,11 +74,11 @@ const LEVEL_MARKER = {
 };
 
 /** 塔頂一排金色方塊，數量是升過的段數。 */
-function towerMesh(tower: Tower, level: Level): Group {
-  const model = TOWER_MODELS.get(tower.kind) ?? BASIC_MODEL;
+function towerMesh(tower: Tower, level: Level, model: TowerModel): Group {
   const group = new Group();
   const body = new Mesh(model.geometry, model.material);
   body.layers.set(WORLD_LAYER);
+  if (model.scene !== undefined) body.add(model.scene.clone());
   group.add(body);
   const upgrades = tower.level - 1;
   const spacing = LEVEL_MARKER_SIZE + LEVEL_MARKER_GAP;
@@ -91,17 +97,6 @@ function towerMesh(tower: Tower, level: Level): Group {
   return group;
 }
 
-export function towerHeight(kind: string): number {
-  return (TOWER_MODELS.get(kind) ?? BASIC_MODEL).height;
-}
-
-/** 給 core picking 的塔柱，以高度層與格為單位；等級方塊也算在可點範圍內。 */
-export function towerStructure(tower: Tower): Structure {
-  const model = TOWER_MODELS.get(tower.kind) ?? BASIC_MODEL;
-  const markers = tower.level > 1 ? LEVEL_MARKER_GAP + LEVEL_MARKER_SIZE : 0;
-  return { height: (model.height + markers) / LAYER_HEIGHT, halfWidth: model.halfWidth };
-}
-
 interface BuildPreview {
   readonly cell: CellIndex;
   readonly range: number;
@@ -110,6 +105,8 @@ interface BuildPreview {
 
 interface BuildLayer {
   readonly group: Group;
+  towerHeight(kind: string): number;
+  towerStructure(tower: Tower): Structure;
   update(
     previous: GameState,
     state: GameState,
@@ -307,7 +304,16 @@ function sameTowerLayout(
   );
 }
 
-export function createBuildLayer(): BuildLayer {
+export function createBuildLayer(
+  towersByKind: Readonly<Record<string, LoadedTowerModel>> = {},
+): BuildLayer {
+  const models = new Map<string, TowerModel>(PROXY_MODELS);
+  for (const [kind, asset] of Object.entries(towersByKind)) {
+    const proxy = models.get(kind) ?? BASIC_MODEL;
+    models.set(kind, { ...asset, geometry: proxy.geometry, material: HIDDEN_PROXY });
+  }
+  const modelFor = (kind: string): TowerModel => models.get(kind) ?? BASIC_MODEL;
+
   const group = new Group();
   const towers = new Group();
   const solid = new Line2(
@@ -361,7 +367,9 @@ export function createBuildLayer(): BuildLayer {
     const levelChanged = lastState?.level !== state.level;
     if (levelChanged || !sameTowerLayout(lastState?.towers, state.towers)) {
       towers.clear();
-      for (const tower of state.towers) towers.add(towerMesh(tower, state.level));
+      for (const tower of state.towers) {
+        towers.add(towerMesh(tower, state.level, modelFor(tower.kind)));
+      }
     }
     const routeChanged = levelChanged || lastState?.distance !== state.distance;
     if (routeChanged) {
@@ -427,6 +435,13 @@ export function createBuildLayer(): BuildLayer {
 
   return {
     group,
+    towerHeight: (kind) => modelFor(kind).height,
+    // Core picking uses terrain layers for height and tiles for half-width.
+    towerStructure: (tower) => {
+      const { height, halfWidth } = modelFor(tower.kind);
+      const markers = tower.level > 1 ? LEVEL_MARKER_GAP + LEVEL_MARKER_SIZE : 0;
+      return { height: (height + markers) / LAYER_HEIGHT, halfWidth };
+    },
     update,
   };
 }

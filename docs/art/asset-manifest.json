@@ -5,11 +5,11 @@
     {
       "id": "tower-archer",
       "role": "弓箭塔",
-      "path": "public/models/tower-archer.glb",
-      "status": "trialled",
+      "path": "src/render/models/tower-archer.glb",
+      "status": "implemented",
       "technical": {
         "format": "glb",
-        "dimensions": "0.8x0.8 footprint, ~0.75 tall",
+        "dimensions": "~0.70×0.81 footprint, ~1.53 tall at 0.7 scale",
         "origin": "bottom-center",
         "up": "+Y",
         "forward": "+Z",
@@ -20,17 +20,18 @@
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
         "kind": "licensed-pack",
-        "url_or_tool": "KayKit Medieval Hexagon Pack 1.0",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Medieval-Hexagon-Pack-1.0",
+        "commit": "84fa4e91af6a88989be7c99e0891cede11f2ca38",
         "creator": "Kay Lousberg",
         "created_at": "",
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
-        "prompt_or_source_record": "building_tower_A"
+        "prompt_or_source_record": "addons/kaykit_medieval_hexagon_pack/Assets/gltf/buildings/blue/building_tower_A_blue.gltf"
       },
       "verification": {
         "native_scale_reviewed": true,
-        "in_engine_reviewed": false,
-        "technical_checks_passed": false,
+        "in_engine_reviewed": true,
+        "technical_checks_passed": true,
         "approved_by": ""
       }
     },
@@ -101,8 +102,8 @@
     {
       "id": "enemy-skeleton",
       "role": "骷髏兵",
-      "path": "public/models/enemy-skeleton.glb",
-      "status": "trialled",
+      "path": "src/render/models/enemy-skeleton.glb",
+      "status": "implemented",
       "technical": {
         "format": "glb",
         "dimensions": "0.5 footprint",
@@ -116,17 +117,18 @@
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
         "kind": "licensed-pack",
-        "url_or_tool": "KayKit Character Pack: Skeletons 1.0",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0",
+        "commit": "15b62b9bad122f72926c10fb14d622c73819fa54",
         "creator": "Kay Lousberg",
         "created_at": "",
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
-        "prompt_or_source_record": "Skeleton_Minion"
+        "prompt_or_source_record": "addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Minion.glb"
       },
       "verification": {
         "native_scale_reviewed": true,
         "in_engine_reviewed": false,
-        "technical_checks_passed": false,
+        "technical_checks_passed": true,
         "approved_by": ""
       }
     },

@@ -10,9 +10,10 @@ import {
   previewPlacement,
   queryTower,
   type RejectionReason,
+  type Structure,
   samePlacementPreviewInputs,
+  type Tower,
 } from '../core';
-import { towerStructure } from './build-layer';
 import { cellProjection, element, isGameDialogOpen, updateText } from './hud-dom';
 import { LAYER_HEIGHT } from './terrain';
 
@@ -74,6 +75,7 @@ export function createBuildHud(
   camera: Camera,
   initial: GameState,
   actions: BuildActions,
+  towerStructure: (tower: Tower) => Structure,
 ) {
   const ring = element('build-ring');
   const anchor = element('build-anchor');

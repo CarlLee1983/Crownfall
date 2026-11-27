@@ -42,8 +42,13 @@
           <li>按 <kbd>Space</kbd> 暫停或繼續，按 <kbd>F</kbd> 切換倍速。</li>
           <li>按住滑鼠左鍵拖曳或按方向鍵平移鏡頭，滾動滾輪縮放。</li>
         </ul>
+        <div id="model-loading">
+          <label for="model-progress">正在載入 3D 模型…</label>
+          <progress id="model-progress"></progress>
+        </div>
+        <p id="model-error" role="alert"></p>
         <form method="dialog">
-          <button type="submit" autofocus>開始遊戲</button>
+          <button id="start-game" type="submit" disabled autofocus>開始遊戲</button>
         </form>
       </dialog>
       <dialog id="game-result" aria-labelledby="result-title" closedby="none">

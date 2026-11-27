@@ -146,8 +146,6 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
     }
   });
 
-  help.showModal();
-
   return {
     onEvents(events: readonly GameEvent[], now: number): void {
       for (const event of events) {
