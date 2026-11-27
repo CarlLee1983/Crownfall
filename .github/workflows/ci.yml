@@ -19,3 +19,5 @@ jobs:
       - run: bun run test
       - run: bun run balance
       - run: bun run build
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run test:smoke
