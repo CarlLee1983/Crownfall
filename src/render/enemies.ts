@@ -25,10 +25,13 @@ import {
   groundHeight,
   type Level,
   rampDirection,
+  TICKS_PER_SECOND,
 } from '../core';
 import { cellIndex, neighbors } from '../core/level';
-import { type EnemyMotion, enemyMotion, sampleEnemyMotion } from './enemy-motion';
+import { createEnemyModel } from './enemy-model';
+import { type EnemyMotion, enemyHeading, enemyMotion, sampleEnemyMotion } from './enemy-motion';
 import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
+import type { LoadedEnemyModel } from './models';
 import { LAYER_HEIGHT } from './terrain';
 
 interface Look {
@@ -198,6 +201,7 @@ interface EnemyView {
   readonly bar: Group;
   readonly fill: Mesh<PlaneGeometry, MeshBasicMaterial>;
   readonly barWidth: number;
+  readonly visual: ReturnType<typeof createEnemyModel> | undefined;
 }
 
 export interface EnemyLayer {
@@ -211,6 +215,7 @@ export interface EnemyLayer {
     current: GameState,
     alpha: number,
     hitFlash?: (id: EnemyId) => number,
+    gameMs?: number,
   ): void;
   targetPosition(id: EnemyId, output: Vector3): Vector3 | undefined;
   impactPosition(state: GameState, enemy: Enemy, output: Vector3): Vector3;
@@ -218,7 +223,10 @@ export interface EnemyLayer {
   reset(): void;
 }
 
-export function createEnemyLayer(camera: Camera): EnemyLayer {
+export function createEnemyLayer(
+  camera: Camera,
+  models: Readonly<Partial<Record<string, LoadedEnemyModel>>> = {},
+): EnemyLayer {
   const group = new Group();
   const normal = new Vector3();
   const cameraUp = new Vector3();
@@ -233,12 +241,18 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
   const barBackground = new MeshBasicMaterial({ color: 0x1c1d22 });
   const barFill = new MeshBasicMaterial({ color: 0x7ee081 });
 
-  const viewFor = (id: EnemyId, look: Look): EnemyView => {
+  const viewFor = ({ id, kind }: Enemy, look: Look): EnemyView => {
     const existing = views.get(id);
     if (existing !== undefined) return existing;
     const body = new Mesh(enemyGeometry(look), new MeshLambertMaterial());
     body.layers.set(WORLD_LAYER);
     body.matrixAutoUpdate = false;
+    const asset = models[kind];
+    const visual = asset && createEnemyModel(asset, -look.size / 2, enemyGlowColor(kind));
+    if (visual !== undefined) {
+      body.material.colorWrite = body.material.depthWrite = false;
+      body.add(visual.model);
+    }
     const barWidth = Math.max(0.52, look.size);
     const bar = new Group();
     const background = new Mesh(barGeometry, barBackground);
@@ -252,7 +266,7 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
 
     const enemyGroup = new Group();
     enemyGroup.add(body, bar);
-    const view = { group: enemyGroup, body, bar, fill, barWidth };
+    const view = { group: enemyGroup, body, bar, fill, barWidth, visual };
     views.set(id, view);
     group.add(enemyGroup);
     return view;
@@ -278,10 +292,11 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     group.remove(view.group);
     view.body.geometry.dispose();
     view.body.material.dispose();
+    view.visual?.dispose();
     views.delete(id);
   };
 
-  const update: EnemyLayer['update'] = (previous, current, alpha, hitFlash) => {
+  const update: EnemyLayer['update'] = (previous, current, alpha, hitFlash, gameMs = 0) => {
     if (observed === undefined || observed.tick < previous.tick) observe(previous);
     observe(current);
     cameraUp.copy(UP).applyQuaternion(camera.quaternion);
@@ -289,14 +304,24 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     for (const enemy of current.enemies) {
       const motion = motions.get(enemy.id);
       if (motion === undefined) continue;
-      const point = sampleEnemyMotion(motion, previous === current ? 1 : alpha);
+      const progress = previous === current ? 1 : alpha;
+      const point = sampleEnemyMotion(motion, progress);
       const look = enemyLook(enemy.kind);
-      const view = viewFor(enemy.id, look);
+      const view = viewFor(enemy, look);
       const flash = hitFlash?.(enemy.id) ?? 0;
-      const glow = enemyGlowColor(enemy.kind);
-      view.body.material.color.setHex(glow).multiplyScalar(0.36).lerp(WHITE, flash);
-      view.body.material.emissive.setHex(glow).lerp(WHITE, flash);
-      view.body.material.emissiveIntensity = GLOW_INTENSITY;
+      if (view.visual === undefined) {
+        const glow = enemyGlowColor(enemy.kind);
+        view.body.material.color.setHex(glow).multiplyScalar(0.36).lerp(WHITE, flash);
+        view.body.material.emissive.setHex(glow).lerp(WHITE, flash);
+        view.body.material.emissiveIntensity = GLOW_INTENSITY;
+      } else {
+        const walkingSpeed =
+          current.phase === 'wave' && motion.end > motion.start
+            ? (current.enemyRules[enemy.kind]?.speedPerTick ?? 0) * TICKS_PER_SECOND
+            : 0;
+        view.visual.model.rotation.y = enemyHeading(motion, progress);
+        view.visual.update(gameMs, walkingSpeed, flash);
+      }
       const half = look.size / 2;
       const ground = supportBody(current.level, point, look, normal, view.body.position);
       view.group.position.set(point.x, ground, point.y);

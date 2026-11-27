@@ -90,3 +90,17 @@ export function sampleEnemyMotion(motion: EnemyMotion, alpha: number): GridPoint
   const blend = blendDistance > 0 ? Math.min(1, traveled / blendDistance) : alpha;
   return { x: old.x + (point.x - old.x) * blend, y: old.y + (point.y - old.y) * blend };
 }
+
+/** Face the tangent of the displayed path, including the blend during a reroute. */
+export function enemyHeading(motion: EnemyMotion, alpha: number): number {
+  const delta = 0.001;
+  const from =
+    motion.start === motion.end
+      ? pointAt(motion.route, motion.start - delta)
+      : sampleEnemyMotion(motion, Math.max(0, alpha - delta));
+  const to =
+    motion.start === motion.end
+      ? pointAt(motion.route, motion.end + delta)
+      : sampleEnemyMotion(motion, Math.min(1, alpha + delta));
+  return Math.atan2(to.x - from.x, to.y - from.y);
+}

@@ -48,6 +48,12 @@ bun run test:smoke
 
 確認 ZIP 根目錄直接包含 `index.html` 和 `assets/`。在 itch.io 專案頁將作品類型設為 **HTML**，上傳 `crownfall.zip`，勾選 **This file will be played in the browser**，儲存後在預覽頁載入遊戲。
 
+## 模型前處理
+
+執行 `bun run models` 會從[資產清單](docs/art/asset-manifest.json)指定的 KayKit 版本下載原檔，把精簡後的 GLB 寫到 `src/render/models/`。
+
 ## 授權
 
-程式碼採 [MIT 授權](LICENSE)。未來新增的美術與音樂素材將另行標示，並保留所有權利。
+程式碼採 [MIT 授權](LICENSE)。
+
+3D 模型：KayKit by Kay Lousberg (CC0)

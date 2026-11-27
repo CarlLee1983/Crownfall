@@ -369,7 +369,8 @@ body {
   min-height: 44px;
 }
 
-#start-wave:disabled {
+#start-wave:disabled,
+#start-game:disabled {
   border-color: #536373;
   color: #a6adb2;
   background: #20272e;
@@ -413,6 +414,18 @@ body {
 
 #game-help kbd {
   color: #f1d992;
+}
+
+#model-loading label {
+  display: block;
+}
+
+#model-error {
+  color: #ffe0a2;
+}
+
+#model-error:empty {
+  margin: 0;
 }
 
 #game-help form {

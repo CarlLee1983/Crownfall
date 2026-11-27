@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 
 // An open tile in the initial 1280×720 view.
 const openTile = { x: 654, y: 395 };
+const skeletonAsset = /\/assets\/enemy-skeleton-[\w-]+\.glb$/;
 
 // The entrance and first stretch of lane at the configured viewport.
 const entrance = { x: 579, y: 460, width: 91, height: 92 };
@@ -60,10 +61,31 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   });
   page.on('pageerror', (error) => errors.push(error.message));
 
+  let releaseDownload = () => {};
+  const download = new Promise<void>((resolve) => {
+    releaseDownload = resolve;
+  });
+  await page.route(skeletonAsset, async (route) => {
+    await download;
+    await route.continue();
+  });
+  const modelRequest = page.waitForRequest(skeletonAsset);
+
   await page.goto('./');
+  const startGame = page.getByRole('button', { name: '開始遊戲' });
+  try {
+    await expect(startGame).toBeDisabled();
+    await expect(page.getByText('正在載入 3D 模型…')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(startGame).toBeVisible();
+  } finally {
+    releaseDownload();
+  }
+  expect(new URL((await modelRequest).url()).pathname).toMatch(/^\/crownfall\/assets\//);
   await expect(page.locator('script[type="module"][src]')).toHaveAttribute('src', /^\.\/assets\//);
   await expect(page.locator('link[rel="stylesheet"]')).toHaveAttribute('href', /^\.\/assets\//);
-  await page.getByRole('button', { name: '開始遊戲' }).click();
+  await expect(startGame).toBeEnabled();
+  await startGame.click();
 
   const version = process.env.APP_VERSION ?? 'dev';
   await expect(page.getByText(`版本 ${version}`, { exact: true })).toBeVisible();
@@ -101,6 +123,30 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   expect(requestsOutsideMount).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+for (const failure of ['download', 'texture decode'] as const) {
+  test(`keeps the title open and reports a model ${failure} failure`, async ({ page }) => {
+    await page.route(skeletonAsset, async (route) => {
+      if (failure === 'download') {
+        await route.abort();
+        return;
+      }
+      const response = await route.fetch();
+      const body = await response.body();
+      const pngSignature = body.indexOf(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      );
+      expect(pngSignature).toBeGreaterThan(0);
+      body[pngSignature] = 0;
+      await route.fulfill({ response, body });
+    });
+    await page.goto('./');
+    await expect(page.getByRole('alert')).toHaveText('3D 模型載入失敗。請重新整理頁面再試一次。');
+    await expect(page.getByRole('button', { name: '開始遊戲' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: '操作說明' })).toBeVisible();
+  });
+}
 
 test('horizontal pan stops at the map edge without drifting vertically', async ({ page }) => {
   await page.goto('./');

@@ -1,4 +1,12 @@
-import { Mesh, PerspectiveCamera, Vector3 } from 'three';
+import {
+  AnimationClip,
+  BoxGeometry,
+  Mesh,
+  MeshStandardMaterial,
+  NumberKeyframeTrack,
+  PerspectiveCamera,
+  Vector3,
+} from 'three';
 import { expect, it } from 'vitest';
 import { level } from '../content/level';
 import {
@@ -9,6 +17,7 @@ import {
   groundHeight,
   parseLevel,
   step,
+  TICKS_PER_SECOND,
 } from '../core';
 import { cellIndex } from '../core/level';
 import { createCamera } from './camera';
@@ -327,4 +336,114 @@ it('keeps the incoming branch edge when a reroute and subsequent ticks run befor
     0,
     expect.closeTo(0.084265, 5),
   ]);
+});
+
+it('flashes only the hit skeleton, then restores its glow', () => {
+  const model = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+  model.name = 'skeleton';
+  const layer = createEnemyLayer(new PerspectiveCamera(), {
+    grunt: { scene: model, walk: new AnimationClip('Walking_A', 1, []) },
+  });
+  const first = start(['S=G']);
+  const enemy = first.enemies[0];
+  if (enemy === undefined) throw new Error('No skeleton spawned');
+  const state = { ...first, enemies: [enemy, { ...enemy, id: first.nextEnemyId }] };
+  layer.update(state, state, 1);
+
+  const visibleMaterials = layer.group.children.map((child) => {
+    const skeleton = child.getObjectByName('skeleton');
+    if (!(skeleton instanceof Mesh) || !(skeleton.material instanceof MeshStandardMaterial)) {
+      throw new Error('No visible skeleton material');
+    }
+    return skeleton.material;
+  });
+  const [hit, nearby] = visibleMaterials;
+  if (!hit || !nearby) throw new Error('Expected two skeletons');
+  const baseColor = hit.emissive.clone();
+  const baseIntensity = hit.emissiveIntensity;
+
+  layer.update(state, state, 1, (id) => (id === enemy.id ? 1 : 0));
+  expect(hit.emissive.getHex()).toBe(0xffffff);
+  expect(hit.emissiveIntensity).toBeGreaterThan(baseIntensity);
+  expect(nearby.emissive).toEqual(baseColor);
+  expect(nearby.emissiveIntensity).toBe(baseIntensity);
+
+  layer.update(state, state, 1);
+  expect(hit.emissive).toEqual(baseColor);
+  expect(hit.emissiveIntensity).toBe(baseIntensity);
+});
+
+it('keeps the skeleton on the ramp and follows the displayed arc at a turn', () => {
+  const model = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+  model.name = 'skeleton';
+  const models = { grunt: { scene: model, walk: new AnimationClip('Walking_A', 1, []) } };
+
+  const slope = createEnemyLayer(new PerspectiveCamera(), models);
+  const approach = start(['S^g']);
+  const enemy = approach.enemies[0];
+  if (enemy === undefined) throw new Error('No skeleton spawned');
+  const onRamp = {
+    ...approach,
+    enemies: [
+      {
+        ...enemy,
+        from: cellIndex(approach.level.width, 1, 0),
+        to: cellIndex(approach.level.width, 2, 0),
+        progress: 0,
+      },
+    ],
+  };
+  slope.update(onRamp, onRamp, 1);
+  const climbing = slope.group.getObjectByName('skeleton');
+  expect(climbing?.getWorldPosition(new Vector3()).toArray()).toEqual([
+    expect.closeTo(1, 5),
+    expect.closeTo(0.3, 5),
+    0,
+  ]);
+  expect(climbing?.getWorldDirection(new Vector3()).toArray()).toEqual([
+    expect.closeTo(0.85749, 5),
+    expect.closeTo(0.5145, 5),
+    expect.closeTo(0, 5),
+  ]);
+
+  const turn = createEnemyLayer(new PerspectiveCamera(), models);
+  const first = start(['S=', '.G']);
+  const second = step(first, []).state;
+  const third = step(second, []).state;
+  const fourth = step(third, []).state;
+  turn.update(first, second, 0);
+  turn.update(second, third, 0);
+  turn.update(third, fourth, 0.5);
+  expect(
+    turn.group.getObjectByName('skeleton')?.getWorldDirection(new Vector3()).toArray(),
+  ).toEqual([expect.closeTo(0.83147, 4), 0, expect.closeTo(0.55557, 4)]);
+});
+
+it('paces the skeleton walk with enemy speed and uses paused game time', () => {
+  const model = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+  model.name = 'skeleton';
+  const walk = new AnimationClip('Walking_A', 2, [
+    new NumberKeyframeTrack('skeleton.position[x]', [0, 2], [0, 2]),
+  ]);
+  const poseAtSpeed = (speed: number) => {
+    const layer = createEnemyLayer(new PerspectiveCamera(), { grunt: { scene: model, walk } });
+    const spawn = start(['S=G']);
+    const grunt = spawn.enemyRules.grunt;
+    if (grunt === undefined) throw new Error('Missing skeleton speed');
+    const first = {
+      ...spawn,
+      enemyRules: { grunt: { ...grunt, speedPerTick: speed / TICKS_PER_SECOND } },
+    };
+    const moving = step(first, []).state;
+    layer.update(first, moving, 0, undefined, 0);
+    layer.update(first, moving, 0.5, undefined, 100);
+    const skeleton = layer.group.getObjectByName('skeleton');
+    const pose = skeleton?.position.x;
+    layer.update(first, moving, 0.5, undefined, 100);
+    expect(skeleton?.position.x).toEqual(pose);
+    return pose;
+  };
+
+  expect(poseAtSpeed(1.6)).toBeCloseTo(0.1);
+  expect(poseAtSpeed(3.2)).toBeCloseTo(0.2);
 });
