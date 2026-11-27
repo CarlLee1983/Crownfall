@@ -17,9 +17,9 @@ import {
 
 // 每秒 7.5 格 = 每 tick 0.25 格，讓位置在二進位浮點下精確。
 const content = {
-  enemies: { grunt: { speed: 7.5 } },
+  enemies: { grunt: { speed: 7.5, hp: 12, bounty: 5 } },
   waves: [{ groups: [{ enemy: 'grunt', count: 1, interval: 1, delay: 0 }] }],
-  towers: { basic: { name: 'Basic', cost: 30, range: 2, damage: 4, shotsPerSecond: 1 } },
+  towers: { basic: { name: 'Basic', cost: 30, range: 2, damage: 4, shotsPerSecond: 0 } },
   startingMoney: 100,
   heightRangeBonus: 1.5,
 } satisfies Content;
@@ -58,7 +58,238 @@ describe('enemies walking the lane', () => {
     const arrival = step(before.state, []);
     expect(arrival.state.tick).toBe(12);
     expect(arrival.state.enemies).toEqual([]);
+    expect(arrival.state.money).toBe(100);
     expect(arrival.events).toEqual([{ type: 'leaked', enemyId: 1, enemyKind: 'grunt' }]);
+  });
+});
+
+describe('tower attacks', () => {
+  const basic = { ...content.towers.basic, shotsPerSecond: 1 };
+  const pairedWaves = [
+    {
+      groups: [
+        { enemy: 'grunt', count: 1, interval: 0, delay: 0 },
+        { enemy: 'runner', count: 1, interval: 0, delay: 0 },
+      ],
+    },
+  ] as const;
+
+  it('shoots as soon as a target is in range and waits its full interval between shots', () => {
+    const start = createGame(
+      {
+        ...content,
+        enemies: { grunt: { speed: 0, hp: 12, bounty: 5 } },
+        towers: { basic },
+      },
+      parseLevel(['S==G', '....']),
+    );
+    const first = step(start, [
+      { type: 'placeTower', kind: 'basic', cell: 4 as CellIndex, tick: 0 },
+    ]);
+
+    expect(first.events).toMatchObject([{ type: 'shot', towerCell: 4, target: { id: 1 } }]);
+    expect(first.state.enemies[0]?.hp).toBe(8);
+    expect(start.enemies[0]?.hp).toBe(12);
+
+    const before = run(first.state, 29);
+    expect(before.events).toEqual([]);
+    expect(before.state.enemies[0]?.hp).toBe(8);
+
+    const second = step(before.state, []);
+    expect(second.events).toMatchObject([{ type: 'shot', towerCell: 4, target: { id: 1 } }]);
+    expect(second.state.enemies[0]?.hp).toBe(4);
+    expect(step(before.state, [])).toEqual(second);
+  });
+
+  it('sustains fractional-tick cadence and starts a fresh interval after idling', () => {
+    let state = createGame(
+      {
+        ...content,
+        enemies: { grunt: { speed: 0, hp: 20, bounty: 5 } },
+        waves: [{ groups: [{ enemy: 'grunt', count: 2, interval: 1.5, delay: 0 }] }],
+        towers: { basic: { ...basic, shotsPerSecond: 4 } },
+      },
+      parseLevel(['S==G', '....']),
+    );
+    const shotTicks: number[] = [];
+    for (let tick = 0; tick <= 75; tick++) {
+      const result = step(
+        state,
+        tick === 0 ? [{ type: 'placeTower', kind: 'basic', cell: 4 as CellIndex, tick }] : [],
+      );
+      for (const event of result.events) {
+        if (event.type === 'shot') shotTicks.push(tick);
+      }
+      state = result.state;
+    }
+
+    expect(shotTicks).toEqual([0, 8, 15, 23, 30, 45, 53, 60, 68, 75]);
+  });
+
+  it('targets the enemy with less remaining travel when both are on the same segment', () => {
+    const start = createGame(
+      {
+        ...content,
+        enemies: { ...content.enemies, runner: { speed: 15, hp: 10, bounty: 4 } },
+        waves: pairedWaves,
+        towers: { basic },
+      },
+      parseLevel(['S==G', '....']),
+    );
+    const moving = step(start, []).state;
+    const result = step(moving, [
+      { type: 'placeTower', kind: 'basic', cell: 4 as CellIndex, tick: 1 },
+    ]);
+
+    expect(result.events).toMatchObject([{ type: 'shot', target: { id: 2 } }]);
+    expect(result.state.enemies.map((enemy) => enemy.hp)).toEqual([12, 6]);
+  });
+
+  it('targets the front of a folded route even when the trailing enemy is closer to the goal', () => {
+    const start = createGame(
+      {
+        ...content,
+        enemies: { ...content.enemies, runner: { speed: 30, hp: 10, bounty: 4 } },
+        waves: pairedWaves,
+        towers: { basic: { ...basic, range: 3 } },
+      },
+      parseLevel(['S=====', '.....=', 'G=====']),
+    );
+    const moving = run(start, 4).state;
+    const result = step(moving, [
+      { type: 'placeTower', kind: 'basic', cell: 8 as CellIndex, tick: 4 },
+    ]);
+
+    expect(result.events).toMatchObject([{ type: 'shot', target: { id: 2 } }]);
+  });
+
+  it.each([
+    ['a high tower reaches farther against a low target', ['S==G', '.#..'], 5, 1.25, true],
+    [
+      'a low tower keeps its full horizontal range against a high target',
+      ['s++g', '....'],
+      4,
+      1,
+      true,
+    ],
+    ['a high tower gets no extra range against a high target', ['s++g', '.#..'], 5, 1.25, false],
+  ])('%s', (_case, rows, cell, range, fires) => {
+    const start = createGame(
+      { ...content, towers: { basic: { ...basic, range } } },
+      parseLevel(rows),
+    );
+    const result = step(start, [
+      { type: 'placeTower', kind: 'basic', cell: cell as CellIndex, tick: 0 },
+    ]);
+
+    expect(result.events.map((event) => event.type)).toEqual(fires ? ['shot'] : []);
+    expect(result.state.enemies[0]?.hp).toBe(fires ? 8 : 12);
+  });
+
+  it('uses the layer of the cell the enemy occupies as it crosses from a ramp onto high ground', () => {
+    const start = createGame(
+      {
+        ...content,
+        enemies: { grunt: { ...content.enemies.grunt, speed: 3.75 } },
+        towers: { basic: { ...basic, range: 1 } },
+      },
+      parseLevel(['S^+g', '..#.']),
+    );
+    const onRamp = run(start, 11).state;
+    const onHighGround = run(start, 13).state;
+
+    const rampShot = step(onRamp, [
+      { type: 'placeTower', kind: 'basic', cell: 6 as CellIndex, tick: 11 },
+    ]);
+    const highGroundShot = step(onHighGround, [
+      { type: 'placeTower', kind: 'basic', cell: 6 as CellIndex, tick: 13 },
+    ]);
+
+    expect(rampShot.events).toMatchObject([{ type: 'shot', target: { id: 1 } }]);
+    expect(highGroundShot.events).toEqual([]);
+  });
+
+  it('damages every enemy within the splash radius around the target', () => {
+    const start = createGame(
+      {
+        ...content,
+        enemies: {
+          still: { speed: 0, hp: 12, bounty: 5 },
+          grunt: { speed: 11.25, hp: 10, bounty: 4 },
+          runner: { speed: 22.5, hp: 12, bounty: 3 },
+        },
+        waves: [
+          {
+            groups: [
+              { enemy: 'still', count: 1, interval: 0, delay: 0 },
+              { enemy: 'grunt', count: 1, interval: 0, delay: 0 },
+              { enemy: 'runner', count: 1, interval: 0, delay: 0 },
+            ],
+          },
+        ],
+        towers: {
+          splash: {
+            name: 'Splash',
+            cost: 40,
+            range: 1.25,
+            damage: 4,
+            shotsPerSecond: 1,
+            splashRadius: 0.75,
+          },
+        },
+      },
+      parseLevel(['S===G', '.....']),
+    );
+    const moving = run(start, 2).state;
+    const result = step(moving, [
+      { type: 'placeTower', kind: 'splash', cell: 7 as CellIndex, tick: 2 },
+    ]);
+
+    expect(result.events).toMatchObject([{ type: 'shot', target: { id: 3 }, splashRadius: 0.75 }]);
+    expect(result.state.enemies.map((enemy) => enemy.hp)).toEqual([12, 6, 8]);
+  });
+
+  it('awards each enemy kind’s bounty once even when multiple towers can shoot', () => {
+    const start = createGame(
+      {
+        ...content,
+        enemies: {
+          grunt: { speed: 0, hp: 4, bounty: 5 },
+          runner: { speed: 0, hp: 3, bounty: 4 },
+        },
+        waves: pairedWaves,
+        towers: {
+          basic,
+          splash: {
+            name: 'Splash',
+            cost: 40,
+            range: 2,
+            damage: 4,
+            shotsPerSecond: 1,
+            splashRadius: 1,
+          },
+        },
+      },
+      parseLevel(['S==G', '....']),
+    );
+    const result = step(start, [
+      { type: 'placeTower', kind: 'splash', cell: 4 as CellIndex, tick: 0 },
+      { type: 'placeTower', kind: 'basic', cell: 5 as CellIndex, tick: 0 },
+    ]);
+
+    expect(result.events).toMatchObject([
+      { type: 'shot', towerCell: 4, target: { id: 1 } },
+      { type: 'killed', enemyId: 1, enemyKind: 'grunt', bounty: 5 },
+      { type: 'killed', enemyId: 2, enemyKind: 'runner', bounty: 4 },
+    ]);
+    expect(result.state.enemies).toEqual([]);
+    expect(result.state.money).toBe(39);
+    expect(start.enemies.map((enemy) => enemy.hp)).toEqual([4, 3]);
+    expect(start.money).toBe(100);
+
+    const after = run(result.state, 60);
+    expect(after.events).toEqual([]);
+    expect(after.state.money).toBe(39);
   });
 });
 
@@ -131,7 +362,7 @@ describe('placing towers', () => {
 
     expect(result.events).toEqual([]);
     expect(result.state.money).toBe(40);
-    expect(result.state.towers).toEqual([
+    expect(result.state.towers).toMatchObject([
       { cell: 4, kind: 'basic', layer: 0 },
       { cell: 5, kind: 'basic', layer: 1 },
     ]);

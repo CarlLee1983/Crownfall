@@ -1,6 +1,7 @@
 import {
   BoxGeometry,
   type BufferGeometry,
+  ConeGeometry,
   CylinderGeometry,
   Group,
   Mesh,
@@ -23,10 +24,30 @@ import {
   groundHeight,
   type Level,
   type RouteSegment,
+  type Tower,
 } from '../core';
 import { LAYER_HEIGHT } from './terrain';
 
 const SOLID_ROUTE_LIFT = 0.035;
+
+function towerModel(geometry: BufferGeometry, height: number, color: number) {
+  return {
+    geometry: geometry.translate(0, height / 2, 0),
+    height,
+    material: new MeshLambertMaterial({ color }),
+  };
+}
+
+const BASIC_MODEL = towerModel(new BoxGeometry(0.64, 0.6, 0.64), 0.6, 0x57a4da);
+const TOWER_MODELS = new Map([
+  ['basic', BASIC_MODEL],
+  ['sniper', towerModel(new CylinderGeometry(0.23, 0.32, 0.94, 6), 0.94, 0xeeaa48)],
+  ['splash', towerModel(new ConeGeometry(0.42, 0.54, 8), 0.54, 0xc381dc)],
+]);
+
+export function towerHeight(kind: string): number {
+  return (TOWER_MODELS.get(kind) ?? BASIC_MODEL).height;
+}
 
 interface BuildPreview {
   readonly cell: CellIndex;
@@ -89,6 +110,20 @@ function sameRoute(a: readonly CellIndex[], b: readonly CellIndex[]): boolean {
   return a === b || (a.length === b.length && a.every((cell, i) => cell === b[i]));
 }
 
+function sameTowerLayout(
+  previous: readonly Tower[] | undefined,
+  current: readonly Tower[],
+): boolean {
+  return (
+    previous === current ||
+    (previous?.length === current.length &&
+      current.every(({ cell, kind, layer }, i) => {
+        const tower = previous[i];
+        return tower?.cell === cell && tower.kind === kind && tower.layer === layer;
+      }))
+  );
+}
+
 export function createBuildLayer(): BuildLayer {
   const group = new Group();
   const towers = new Group();
@@ -121,28 +156,6 @@ export function createBuildLayer(): BuildLayer {
   solid.visible = branches.visible = dashed.visible = range.visible = false;
   group.add(towers, solid, dashed, range, branches);
 
-  const basic = {
-    geometry: new BoxGeometry(0.64, 0.6, 0.64).translate(0, 0.3, 0),
-    material: new MeshLambertMaterial({ color: 0x57a4da }),
-  };
-  const towerLooks = new Map<string, { geometry: BufferGeometry; material: MeshLambertMaterial }>([
-    ['basic', basic],
-    [
-      'sniper',
-      {
-        geometry: new CylinderGeometry(0.23, 0.32, 0.94, 6).translate(0, 0.47, 0),
-        material: new MeshLambertMaterial({ color: 0xeeaa48 }),
-      },
-    ],
-    [
-      'splash',
-      {
-        geometry: new CylinderGeometry(0.37, 0.31, 0.45, 8).translate(0, 0.225, 0),
-        material: new MeshLambertMaterial({ color: 0xc381dc }),
-      },
-    ],
-  ]);
-
   let lastState: GameState | undefined;
   let lastInterpolationState: GameState | undefined;
   let previousBranches: readonly RouteSegment[] = [];
@@ -155,10 +168,10 @@ export function createBuildLayer(): BuildLayer {
     preview?: BuildPreview,
   ): void => {
     const levelChanged = lastState?.level !== state.level;
-    if (levelChanged || lastState?.towers !== state.towers) {
+    if (levelChanged || !sameTowerLayout(lastState?.towers, state.towers)) {
       towers.clear();
       for (const tower of state.towers) {
-        const { geometry, material } = towerLooks.get(tower.kind) ?? basic;
+        const { geometry, material } = TOWER_MODELS.get(tower.kind) ?? BASIC_MODEL;
         const mesh = new Mesh(geometry, material);
         const { x, y } = cellPoint(state.level, tower.cell);
         mesh.position.set(x, tower.layer * LAYER_HEIGHT, y);

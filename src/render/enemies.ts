@@ -1,4 +1,12 @@
-import { BoxGeometry, Group, Mesh, MeshLambertMaterial } from 'three';
+import {
+  BoxGeometry,
+  type Camera,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  MeshLambertMaterial,
+  PlaneGeometry,
+} from 'three';
 import { type EnemyId, enemyPosition, type GameState, type GridPoint, groundHeight } from '../core';
 import { LAYER_HEIGHT } from './terrain';
 
@@ -14,26 +22,56 @@ const LOOKS: Readonly<Record<string, Look>> = {
 };
 const DEFAULT_LOOK: Look = { size: 0.4, color: 0xbbbbbb };
 
+export function enemyLook(kind: string): Look {
+  return LOOKS[kind] ?? DEFAULT_LOOK;
+}
+
+interface EnemyView {
+  readonly group: Group;
+  readonly body: Mesh<BoxGeometry, MeshLambertMaterial>;
+  readonly bar: Group;
+  readonly fill: Mesh<PlaneGeometry, MeshBasicMaterial>;
+  readonly barWidth: number;
+}
+
 export interface EnemyLayer {
   readonly group: Group;
   /** alpha 為 previous 到 current 之間的內插比例；只存在於 previous 的敵人不畫。 */
   update(previous: GameState, current: GameState, alpha: number): void;
 }
 
-export function createEnemyLayer(): EnemyLayer {
+export function createEnemyLayer(camera: Camera): EnemyLayer {
   const group = new Group();
-  const meshes = new Map<EnemyId, Mesh>();
+  const views = new Map<EnemyId, EnemyView>();
+  const barGeometry = new PlaneGeometry(1, 1);
+  const barBackground = new MeshBasicMaterial({ color: 0x1c1d22 });
+  const barFill = new MeshBasicMaterial({ color: 0x7ee081 });
 
-  const meshFor = (id: EnemyId, look: Look): Mesh => {
-    const existing = meshes.get(id);
+  const viewFor = (id: EnemyId, look: Look): EnemyView => {
+    const existing = views.get(id);
     if (existing !== undefined) return existing;
-    const mesh = new Mesh(
+    const body = new Mesh(
       new BoxGeometry(look.size, look.size, look.size),
       new MeshLambertMaterial({ color: look.color }),
     );
-    meshes.set(id, mesh);
-    group.add(mesh);
-    return mesh;
+    body.position.y = look.size / 2;
+
+    const barWidth = Math.max(0.52, look.size);
+    const bar = new Group();
+    bar.position.y = look.size + 0.16;
+    const background = new Mesh(barGeometry, barBackground);
+    background.scale.set(barWidth + 0.06, 0.14, 1);
+    const fill = new Mesh(barGeometry, barFill);
+    fill.scale.y = 0.08;
+    fill.position.z = 0.01;
+    bar.add(background, fill);
+
+    const enemyGroup = new Group();
+    enemyGroup.add(body, bar);
+    const view = { group: enemyGroup, body, bar, fill, barWidth };
+    views.set(id, view);
+    group.add(enemyGroup);
+    return view;
   };
 
   const update = (previous: GameState, current: GameState, alpha: number): void => {
@@ -43,22 +81,31 @@ export function createEnemyLayer(): EnemyLayer {
     const alive = new Set<EnemyId>();
 
     for (const enemy of current.enemies) {
+      const rules = current.enemyRules[enemy.kind];
+      if (rules === undefined) throw new Error(`未知的敵人種類「${enemy.kind}」`);
       alive.add(enemy.id);
       const now = enemyPosition(current, enemy);
       const from = before.get(enemy.id) ?? now;
       const x = from.x + (now.x - from.x) * alpha;
       const y = from.y + (now.y - from.y) * alpha;
-      const look = LOOKS[enemy.kind] ?? DEFAULT_LOOK;
       const ground = groundHeight(current.level, { x, y }) * LAYER_HEIGHT;
-      meshFor(enemy.id, look).position.set(x, ground + look.size / 2, y);
+      const view = viewFor(enemy.id, enemyLook(enemy.kind));
+      view.group.position.set(x, ground, y);
+      view.bar.quaternion.copy(camera.quaternion);
+
+      const { maxHp } = rules;
+      const ratio = maxHp > 0 ? Math.min(1, Math.max(0, enemy.hp / maxHp)) : 0;
+      view.fill.visible = ratio > 0;
+      view.fill.scale.x = view.barWidth * ratio;
+      view.fill.position.x = (view.fill.scale.x - view.barWidth) / 2;
     }
 
-    for (const [id, mesh] of meshes) {
+    for (const [id, view] of views) {
       if (alive.has(id)) continue;
-      group.remove(mesh);
-      mesh.geometry.dispose();
-      (mesh.material as MeshLambertMaterial).dispose();
-      meshes.delete(id);
+      group.remove(view.group);
+      view.body.geometry.dispose();
+      view.body.material.dispose();
+      views.delete(id);
     }
   };
 

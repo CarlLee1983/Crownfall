@@ -2,6 +2,8 @@
 export interface EnemyDefinition {
   /** 格／秒 */
   readonly speed: number;
+  readonly hp: number;
+  readonly bounty: number;
 }
 
 /** 一種塔的基本數值，以格與秒撰寫。 */
