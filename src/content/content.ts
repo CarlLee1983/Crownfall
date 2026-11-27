@@ -24,8 +24,8 @@ export const content = {
     { groups: [{ enemy: 'grunt', count: 8, interval: 1, delay: 0 }] },
     {
       groups: [
-        { enemy: 'grunt', count: 8, interval: 0.9, delay: 0 },
-        { enemy: 'runner', count: 6, interval: 0.5, delay: 3 },
+        { enemy: 'grunt', count: 8, interval: 0.47, delay: 0 },
+        { enemy: 'runner', count: 6, interval: 0.5, delay: 9 },
       ],
     },
     {

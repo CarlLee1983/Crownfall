@@ -3,7 +3,6 @@ import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { describe, expect, it } from 'vitest';
 import { content } from '../content/content';
-import { level as dLevel } from '../content/level';
 import {
   applyCommands,
   type CellIndex,
@@ -14,6 +13,7 @@ import {
   step,
 } from '../core';
 import { createBuildLayer } from './build-layer';
+import { dLevel } from './d-level.fixture';
 import { createEnemyLayer } from './enemies';
 import { enemyMotion, sampleEnemyMotion } from './enemy-motion';
 import { LAYER_HEIGHT } from './terrain';

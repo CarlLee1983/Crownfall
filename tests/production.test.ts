@@ -1,12 +1,12 @@
 import { expect, type Page, test } from '@playwright/test';
 
 // An open tile in the initial 1280×720 view.
-const openTile = { x: 640, y: 389 };
+const openTile = { x: 654, y: 395 };
 
 async function hasEnemyBodyAtEntrance(page: Page): Promise<boolean> {
   const screenshot = await page.screenshot({
     // First stretch of lane at the configured viewport.
-    clip: { x: 505, y: 76, width: 100, height: 55 },
+    clip: { x: 579, y: 460, width: 91, height: 92 },
     style: '#wave-flag { visibility: hidden !important; }',
   });
   return page.evaluate(
@@ -104,9 +104,9 @@ test('horizontal pan stops at the map edge without drifting vertically', async (
   for (let i = 0; i < 18; i++) await page.keyboard.press('ArrowRight');
   await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
   const edge = await anchorPosition();
-  // The 14-row map ends 6.5 rows from center, just over nine diagonal key steps.
+  // The nearer map edge limits diagonal movement from the initial center.
   const steps = (initial.x - edge.x) / (initial.x - first.x);
-  expect(steps).toBeCloseTo(9.19, 1);
+  expect(steps).toBeCloseTo(7.07, 1);
   expect(edge.y).toBeCloseTo(initial.y, 0);
   await page.keyboard.press('ArrowRight');
   await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));

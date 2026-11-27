@@ -42,7 +42,7 @@ function existingCoverageScore(state: GameState, route: readonly CellIndex[]): n
   return score;
 }
 
-// A platform borders a lower lane. A same-height lane marks the eastern high ground instead.
+// A platform borders a lower lane without bordering a lane at its own height.
 function platformCells(level: Level): ReadonlySet<CellIndex> {
   const platforms = new Set<CellIndex>();
   const visited = new Set<CellIndex>();
