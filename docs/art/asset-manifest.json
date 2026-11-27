@@ -1,0 +1,326 @@
+{
+  "schema_version": 1,
+  "art_direction_brief": "docs/art/art-direction.md",
+  "assets": [
+    {
+      "id": "tower-archer",
+      "role": "弓箭塔",
+      "path": "public/models/tower-archer.glb",
+      "status": "planned",
+      "technical": {
+        "format": "glb",
+        "dimensions": "0.8x0.8 footprint, ~0.75 tall",
+        "origin": "bottom-center",
+        "up": "+Y",
+        "forward": "+Z",
+        "max_triangles": 3000,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
+      "source": {
+        "kind": "",
+        "url_or_tool": "",
+        "creator": "",
+        "created_at": "",
+        "license": "",
+        "attribution": "",
+        "prompt_or_source_record": ""
+      },
+      "verification": {
+        "native_scale_reviewed": false,
+        "in_engine_reviewed": false,
+        "technical_checks_passed": false,
+        "approved_by": ""
+      }
+    },
+    {
+      "id": "tower-ballista",
+      "role": "弩砲塔",
+      "path": "public/models/tower-ballista.glb",
+      "status": "planned",
+      "technical": {
+        "format": "glb",
+        "dimensions": "0.8 diameter footprint, ~1.18 tall",
+        "origin": "bottom-center",
+        "up": "+Y",
+        "forward": "+Z",
+        "max_triangles": 3000,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
+      "source": {
+        "kind": "",
+        "url_or_tool": "",
+        "creator": "",
+        "created_at": "",
+        "license": "",
+        "attribution": "",
+        "prompt_or_source_record": ""
+      },
+      "verification": {
+        "native_scale_reviewed": false,
+        "in_engine_reviewed": false,
+        "technical_checks_passed": false,
+        "approved_by": ""
+      }
+    },
+    {
+      "id": "tower-mage",
+      "role": "法師塔",
+      "path": "public/models/tower-mage.glb",
+      "status": "planned",
+      "technical": {
+        "format": "glb",
+        "dimensions": "0.88 diameter footprint, ~0.68 tall",
+        "origin": "bottom-center",
+        "up": "+Y",
+        "forward": "+Z",
+        "max_triangles": 3000,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
+      "source": {
+        "kind": "",
+        "url_or_tool": "",
+        "creator": "",
+        "created_at": "",
+        "license": "",
+        "attribution": "",
+        "prompt_or_source_record": ""
+      },
+      "verification": {
+        "native_scale_reviewed": false,
+        "in_engine_reviewed": false,
+        "technical_checks_passed": false,
+        "approved_by": ""
+      }
+    },
+    {
+      "id": "enemy-skeleton",
+      "role": "骷髏兵",
+      "path": "public/models/enemy-skeleton.glb",
+      "status": "planned",
+      "technical": {
+        "format": "glb",
+        "dimensions": "0.5 footprint",
+        "origin": "bottom-center",
+        "up": "+Y",
+        "forward": "+Z",
+        "max_triangles": 1500,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
+      "source": {
+        "kind": "",
+        "url_or_tool": "",
+        "creator": "",
+        "created_at": "",
+        "license": "",
+        "attribution": "",
+        "prompt_or_source_record": ""
+      },
+      "verification": {
+        "native_scale_reviewed": false,
+        "in_engine_reviewed": false,
+        "technical_checks_passed": false,
+        "approved_by": ""
+      }
+    },
+    {
+      "id": "enemy-ghoul",
+      "role": "食屍鬼",
+      "path": "public/models/enemy-ghoul.glb",
+      "status": "planned",
+      "technical": {
+        "format": "glb",
+        "dimensions": "0.4 footprint",
+        "origin": "bottom-center",
+        "up": "+Y",
+        "forward": "+Z",
+        "max_triangles": 1500,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
+      "source": {
+        "kind": "",
+        "url_or_tool": "",
+        "creator": "",
+        "created_at": "",
+        "license": "",
+        "attribution": "",
+        "prompt_or_source_record": ""
+      },
+      "verification": {
+        "native_scale_reviewed": false,
+        "in_engine_reviewed": false,
+        "technical_checks_passed": false,
+        "approved_by": ""
+      }
+    },
+    {
+      "id": "enemy-skeleton-knight",
+      "role": "骷髏騎士",
+      "path": "public/models/enemy-skeleton-knight.glb",
+      "status": "planned",
+      "technical": {
+        "format": "glb",
+        "dimensions": "0.8 footprint, 0.1 corner cut",
+        "origin": "bottom-center",
+        "up": "+Y",
+        "forward": "+Z",
+        "max_triangles": 1500,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
+      "source": {
+        "kind": "",
+        "url_or_tool": "",
+        "creator": "",
+        "created_at": "",
+        "license": "",
+        "attribution": "",
+        "prompt_or_source_record": ""
+      },
+      "verification": {
+        "native_scale_reviewed": false,
+        "in_engine_reviewed": false,
+        "technical_checks_passed": false,
+        "approved_by": ""
+      }
+    },
+    {
+      "id": "enemy-lich",
+      "role": "巫妖",
+      "path": "public/models/enemy-lich.glb",
+      "status": "planned",
+      "technical": {
+        "format": "glb",
+        "dimensions": "1.0 round footprint",
+        "origin": "bottom-center",
+        "up": "+Y",
+        "forward": "+Z",
+        "max_triangles": 1500,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
+      "source": {
+        "kind": "",
+        "url_or_tool": "",
+        "creator": "",
+        "created_at": "",
+        "license": "",
+        "attribution": "",
+        "prompt_or_source_record": ""
+      },
+      "verification": {
+        "native_scale_reviewed": false,
+        "in_engine_reviewed": false,
+        "technical_checks_passed": false,
+        "approved_by": ""
+      }
+    },
+    {
+      "id": "prop-entrance",
+      "role": "入口",
+      "path": "public/models/prop-entrance.glb",
+      "status": "planned",
+      "technical": {
+        "format": "glb",
+        "dimensions": "1x1 cell",
+        "origin": "bottom-center",
+        "up": "+Y",
+        "forward": "+Z",
+        "max_triangles": 1500,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
+      "source": {
+        "kind": "",
+        "url_or_tool": "",
+        "creator": "",
+        "created_at": "",
+        "license": "",
+        "attribution": "",
+        "prompt_or_source_record": ""
+      },
+      "verification": {
+        "native_scale_reviewed": false,
+        "in_engine_reviewed": false,
+        "technical_checks_passed": false,
+        "approved_by": ""
+      }
+    },
+    {
+      "id": "prop-castle",
+      "role": "城堡",
+      "path": "public/models/prop-castle.glb",
+      "status": "planned",
+      "technical": {
+        "format": "glb",
+        "dimensions": "1x1 cell",
+        "origin": "bottom-center",
+        "up": "+Y",
+        "forward": "+Z",
+        "max_triangles": 1500,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
+      "source": {
+        "kind": "",
+        "url_or_tool": "",
+        "creator": "",
+        "created_at": "",
+        "license": "",
+        "attribution": "",
+        "prompt_or_source_record": ""
+      },
+      "verification": {
+        "native_scale_reviewed": false,
+        "in_engine_reviewed": false,
+        "technical_checks_passed": false,
+        "approved_by": ""
+      }
+    },
+    {
+      "id": "prop-torch",
+      "role": "火把（點光源錨點）",
+      "path": "public/models/prop-torch.glb",
+      "status": "planned",
+      "technical": {
+        "format": "glb",
+        "dimensions": "~0.1 footprint",
+        "origin": "bottom-center",
+        "up": "+Y",
+        "forward": "+Z",
+        "max_triangles": 1500,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
+      "source": {
+        "kind": "",
+        "url_or_tool": "",
+        "creator": "",
+        "created_at": "",
+        "license": "",
+        "attribution": "",
+        "prompt_or_source_record": ""
+      },
+      "verification": {
+        "native_scale_reviewed": false,
+        "in_engine_reviewed": false,
+        "technical_checks_passed": false,
+        "approved_by": ""
+      }
+    }
+  ]
+}
