@@ -3,6 +3,7 @@ import { dedup, prune, resample, textureCompress } from '@gltf-transform/functio
 import sharp from 'sharp';
 import manifest from '../docs/art/asset-manifest.json';
 import { prepareHexagonModel } from './build-hexagon-model';
+import { buildTowerModels } from './build-tower-models';
 
 const skeleton = manifest.assets.find(({ id }) => id === 'enemy-skeleton');
 if (skeleton?.source.commit === undefined) throw new Error('缺少骷髏兵的來源版本');
@@ -53,3 +54,5 @@ const archerDocument = await io.read(archerInput);
 await prepareHexagonModel(archerDocument);
 await io.write(archer.path, archerDocument);
 console.log(`${archer.path} (${io.lastWriteBytes} bytes)`);
+
+await buildTowerModels(io);

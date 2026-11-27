@@ -38,11 +38,11 @@
     {
       "id": "tower-ballista",
       "role": "弩砲塔",
-      "path": "public/models/tower-ballista.glb",
-      "status": "planned",
+      "path": "src/render/models/tower-ballista.glb",
+      "status": "implemented",
       "technical": {
         "format": "glb",
-        "dimensions": "0.8 diameter footprint, ~1.18 tall",
+        "dimensions": "~0.89×0.99 bounds, ~1.37 tall at 0.7 scale",
         "origin": "bottom-center",
         "up": "+Y",
         "forward": "+Z",
@@ -52,29 +52,38 @@
       },
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
-        "kind": "",
-        "url_or_tool": "",
-        "creator": "",
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Medieval-Hexagon-Pack-1.0",
+        "commit": "84fa4e91af6a88989be7c99e0891cede11f2ca38",
+        "creator": "Kay Lousberg",
         "created_at": "",
-        "license": "",
-        "attribution": "",
-        "prompt_or_source_record": ""
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
+        "prompt_or_source_record": "addons/kaykit_medieval_hexagon_pack/Assets/gltf/buildings/blue/building_tower_B_blue.gltf"
+      },
+      "accessory": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0",
+        "commit": "15b62b9bad122f72926c10fb14d622c73819fa54",
+        "creator": "Kay Lousberg",
+        "license": "CC0-1.0",
+        "prompt_or_source_record": "addons/kaykit_character_pack_skeletons/Assets/gltf/Skeleton_Crossbow.gltf"
       },
       "verification": {
-        "native_scale_reviewed": false,
-        "in_engine_reviewed": false,
-        "technical_checks_passed": false,
+        "native_scale_reviewed": true,
+        "in_engine_reviewed": true,
+        "technical_checks_passed": true,
         "approved_by": ""
       }
     },
     {
       "id": "tower-mage",
       "role": "法師塔",
-      "path": "public/models/tower-mage.glb",
-      "status": "planned",
+      "path": "src/render/models/tower-mage.glb",
+      "status": "implemented",
       "technical": {
         "format": "glb",
-        "dimensions": "0.88 diameter footprint, ~0.68 tall",
+        "dimensions": "~0.72×0.81 bounds, ~1.59 tall at 0.7 scale",
         "origin": "bottom-center",
         "up": "+Y",
         "forward": "+Z",
@@ -84,18 +93,19 @@
       },
       "visual_locks": ["palette-roles", "footprint", "origin", "light-direction"],
       "source": {
-        "kind": "",
-        "url_or_tool": "",
-        "creator": "",
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Medieval-Hexagon-Pack-1.0",
+        "commit": "84fa4e91af6a88989be7c99e0891cede11f2ca38",
+        "creator": "Kay Lousberg",
         "created_at": "",
-        "license": "",
-        "attribution": "",
-        "prompt_or_source_record": ""
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg, www.kaylousberg.com (optional)",
+        "prompt_or_source_record": "addons/kaykit_medieval_hexagon_pack/Assets/gltf/buildings/blue/building_church_blue.gltf"
       },
       "verification": {
-        "native_scale_reviewed": false,
-        "in_engine_reviewed": false,
-        "technical_checks_passed": false,
+        "native_scale_reviewed": true,
+        "in_engine_reviewed": true,
+        "technical_checks_passed": true,
         "approved_by": ""
       }
     },
