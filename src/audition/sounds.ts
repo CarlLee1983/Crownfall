@@ -25,6 +25,18 @@ function clip(label: string, file: string, source: string, license = cc0): Candi
 
 export const sounds: Record<string, Candidate[]> = {
   archer: [
+    clip(
+      '長弓 2 柔化（低通 2.2k）· Jaszczak / Nelson',
+      'longbow-soft',
+      weapons,
+      archivedWeaponsTerms,
+    ),
+    clip(
+      '長弓 2 悶化（低通 1.4k＋短殘響）· Jaszczak / Nelson',
+      'longbow-muffled',
+      weapons,
+      archivedWeaponsTerms,
+    ),
     clip('英式長弓發射 1 · Jaszczak / Nelson', 'longbow-1', weapons, archivedWeaponsTerms),
     clip('英式長弓發射 2 · Jaszczak / Nelson', 'longbow-2', weapons, archivedWeaponsTerms),
   ],
