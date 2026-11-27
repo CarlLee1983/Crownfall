@@ -29,7 +29,12 @@ type PlacementCheck =
       readonly cost: number;
     };
 
+function gameOver(state: GameState): boolean {
+  return state.phase === 'victory' || state.phase === 'defeat';
+}
+
 export function checkPlacement(state: GameState, cell: CellIndex, kind: string): PlacementCheck {
+  if (gameOver(state)) return { reason: 'gameOver', distance: state.distance };
   const { level, towers } = state;
   const terrain = level.cells[cell];
   if (terrain === undefined || terrain.ramp || cell === level.spawn || cell === level.goal) {
@@ -165,6 +170,7 @@ export function enemyRouteSegments(
 /** 同一格、同一塔種的預覽可否沿用。敵人在同一段上的移動比例不影響放塔。 */
 export function samePlacementPreviewInputs(a: GameState, b: GameState): boolean {
   return (
+    gameOver(a) === gameOver(b) &&
     a.level === b.level &&
     a.distance === b.distance &&
     a.towers === b.towers &&

@@ -16,6 +16,7 @@ import {
   previewPlacement,
   samePlacementPreviewInputs,
   step,
+  waveStartRejection,
 } from './index';
 
 // 每秒 7.5 格 = 每 tick 0.25 格，讓位置在二進位浮點下精確。
@@ -45,10 +46,24 @@ function positions(state: GameState) {
 }
 
 describe('wave commands', () => {
+  it.each([0, -1])('ends at creation with %i starting lives', (startingLives) => {
+    const initial = createGame(
+      { ...content, startingLives, waves: [{ groups: [] }] },
+      parseLevel(['SG']),
+    );
+    expect(initial).toMatchObject({ tick: 0, phase: 'defeat', defeatReason: 'noLives', lives: 0 });
+    expect(waveStartRejection(initial)).toBe('gameOver');
+    expect(step(initial, [{ type: 'startWave', tick: 0 }])).toEqual({
+      state: initial,
+      events: [{ type: 'waveRejected', reason: 'gameOver' }],
+    });
+  });
+
   it('waits in preparation for the player to start the wave', () => {
     const initial = createGame(content, parseLevel(['S==G']));
     const waiting = run(initial, 30).state;
     expect(waiting).toMatchObject({ phase: 'preparation', waveNumber: 0, enemies: [] });
+    expect(waveStartRejection(waiting)).toBeUndefined();
 
     const opened = step(waiting, [
       { type: 'startWave', tick: 30 },
@@ -56,11 +71,13 @@ describe('wave commands', () => {
     ]);
     expect(opened.state).toMatchObject({ phase: 'wave', waveNumber: 1 });
     expect(positions(opened.state)).toEqual([{ x: 0.25, y: 0 }]);
+    expect(waveStartRejection(opened.state)).toBe('waveInProgress');
     expect(opened.events).toEqual([{ type: 'waveRejected', reason: 'waveInProgress' }]);
   });
 
   it('rejects opening a wave when no waves are defined', () => {
     const initial = createGame({ ...content, waves: [] }, parseLevel(['SG']));
+    expect(waveStartRejection(initial)).toBe('noNextWave');
     const result = step(initial, [{ type: 'startWave', tick: 0 }]);
     expect(result.state.phase).toBe('preparation');
     expect(result.events).toEqual([{ type: 'waveRejected', reason: 'noNextWave' }]);
@@ -524,6 +541,23 @@ describe('placing towers', () => {
     ...content,
     waves: [],
   } satisfies Content;
+
+  it('invalidates an otherwise identical preview when the game ends', () => {
+    const initial = createGame(
+      { ...content, waveClearReward: 0, waves: [{ groups: [] }] },
+      parseLevel(['SG', '..']),
+    );
+    const cell = 2 as CellIndex;
+    expect(previewPlacement(initial, cell, 'basic').reason).toBeUndefined();
+    const ended = step(initial, [{ type: 'startWave', tick: 0 }]).state;
+
+    expect(ended.phase).toBe('victory');
+    expect(samePlacementPreviewInputs(initial, ended)).toBe(false);
+    expect(previewPlacement(ended, cell, 'basic').reason).toBe('gameOver');
+    expect(step(ended, [{ type: 'placeTower', cell, kind: 'basic', tick: 1 }]).events).toEqual([
+      { type: 'rejected', cell, reason: 'gameOver' },
+    ]);
+  });
 
   it('charges the same price on both layers and records each tower’s layer', () => {
     const start = createGame(placementContent, parseLevel(['S==G', '.#..']));

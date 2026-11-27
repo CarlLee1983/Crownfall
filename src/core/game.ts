@@ -1,5 +1,5 @@
 import { TICKS_PER_SECOND } from './clock';
-import type { Content, EnemyDefinition } from './content';
+import type { Content, EnemyDefinition, TowerDefinition } from './content';
 import { type CellIndex, cellAt, cellIndex, cellPoint, type GridPoint, type Level } from './level';
 import { type DistanceField, distanceField, nextCell } from './pathing';
 import { checkPlacement, type PlacementRejection, rangeBonusForLayers } from './placement';
@@ -35,6 +35,10 @@ interface EnemyRules {
   readonly leakDamage: EnemyDefinition['leakDamage'];
 }
 
+interface TowerRules extends TowerDefinition {
+  readonly ticksPerShot: number | undefined;
+}
+
 interface PendingSpawn {
   readonly kind: string;
   readonly tick: number;
@@ -53,7 +57,7 @@ export interface GameState {
   /** 各波的出兵清單，tick 相對於開波時計算。 */
   readonly waves: readonly (readonly PendingSpawn[])[];
   readonly towers: readonly Tower[];
-  readonly towerDefinitions: Content['towers'];
+  readonly towerDefinitions: Readonly<Record<string, TowerRules>>;
   readonly heightRangeBonus: number;
   readonly enemyRules: Readonly<Record<string, EnemyRules>>;
   readonly distance: DistanceField;
@@ -64,7 +68,8 @@ export interface GameState {
 }
 
 export type DefeatReason = 'noLives' | 'bossLeaked';
-export type WaveRejection = 'wrongTick' | 'waveInProgress' | 'noNextWave' | 'gameOver';
+type WaveStartRejection = 'waveInProgress' | 'noNextWave' | 'gameOver';
+export type WaveRejection = 'wrongTick' | WaveStartRejection;
 
 export type Command =
   | {
@@ -127,6 +132,19 @@ export function createGame(content: Content, level: Level): GameState {
     ]),
   );
 
+  const towerDefinitions = Object.fromEntries(
+    Object.entries(content.towers).map(([kind, definition]) => [
+      kind,
+      {
+        ...definition,
+        ticksPerShot:
+          definition.shotsPerSecond > 0
+            ? Math.max(1, TICKS_PER_SECOND / definition.shotsPerSecond)
+            : undefined,
+      },
+    ]),
+  );
+
   const waves = content.waves.map(({ groups }) =>
     groups
       .flatMap((group) => {
@@ -141,18 +159,19 @@ export function createGame(content: Content, level: Level): GameState {
       .sort((a, b) => a.tick - b.tick),
   );
 
+  const lives = Math.max(0, content.startingLives);
   return {
     tick: 0,
     level,
     money: content.startingMoney,
-    lives: content.startingLives,
-    phase: 'preparation',
+    lives,
+    phase: lives === 0 ? 'defeat' : 'preparation',
     waveNumber: 0,
-    defeatReason: undefined,
+    defeatReason: lives === 0 ? 'noLives' : undefined,
     waveClearReward: content.waveClearReward,
     waves,
     towers: [],
-    towerDefinitions: content.towers,
+    towerDefinitions,
     heightRangeBonus: content.heightRangeBonus,
     enemyRules,
     distance,
@@ -162,21 +181,25 @@ export function createGame(content: Content, level: Level): GameState {
   };
 }
 
+function nextWave(state: GameState): readonly PendingSpawn[] | WaveStartRejection {
+  if (state.phase === 'victory' || state.phase === 'defeat') return 'gameOver';
+  if (state.phase === 'wave') return 'waveInProgress';
+  return state.waves[state.waveNumber] ?? 'noNextWave';
+}
+
+export function waveStartRejection(state: GameState): WaveStartRejection | undefined {
+  const wave = nextWave(state);
+  return typeof wave === 'string' ? wave : undefined;
+}
+
 export function applyCommands(state: GameState, commands: readonly Command[]): StepResult {
   const events: GameEvent[] = [];
   let current = state;
   for (const command of commands) {
-    const gameOver = current.phase === 'victory' || current.phase === 'defeat';
     if (command.type === 'startWave') {
-      const wave = current.waves[current.waveNumber];
-      if (command.tick !== current.tick) {
-        events.push({ type: 'waveRejected', reason: 'wrongTick' });
-      } else if (gameOver) {
-        events.push({ type: 'waveRejected', reason: 'gameOver' });
-      } else if (current.phase === 'wave') {
-        events.push({ type: 'waveRejected', reason: 'waveInProgress' });
-      } else if (wave === undefined) {
-        events.push({ type: 'waveRejected', reason: 'noNextWave' });
+      const wave = command.tick === current.tick ? nextWave(current) : 'wrongTick';
+      if (typeof wave === 'string') {
+        events.push({ type: 'waveRejected', reason: wave });
       } else {
         current = spawnDue({
           ...current,
@@ -189,10 +212,6 @@ export function applyCommands(state: GameState, commands: readonly Command[]): S
     }
     if (command.tick !== current.tick) {
       events.push({ type: 'rejected', cell: command.cell, reason: 'wrongTick' });
-      continue;
-    }
-    if (gameOver) {
-      events.push({ type: 'rejected', cell: command.cell, reason: 'gameOver' });
       continue;
     }
     const placement = checkPlacement(current, command.cell, command.kind);
@@ -268,7 +287,7 @@ function attack(state: GameState): StepResult {
   const towers = state.towers.map((tower) => {
     if (tower.nextShotTick > state.tick) return tower;
     const definition = state.towerDefinitions[tower.kind];
-    if (definition === undefined || !(definition.shotsPerSecond > 0)) return tower;
+    if (definition?.ticksPerShot === undefined) return tower;
 
     const origin = cellPoint(state.level, tower.cell);
     let target: Enemy | undefined;
@@ -311,8 +330,8 @@ function attack(state: GameState): StepResult {
     const resumed = state.tick > tower.nextShotTick;
     const firingStartTick = resumed ? state.tick : tower.firingStartTick;
     const shotsSinceFiringStart = resumed ? 1 : tower.shotsSinceFiringStart + 1;
-    const ticksPerShot = Math.max(1, TICKS_PER_SECOND / definition.shotsPerSecond);
-    const nextShotTick = firingStartTick + Math.ceil(shotsSinceFiringStart * ticksPerShot);
+    const nextShotTick =
+      firingStartTick + Math.ceil(shotsSinceFiringStart * definition.ticksPerShot);
     return { ...tower, firingStartTick, shotsSinceFiringStart, nextShotTick };
   });
   return { state: events.length > 0 ? { ...state, money, towers, enemies } : state, events };

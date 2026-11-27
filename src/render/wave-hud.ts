@@ -1,5 +1,5 @@
 import type { Camera } from 'three';
-import type { Content, GameEvent, GameState } from '../core';
+import { type Content, type GameEvent, type GameState, waveStartRejection } from '../core';
 import { cellProjection, element, updateText } from './hud-dom';
 
 const ENEMY_NAMES: Readonly<Record<string, string>> = {
@@ -93,7 +93,6 @@ export function createWaveHud(
       result.open ||
       event.defaultPrevented ||
       event.isComposing ||
-      event.repeat ||
       event.altKey ||
       event.ctrlKey ||
       event.metaKey
@@ -101,17 +100,18 @@ export function createWaveHud(
       return;
 
     const key = event.key.toLowerCase();
+    if (key === ' ') {
+      event.preventDefault();
+      if (!event.repeat) togglePause();
+      return;
+    }
+    if (event.repeat) return;
     if (key === 'n') {
       event.preventDefault();
       actions.startWave();
     } else if (key === 'f') {
       event.preventDefault();
       cycleSpeed();
-    } else if (key === ' ') {
-      if (event.target instanceof HTMLButtonElement && event.target.matches(':focus-visible'))
-        return;
-      event.preventDefault();
-      togglePause();
     }
   });
 
@@ -132,6 +132,7 @@ export function createWaveHud(
     update(state: GameState, now: number): void {
       updateText(lives, String(state.lives));
       updateText(waveNumber, `第 ${state.waveNumber} / ${waves.length} 波`);
+      start.disabled = waveStartRejection(state) !== undefined;
 
       for (const [text, notice] of notices) {
         if (now >= notice.until) notices.delete(text);
@@ -163,7 +164,6 @@ export function createWaveHud(
       if (point === undefined) return;
 
       const next = previewTexts[state.waveNumber];
-      start.disabled = state.phase === 'wave' || next === undefined;
       updateText(
         preview,
         state.phase === 'wave'

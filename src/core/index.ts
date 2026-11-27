@@ -20,6 +20,7 @@ export {
   step,
   type Tower,
   type WaveRejection,
+  waveStartRejection,
 } from './game';
 export {
   type Cell,
