@@ -429,3 +429,20 @@ body {
     bottom: 54px;
   }
 }
+
+#game-lives {
+  display: inline-block;
+}
+
+.combat-bounty {
+  position: fixed;
+  inset: 0 auto auto 0;
+  color: #ffd66b;
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow:
+    0 1px 3px #221503,
+    0 0 2px #221503;
+  pointer-events: none;
+}

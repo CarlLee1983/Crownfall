@@ -2,6 +2,7 @@ import {
   BoxGeometry,
   type BufferGeometry,
   type Camera,
+  Color,
   CylinderGeometry,
   ExtrudeGeometry,
   Group,
@@ -43,6 +44,7 @@ const LOOKS: Readonly<Record<string, Look>> = {
   boss: { size: 1, color: 0xc83b36, round: true },
 };
 const DEFAULT_LOOK: Look = { size: 0.5, color: 0xbbbbbb };
+const WHITE = new Color(0xffffff);
 const UP = new Vector3(0, 1, 0);
 const BACK = new Vector3(0, 0, 1);
 const BAR_HEIGHT = 0.14;
@@ -50,6 +52,10 @@ const BAR_GAP = 0.08;
 
 function enemyLook(kind: string): Look {
   return LOOKS[kind] ?? DEFAULT_LOOK;
+}
+
+export function enemyColor(kind: string): number {
+  return enemyLook(kind).color;
 }
 
 function enemyGeometry({ size, cornerCut, round }: Look): BufferGeometry {
@@ -179,9 +185,15 @@ export interface EnemyLayer {
   /** Observe every tick, including ticks advanced between draws. */
   observe(state: GameState): void;
   /** alpha 為 previous 到 current 之間的內插比例；只存在於 previous 的敵人不畫。 */
-  update(previous: GameState, current: GameState, alpha: number): void;
+  update(
+    previous: GameState,
+    current: GameState,
+    alpha: number,
+    hitFlash?: (id: EnemyId) => number,
+  ): void;
   targetPosition(id: EnemyId, output: Vector3): Vector3 | undefined;
   impactPosition(state: GameState, enemy: Enemy, output: Vector3): Vector3;
+  spawnPosition(state: GameState, kind: string, output: Vector3): Vector3;
   reset(): void;
 }
 
@@ -244,7 +256,7 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     views.delete(id);
   };
 
-  const update = (previous: GameState, current: GameState, alpha: number): void => {
+  const update: EnemyLayer['update'] = (previous, current, alpha, hitFlash) => {
     if (observed === undefined || observed.tick < previous.tick) observe(previous);
     observe(current);
     cameraUp.copy(UP).applyQuaternion(camera.quaternion);
@@ -255,6 +267,10 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
       const point = sampleEnemyMotion(motion, previous === current ? 1 : alpha);
       const look = enemyLook(enemy.kind);
       const view = viewFor(enemy.id, look);
+      const flash = hitFlash?.(enemy.id) ?? 0;
+      view.body.material.color.setHex(look.color).lerp(WHITE, flash);
+      view.body.material.emissive.copy(WHITE);
+      view.body.material.emissiveIntensity = flash * 0.35;
       const half = look.size / 2;
       const ground = supportingPlane(current.level, point, half, normal);
       view.group.position.set(point.x, ground, point.y);
@@ -296,6 +312,13 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     }
   };
 
+  const bodyPosition = (level: Level, point: GridPoint, kind: string, output: Vector3) => {
+    const half = enemyLook(kind).size / 2;
+    const ground = supportingPlane(level, point, half, output);
+    output.multiplyScalar(half);
+    return output.set(point.x + output.x, ground + output.y, point.y + output.z);
+  };
+
   return {
     group,
     routeMotions: () => motions.values(),
@@ -310,11 +333,10 @@ export function createEnemyLayer(camera: Camera): EnemyLayer {
     impactPosition: (state, enemy, output) => {
       const motion = motions.get(enemy.id) ?? enemyMotion(state, enemy);
       const point = sampleEnemyMotion(motion, 1);
-      const half = enemyLook(enemy.kind).size / 2;
-      const ground = supportingPlane(state.level, point, half, output);
-      output.multiplyScalar(half);
-      return output.set(point.x + output.x, ground + output.y, point.y + output.z);
+      return bodyPosition(state.level, point, enemy.kind, output);
     },
+    spawnPosition: (state, kind, output) =>
+      bodyPosition(state.level, cellPoint(state.level, state.level.spawn), kind, output),
     reset: () => {
       for (const [id, view] of views) remove(id, view);
       motions.clear();

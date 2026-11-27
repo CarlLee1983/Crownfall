@@ -10,17 +10,22 @@ import {
 
 const MS_PER_TICK = 1000 / TICKS_PER_SECOND;
 
+interface FrameTime {
+  readonly wall: number;
+  readonly game: number;
+}
+
 export interface LoopOptions {
   readonly initial: GameState;
-  /** 補跑的 tick 各自送出事件，畫面上的特效共用當幀的起始時間。 */
-  readonly onEvents: (events: readonly GameEvent[], current: GameState, frameTime: number) => void;
-  /** 畫面比最新 tick 慢一格：previous 到 current 之間以 alpha 內插。 */
-  readonly draw: (
+  /** 補跑的每個 tick 各自送出事件及遊戲時間。 */
+  readonly onEvents: (
+    events: readonly GameEvent[],
     previous: GameState,
     current: GameState,
-    alpha: number,
-    frameTime: number,
+    time: FrameTime,
   ) => void;
+  /** 畫面比最新 tick 慢一格：previous 到 current 之間以 alpha 內插。 */
+  readonly draw: (previous: GameState, current: GameState, alpha: number, time: FrameTime) => void;
 }
 
 type CommandFactory = (tick: number) => Command;
@@ -36,6 +41,8 @@ export function startLoop({ initial, onEvents, draw }: LoopOptions): LoopSession
   let previous = initial;
   let current = initial;
   let accumulatedMs = 0;
+  // 終局時模擬不再推進，但擊殺與漏怪特效仍要播完。
+  let elapsedTicks = 0;
   let speed = 1;
   let lastFrame: number | undefined;
   const pending: CommandFactory[] = [];
@@ -56,15 +63,23 @@ export function startLoop({ initial, onEvents, draw }: LoopOptions): LoopSession
       previous = current;
       const result = step(current, takeCommands());
       current = result.state;
-      onEvents(result.events, current, now);
+      elapsedTicks++;
+      onEvents(result.events, previous, current, { wall: now, game: elapsedTicks * MS_PER_TICK });
     }
     if (speed === 0 && pending.length > 0) {
+      const beforeCommands = current;
       const result = applyCommands(current, takeCommands());
       current = result.state;
-      onEvents(result.events, current, now);
+      onEvents(result.events, beforeCommands, current, {
+        wall: now,
+        game: elapsedTicks * MS_PER_TICK + accumulatedMs,
+      });
     }
 
-    draw(previous, current, accumulatedMs / MS_PER_TICK, now);
+    draw(previous, current, accumulatedMs / MS_PER_TICK, {
+      wall: now,
+      game: elapsedTicks * MS_PER_TICK + accumulatedMs,
+    });
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
@@ -77,6 +92,7 @@ export function startLoop({ initial, onEvents, draw }: LoopOptions): LoopSession
     reset: (state) => {
       previous = current = state;
       accumulatedMs = 0;
+      elapsedTicks = 0;
       lastFrame = undefined;
       pending.length = 0;
       commandLog.length = 0;
