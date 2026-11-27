@@ -2,6 +2,9 @@ import { expect, type Page, test } from '@playwright/test';
 
 // An open tile in the initial 1280×720 view.
 const openTile = { x: 654, y: 395 };
+// Upper section of the archer tower built on that tile.
+const archerUpperBody = { x: 654, y: 334 };
+const archerAsset = /\/assets\/tower-archer-[\w-]+\.glb$/;
 const skeletonAsset = /\/assets\/enemy-skeleton-[\w-]+\.glb$/;
 
 // The entrance and first stretch of lane at the configured viewport.
@@ -65,15 +68,17 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   const download = new Promise<void>((resolve) => {
     releaseDownload = resolve;
   });
-  await page.route(skeletonAsset, async (route) => {
+  await page.route(archerAsset, async (route) => {
     await download;
     await route.continue();
   });
-  const modelRequest = page.waitForRequest(skeletonAsset);
+  const archerRequest = page.waitForRequest(archerAsset);
+  const skeletonResponse = page.waitForResponse(skeletonAsset);
 
   await page.goto('./');
   const startGame = page.getByRole('button', { name: '開始遊戲' });
   try {
+    expect((await skeletonResponse).ok()).toBe(true);
     await expect(startGame).toBeDisabled();
     await expect(page.getByText('正在載入 3D 模型…')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -81,7 +86,7 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   } finally {
     releaseDownload();
   }
-  expect(new URL((await modelRequest).url()).pathname).toMatch(/^\/crownfall\/assets\//);
+  expect(new URL((await archerRequest).url()).pathname).toMatch(/^\/crownfall\/assets\//);
   await expect(page.locator('script[type="module"][src]')).toHaveAttribute('src', /^\.\/assets\//);
   await expect(page.locator('link[rel="stylesheet"]')).toHaveAttribute('href', /^\.\/assets\//);
   await expect(startGame).toBeEnabled();
@@ -100,9 +105,11 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   await ring.getByRole('button', { name: /弓箭塔/ }).click();
   await expect(ring).toBeHidden();
   await expect(balance).not.toHaveText(before ?? '');
-  await canvas.click({ position: openTile });
+  await canvas.click({ position: archerUpperBody });
   const towerRing = page.getByRole('region', { name: '升級／賣出環' });
   await expect(towerRing.getByText(/弓箭塔 · 等級 1/)).toBeVisible();
+  await towerRing.getByRole('button', { name: /升級/ }).click();
+  await expect(towerRing.getByText(/弓箭塔 · 等級 2/)).toBeVisible();
   await page.keyboard.press('Escape');
 
   const waveControls = page.getByRole('region', { name: '波次與時間控制' });
@@ -127,7 +134,7 @@ test('builds a tower and renders an enemy in the production game', async ({ page
 
 for (const failure of ['download', 'texture decode'] as const) {
   test(`keeps the title open and reports a model ${failure} failure`, async ({ page }) => {
-    await page.route(skeletonAsset, async (route) => {
+    await page.route(failure === 'download' ? archerAsset : skeletonAsset, async (route) => {
       if (failure === 'download') {
         await route.abort();
         return;
