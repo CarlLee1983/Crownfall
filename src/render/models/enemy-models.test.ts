@@ -4,10 +4,14 @@ import sharp from 'sharp';
 import { expect, it } from 'vitest';
 import { countModelTriangles } from './model-triangles';
 
+const MAX_DEATH_CLIP_DELTA = 36_000;
+
+// Walking-only GLBs immediately before the collapse was added (445adfa).
 const loadouts = [
-  { id: 'enemy-skeleton', maxKiB: 410, equipment: [] },
+  { id: 'enemy-skeleton', walkingOnlyBytes: 357_752, maxKiB: 410, equipment: [] },
   {
     id: 'enemy-ghoul',
+    walkingOnlyBytes: 366_120,
     maxKiB: 410,
     equipment: [
       ['Skeleton_Blade', 'handslot.l', 'hand.l'],
@@ -16,6 +20,7 @@ const loadouts = [
   },
   {
     id: 'enemy-skeleton-knight',
+    walkingOnlyBytes: 404_480,
     maxKiB: 440,
     equipment: [
       ['Skeleton_Blade', 'handslot.r', 'hand.r'],
@@ -24,6 +29,7 @@ const loadouts = [
   },
   {
     id: 'enemy-lich',
+    walkingOnlyBytes: 353_112,
     maxKiB: 410,
     equipment: [['Skeleton_Staff', 'handslot.r', 'hand.r']],
   },
@@ -31,9 +37,10 @@ const loadouts = [
 
 it.each(loadouts)(
   'ships $id with its walk and death animations and equipped hands within budget',
-  async ({ id, maxKiB, equipment }) => {
+  async ({ id, walkingOnlyBytes, maxKiB, equipment }) => {
     const binary = await readFile(new URL(`./${id}.glb`, import.meta.url));
     expect(binary.byteLength).toBeLessThanOrEqual(maxKiB * 1024);
+    expect(binary.byteLength - walkingOnlyBytes).toBeLessThanOrEqual(MAX_DEATH_CLIP_DELTA);
     const root = (await new NodeIO().readBinary(binary)).getRoot();
     expect(
       root

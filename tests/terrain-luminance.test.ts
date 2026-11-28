@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import sharp, { type Region } from 'sharp';
+import { meanLuma, mossPatch } from './scene-luminance';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -7,19 +7,8 @@ test.use({ viewport: { width: 1280, height: 800 } });
 const patches = {
   platform: { left: 654, top: 188, width: 10, height: 10 },
   lane: { left: 820, top: 202, width: 10, height: 10 },
-  moss: { left: 668, top: 288, width: 10, height: 10 },
   cliff: { left: 645, top: 201, width: 10, height: 8 },
 };
-
-async function meanLuma(screenshot: Buffer, patch: Region): Promise<number> {
-  const pixels = await sharp(screenshot).extract(patch).removeAlpha().raw().toBuffer();
-  let sum = 0;
-  for (let i = 0; i < pixels.length; i += 3) {
-    sum +=
-      0.2126 * (pixels[i] ?? 0) + 0.7152 * (pixels[i + 1] ?? 0) + 0.0722 * (pixels[i + 2] ?? 0);
-  }
-  return sum / (pixels.length / 3);
-}
 
 test('distinguishes the four terrain layers by brightness at the default overview', async ({
   page,
@@ -31,7 +20,7 @@ test('distinguishes the four terrain layers by brightness at the default overvie
   const [platform, lane, moss, cliff] = await Promise.all([
     meanLuma(screenshot, patches.platform),
     meanLuma(screenshot, patches.lane),
-    meanLuma(screenshot, patches.moss),
+    meanLuma(screenshot, mossPatch),
     meanLuma(screenshot, patches.cliff),
   ]);
   await testInfo.attach('terrain luminance', {

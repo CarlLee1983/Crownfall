@@ -2,7 +2,7 @@ import { WebGLRenderer } from 'three';
 import { loadModels } from '../../src/render/models';
 import { estimateFrameCost } from '../../src/render/performance-budget';
 import { createPixelRenderer } from '../../src/render/pixel-renderer';
-import { performanceFrame } from './frame';
+import { performanceFrame, RESEARCH_WAVE } from './frame';
 import { DPR, HEIGHT, WIDTH } from './viewport';
 
 const WARMUP_FRAMES = 60;
@@ -27,7 +27,8 @@ async function measure() {
     throw new Error(`量測需要 Apple M4 的 ANGLE Metal，瀏覽器回報 ${gpu}`);
   }
 
-  const { scene, camera, state, peakAlive } = performanceFrame(await loadModels());
+  const wave = Number(new URLSearchParams(location.search).get('wave') ?? RESEARCH_WAVE);
+  const { scene, camera, state, peakAlive } = performanceFrame(await loadModels(), wave);
   const pixelRenderer = createPixelRenderer(renderer, scene, camera);
   pixelRenderer.resize(WIDTH, HEIGHT);
   const pixel = new Uint8Array(4);

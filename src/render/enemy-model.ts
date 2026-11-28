@@ -42,6 +42,7 @@ export function createEnemyModel(
   model.scale.setScalar(scale);
   model.position.y = footHeight;
   const glowColor = new Color(glow);
+  const meshes: Mesh[] = [];
   const materials = new Map<MeshStandardMaterial, MeshStandardMaterial>();
   const ownMaterial = (source: unknown) => {
     if (!(source instanceof MeshStandardMaterial)) {
@@ -57,6 +58,7 @@ export function createEnemyModel(
   model.traverse((object) => {
     object.layers.set(WORLD_LAYER);
     if (!(object instanceof Mesh)) return;
+    meshes.push(object);
     object.material = Array.isArray(object.material)
       ? object.material.map(ownMaterial)
       : ownMaterial(object.material);
@@ -70,6 +72,11 @@ export function createEnemyModel(
   const vertex = new Vector3();
   const joint = new Vector3();
   const inverseParent = new Matrix4();
+  function updatePoseMatrices(): void {
+    model.updateWorldMatrix(true, false);
+    model.updateMatrixWorld(true);
+  }
+
   return {
     model,
     update(gameMs: number, walkingSpeed: number, flash: number, deathAgeMs?: number) {
@@ -123,8 +130,7 @@ export function createEnemyModel(
         });
       }
 
-      model.updateWorldMatrix(true, false);
-      model.updateMatrixWorld(true);
+      updatePoseMatrices();
       let hipsLift = 0;
       // Measure each piece before moving any joints. The child pieces can land separately.
       for (const { bone, meshes, authoredPosition } of pieces) {
@@ -148,6 +154,19 @@ export function createEnemyModel(
           joint.applyMatrix4(inverseParent.copy(bone.parent.matrixWorld).invert()),
         );
       }
+    },
+    sinkDepth(heightAt: (x: number, z: number) => number): number {
+      updatePoseMatrices();
+      let clearance = 0;
+      for (const mesh of meshes) {
+        const count = mesh.geometry.getAttribute('position').count;
+        for (let index = 0; index < count; index++) {
+          mesh.getVertexPosition(index, vertex).applyMatrix4(mesh.matrixWorld);
+          clearance = Math.max(clearance, vertex.y - heightAt(vertex.x, vertex.z));
+        }
+      }
+      // Leave the final pose just below the surface before the view is released.
+      return clearance + 0.01;
     },
     dispose() {
       mixer.uncacheRoot(model);

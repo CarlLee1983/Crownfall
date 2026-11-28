@@ -386,15 +386,17 @@ export function createEnemyLayer(
         }
         model.position.y += flatClearance - clearance;
       }
-      if (reaction?.deathAgeMs !== undefined && normal.y < 1) {
-        view.visual?.fitCollapseToGround(
-          (x, z) => groundHeight(current.level, { x, y: z }) * LAYER_HEIGHT,
-        );
+      if (reaction?.deathAgeMs !== undefined && view.visual !== undefined) {
+        const heightAt = (x: number, z: number) =>
+          groundHeight(current.level, { x, y: z }) * LAYER_HEIGHT;
+        if (normal.y < 1) view.visual.fitCollapseToGround(heightAt);
+        if (reaction.sink !== undefined && reaction.sink > 0) {
+          view.group.position.y -= reaction.sink * view.visual.sinkDepth(heightAt);
+        }
+      } else {
+        view.group.position.y -= (reaction?.sink ?? 0) * LAYER_HEIGHT;
       }
-      if (reaction !== undefined) {
-        view.group.position.add(reaction.recoil);
-        view.group.position.y -= (reaction.sink ?? 0) * LAYER_HEIGHT;
-      }
+      if (reaction !== undefined) view.group.position.add(reaction.recoil);
       if (!view.bar.visible) continue;
       view.bar.quaternion.copy(camera.quaternion);
       // Project the tilted body bounds onto the camera's up axis to clear its silhouette.

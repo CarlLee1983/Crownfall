@@ -5,6 +5,11 @@ import { chromium } from '@playwright/test';
 import { build, preview } from 'vite';
 import { DPR, HEIGHT, WIDTH } from './viewport';
 
+const [wave, ...extraArgs] = process.argv.slice(2);
+if ((wave !== undefined && wave !== '8' && wave !== '9') || extraArgs.length > 0) {
+  throw new Error('用法：bun scripts/perf/measure.ts [8|9]');
+}
+
 const entry = 'scripts/perf/benchmark.html';
 const outDir = await mkdtemp(join(tmpdir(), 'crownfall-perf-'));
 
@@ -29,7 +34,9 @@ try {
         viewport: { width: WIDTH, height: HEIGHT },
         deviceScaleFactor: DPR,
       });
-      await page.goto(`http://127.0.0.1:${address.port}/${entry}`);
+      const benchmark = new URL(`http://127.0.0.1:${address.port}/${entry}`);
+      if (wave !== undefined) benchmark.searchParams.set('wave', wave);
+      await page.goto(benchmark.href);
       const result = await page.evaluate(async () => {
         if (window.benchmarkResult === undefined) throw new Error('找不到效能量測入口');
         return await window.benchmarkResult;

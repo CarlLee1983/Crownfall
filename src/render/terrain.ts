@@ -64,6 +64,13 @@ function mossShade(x: number, y: number): number {
   return 164 + (tileHash(column, row) % 4) * 13;
 }
 
+function atlasTileOrigin(tile: number) {
+  return {
+    left: (tile % ATLAS_COLUMNS) * TILE_TEXELS,
+    bottom: Math.floor(tile / ATLAS_COLUMNS) * TILE_TEXELS,
+  };
+}
+
 // Each atlas row shifts the pattern. Its four columns hold the quarter turns.
 function terrainAtlas(): DataTexture {
   const pixels = new Uint8Array(ATLAS_WIDTH * ATLAS_HEIGHT * 4);
@@ -75,8 +82,7 @@ function terrainAtlas(): DataTexture {
     const flipX = rotation === 1 || rotation === 2;
     const flipY = rotation >= 2;
     const phase = Math.floor(variant / ATLAS_COLUMNS);
-    const left = (tile % ATLAS_COLUMNS) * TILE_TEXELS;
-    const bottom = Math.floor(tile / ATLAS_COLUMNS) * TILE_TEXELS;
+    const { left, bottom } = atlasTileOrigin(tile);
     const last = TILE_TEXELS - 1;
     for (let y = 0; y < TILE_TEXELS; y++) {
       for (let x = 0; x < TILE_TEXELS; x++) {
@@ -180,8 +186,7 @@ export function createTerrain(
       const isHorizontal = materialIndex === 2 || materialIndex === 3;
       const surface = isHorizontal ? horizontal : walls;
       const tile = isHorizontal ? topTile : CLIFF_TILE;
-      const left = (tile % ATLAS_COLUMNS) * TILE_TEXELS;
-      const bottom = Math.floor(tile / ATLAS_COLUMNS) * TILE_TEXELS;
+      const { left, bottom } = atlasTileOrigin(tile);
       // BoxGeometry gives each face four unique vertices. Inset UVs to texel centers
       // so nearest filtering cannot pick a neighboring atlas tile at a face edge.
       const vertices = new Set<number>();

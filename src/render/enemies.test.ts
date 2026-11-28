@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import {
   AnimationClip,
   BoxGeometry,
@@ -7,10 +6,8 @@ import {
   MeshStandardMaterial,
   NumberKeyframeTrack,
   PerspectiveCamera,
-  Texture,
   Vector3,
 } from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { expect, it } from 'vitest';
 import { content as campaign } from '../content/content';
 import { level } from '../content/level';
@@ -27,8 +24,11 @@ import {
 import { cellIndex } from '../core/level';
 import { nextCell } from '../core/pathing';
 import { createCamera } from './camera';
+import { createCombatFeedback } from './combat-feedback';
 import { dLevel } from './d-level.fixture';
 import { createEnemyLayer } from './enemies';
+import { loadEnemyModels } from './enemy-model-assets';
+import { headlessModelLoader } from './headless-models.fixture';
 import { LAYER_HEIGHT } from './terrain';
 
 const content = {
@@ -509,67 +509,57 @@ it('paces the skeleton walk with enemy speed and uses paused game time', () => {
   expect(poseAtSpeed(3.2)).toBeCloseTo(0.2);
 });
 
-async function loadEnemyAsset(file: string) {
-  const binary = await readFile(new URL(`./models/${file}.glb`, import.meta.url));
-  const loader = new GLTFLoader().register(() => ({
-    name: 'Test texture decoder',
-    loadTexture: async () => new Texture(),
-  }));
-  const { scene, animations } = await loader.parseAsync(new Uint8Array(binary).buffer, '');
-  const walk = animations.find(({ name }) => name === 'Walking_A');
-  const death = animations.find(({ name }) => name === 'Death_C_Skeletons');
-  if (walk === undefined || death === undefined) throw new Error(`${file} is missing an animation`);
-  return { scene, walk, death };
-}
-
-it.each([
-  ['grunt', 'enemy-skeleton'],
-  ['runner', 'enemy-ghoul'],
-])('keeps the %s health bar above the enlarged model', async (kind, file) => {
-  const { camera, resize } = createCamera(level);
-  resize(1280 / 800);
-  const layer = createEnemyLayer(camera, { [kind]: await loadEnemyAsset(file) });
-  const initial = createGame(campaign, level);
-  const state = {
-    ...initial,
-    enemies: [
-      {
-        id: initial.nextEnemyId,
-        kind,
-        hp: 1,
-        maxHp: 1,
-        from: cellIndex(level.width, 3, 2),
-        to: cellIndex(level.width, 3, 1),
-        progress: 0.5,
-      },
-    ],
-  };
-  layer.update(state, state, 1);
-  layer.group.updateMatrixWorld(true);
-  const [enemy] = layer.group.children;
-  const [body, bar] = enemy?.children ?? [];
-  const [background] = bar?.children ?? [];
-  if (body === undefined || !(background instanceof Mesh)) {
-    throw new Error('No unit or health bar');
-  }
-  let modelTop = -Infinity;
-  const vertex = new Vector3();
-  body.traverse((mesh) => {
-    if (!(mesh instanceof Mesh) || !(mesh.material instanceof MeshStandardMaterial)) return;
-    const positions = mesh.geometry.getAttribute('position');
-    for (let index = 0; index < positions.count; index++) {
-      mesh.getVertexPosition(index, vertex).applyMatrix4(mesh.matrixWorld).project(camera);
-      modelTop = Math.max(modelTop, vertex.y);
+it.each(['grunt', 'runner'] as const)(
+  'keeps the %s health bar above the enlarged model',
+  async (kind) => {
+    const { camera, resize } = createCamera(level);
+    resize(1280 / 800);
+    const models = await loadEnemyModels(headlessModelLoader());
+    const layer = createEnemyLayer(camera, { [kind]: models[kind] });
+    const initial = createGame(campaign, level);
+    const state = {
+      ...initial,
+      enemies: [
+        {
+          id: initial.nextEnemyId,
+          kind,
+          hp: 1,
+          maxHp: 1,
+          from: cellIndex(level.width, 3, 2),
+          to: cellIndex(level.width, 3, 1),
+          progress: 0.5,
+        },
+      ],
+    };
+    layer.update(state, state, 1);
+    layer.group.updateMatrixWorld(true);
+    const [enemy] = layer.group.children;
+    const [body, bar] = enemy?.children ?? [];
+    const [background] = bar?.children ?? [];
+    if (body === undefined || !(background instanceof Mesh)) {
+      throw new Error('No unit or health bar');
     }
-  });
-  expect(modelTop).toBeGreaterThan(-1);
-  expect(
-    Math.min(...worldVertices(background).map((point) => point.project(camera).y)),
-  ).toBeGreaterThan(modelTop);
-});
+    let modelTop = -Infinity;
+    const vertex = new Vector3();
+    body.traverse((mesh) => {
+      if (!(mesh instanceof Mesh) || !(mesh.material instanceof MeshStandardMaterial)) return;
+      const positions = mesh.geometry.getAttribute('position');
+      for (let index = 0; index < positions.count; index++) {
+        mesh.getVertexPosition(index, vertex).applyMatrix4(mesh.matrixWorld).project(camera);
+        modelTop = Math.max(modelTop, vertex.y);
+      }
+    });
+    expect(modelTop).toBeGreaterThan(-1);
+    expect(
+      Math.min(...worldVertices(background).map((point) => point.project(camera).y)),
+    ).toBeGreaterThan(modelTop);
+  },
+);
 
 it('keeps the enlarged lich’s walking soles on the ramp as its equipment extends over a cell', async () => {
-  const { scene, walk, death } = await loadEnemyAsset('enemy-lich');
+  const {
+    boss: { scene, walk, death },
+  } = await loadEnemyModels(headlessModelLoader());
   const level = parseLevel(['S^g']);
   const initial = createGame(campaign, level);
   const enemy = {
@@ -620,9 +610,8 @@ it('keeps the enlarged lich’s walking soles on the ramp as its equipment exten
 });
 
 it('keeps the walking lich on the terrain through both ends of the campaign ramp', async () => {
-  const layer = createEnemyLayer(new PerspectiveCamera(), {
-    boss: await loadEnemyAsset('enemy-lich'),
-  });
+  const { boss } = await loadEnemyModels(headlessModelLoader());
+  const layer = createEnemyLayer(new PerspectiveCamera(), { boss });
   const initial = createGame(campaign, level);
   const to = nextCell(level, initial.distance, level.spawn);
   if (to === undefined) throw new Error('Campaign entrance has no route');
@@ -683,4 +672,82 @@ it('keeps the walking lich on the terrain through both ends of the campaign ramp
     expect(Math.min(...samples), transition).toBeGreaterThanOrEqual(-0.005);
     expect(Math.max(...samples), transition).toBeLessThan(0.03);
   }
+});
+
+it('keeps the lich and its equipment above the ramp until the collapse sinks out of view', async () => {
+  const { boss } = await loadEnemyModels(headlessModelLoader());
+  const initial = createGame(campaign, level);
+  const enemy = {
+    id: initial.nextEnemyId,
+    kind: 'boss',
+    hp: 1,
+    maxHp: 1,
+    from: cellIndex(level.width, 2, 1),
+    to: cellIndex(level.width, 1, 1),
+    progress: 0,
+  };
+  const previous = { ...initial, enemies: [enemy] };
+  const current = { ...initial, tick: previous.tick + 1 };
+  const layer = createEnemyLayer(new PerspectiveCamera(), { boss });
+  function defeatEnemy() {
+    layer.reset();
+    layer.hold(enemy, previous);
+    const feedback = createCombatFeedback(layer);
+    feedback.onImpact(
+      { target: enemy, hp: 0, bounty: 1 },
+      'basic',
+      new Vector3(),
+      new Vector3(),
+      0,
+      false,
+    );
+    return feedback;
+  }
+
+  const vertex = new Vector3();
+  function sample(feedback: ReturnType<typeof defeatEnemy>, gameMs: number) {
+    const frame = feedback.update(gameMs, false);
+    layer.update(previous, current, 1, frame.hitFlash, gameMs, {
+      hp: () => undefined,
+      reaction: frame.reaction,
+    });
+    layer.group.updateMatrixWorld(true);
+    let lowest = Infinity;
+    let highest = -Infinity;
+    const positions: number[] = [];
+    layer.group.traverseVisible((mesh) => {
+      if (!(mesh instanceof Mesh) || !(mesh.material instanceof MeshStandardMaterial)) return;
+      for (let index = 0; index < mesh.geometry.getAttribute('position').count; index++) {
+        mesh.getVertexPosition(index, vertex).applyMatrix4(mesh.matrixWorld);
+        positions.push(...vertex.toArray());
+        const floor = groundHeight(level, { x: vertex.x, y: vertex.z }) * LAYER_HEIGHT;
+        lowest = Math.min(lowest, vertex.y - floor);
+        highest = Math.max(highest, vertex.y - floor);
+      }
+    });
+    return { positions, lowest, highest };
+  }
+  const collapseMs = layer.deathDurationMs(enemy.kind);
+  const finishMs = collapseMs + 300;
+  const stepped = defeatEnemy();
+  for (const gameMs of [0, 100, 350, 700, collapseMs]) {
+    const { lowest } = sample(stepped, gameMs);
+    expect(lowest, `death pose at ${gameMs} ms`).toBeGreaterThanOrEqual(-0.005);
+    // The enlarged lich preserves the walking pose's clearance at the start of its collapse.
+    expect(lowest, `death pose at ${gameMs} ms`).toBeLessThan(0.035);
+  }
+  const steppedPositions = sample(stepped, collapseMs).positions;
+  const direct = defeatEnemy();
+  const directPositions = sample(direct, collapseMs).positions;
+  expect(directPositions).toHaveLength(steppedPositions.length);
+  const differences = directPositions.map((value, index) =>
+    Math.abs(value - (steppedPositions[index] ?? 0)),
+  );
+  expect(Math.max(...differences)).toBeLessThan(0.000_01);
+
+  expect(sample(direct, collapseMs + 150).highest).toBeGreaterThan(0);
+  const lastFrame = sample(direct, finishMs - 1);
+  expect(lastFrame.positions).toHaveLength(steppedPositions.length);
+  expect(lastFrame.highest).toBeLessThanOrEqual(0);
+  expect(sample(direct, finishMs).positions).toHaveLength(0);
 });
