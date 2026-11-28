@@ -52,6 +52,12 @@ bun run test:smoke
 
 執行 `bun run models` 會從[資產清單](docs/art/asset-manifest.json)指定的 KayKit 版本下載原檔，把精簡後的 GLB 寫到 `src/render/models/`。
 
+## 音訊前處理
+
+安裝 curl、unzip、支援 7z 的 bsdtar 和含 libopus 的 FFmpeg 後，執行 `bun run audio` 會下載原始素材、裁切與正規化響度，並把通過峰值檢查的 Ogg Opus 檔寫到 `src/audio/clips/`。
+
+若直接下載失敗，依[音訊原始素材清單](docs/art/audio-sources.md)取得 19 個原始檔，再執行 `CROWNFALL_AUDIO_SOURCES=/path/to/originals bun run audio`。
+
 ## 授權
 
 程式碼採 [MIT 授權](LICENSE)。

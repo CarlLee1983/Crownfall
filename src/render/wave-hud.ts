@@ -32,6 +32,7 @@ interface WaveActions {
   continueEndless(): void;
   setSpeed(speed: number): void;
   restart(): void;
+  setAudioDialog(dialog: HTMLDialogElement): void;
 }
 
 function previewText(state: GameState): string {
@@ -102,7 +103,7 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
     notices.set(text, { count: prior === undefined ? 1 : prior.count + 1, until: now + NOTICE_MS });
   };
 
-  start.addEventListener('click', actions.startWave);
+  element('start-wave-target').addEventListener('click', actions.startWave);
   pause.addEventListener('click', togglePause);
   speedControl.addEventListener('click', cycleSpeed);
   continueButton.addEventListener('click', actions.continueEndless);
@@ -116,6 +117,7 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
     actions.restart();
     syncSpeed();
     result.close();
+    actions.setAudioDialog(help);
     help.showModal();
   });
 
@@ -201,6 +203,7 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
           displayedWave,
         );
         result.append(surveyLink);
+        actions.setAudioDialog(result);
         result.showModal();
         return;
       }

@@ -1,8 +1,16 @@
 import { DirectionalLight, FogExp2, HemisphereLight, Scene, Vector3, WebGLRenderer } from 'three';
+import {
+  directCommandSound,
+  directImpact,
+  directInitialSound,
+  directSound,
+} from './audio/director';
+import { createMixer } from './audio/mixer';
 import { content } from './content/content';
 import { torchPositions } from './content/decor';
 import { level } from './content/level';
 import { createGame } from './core';
+import { connectAudioHud } from './render/audio-hud';
 import { createBuildHud } from './render/build-hud';
 import { createBuildLayer } from './render/build-layer';
 import { createCamera } from './render/camera';
@@ -25,19 +33,24 @@ const start = element('start-game');
 if (!(help instanceof HTMLDialogElement) || !(start instanceof HTMLButtonElement)) {
   throw new Error('開始遊戲的 HTML 元素類型錯誤');
 }
+const audio = createMixer();
+const audioHud = connectAudioHud(audio.setVolumes);
+
 const loading = element('model-loading');
 const error = element('model-error');
 help.addEventListener('cancel', (event) => {
   if (start.disabled) event.preventDefault();
 });
+audioHud.setDialog(help);
 help.showModal();
+const loadingFocus = document.activeElement;
 
 loadModels().then(
   (models) => {
     startGame(models);
     loading.hidden = true;
     start.disabled = false;
-    start.focus();
+    if (document.activeElement === loadingFocus) start.focus();
   },
   () => {
     loading.hidden = true;
@@ -60,7 +73,9 @@ function startGame(models: LoadedModels): void {
   const enemies = createEnemyLayer(camera, models.enemies);
   const builds = createBuildLayer(models.towers);
   const combat = createCombatFeedback(enemies);
-  const shots = createShotLayer(enemies, builds.towerHeight, combat);
+  const shots = createShotLayer(enemies, builds.towerHeight, combat, {
+    onImpact: (impact) => audio.play(directImpact(impact)),
+  });
   const combatHud = createCombatHud(canvas, camera);
   const allowShake = window.matchMedia('(prefers-reduced-motion: no-preference)');
   const cameraPosition = new Vector3();
@@ -92,6 +107,10 @@ function startGame(models: LoadedModels): void {
   onResize();
 
   const initial = createGame(content, level);
+  start.addEventListener('click', () => {
+    void audio.unlock();
+    audio.play(directInitialSound(initial));
+  });
   const hud = createBuildHud(
     canvas,
     camera,
@@ -106,21 +125,33 @@ function startGame(models: LoadedModels): void {
   const waveHud = createWaveHud(canvas, camera, {
     startWave: () => loop.enqueue((tick) => ({ type: 'startWave', tick })),
     continueEndless: () => loop.enqueue((tick) => ({ type: 'continueEndless', tick })),
-    setSpeed: (speed) => loop.setSpeed(speed),
+    setSpeed: (speed) => {
+      loop.setSpeed(speed);
+      audio.setPaused(speed === 0);
+    },
+    setAudioDialog: audioHud.setDialog,
     restart: () => {
       hud.reset();
       shots.reset();
       enemies.reset();
       combat.reset();
       combatHud.reset();
-      loop.reset(createGame(content, level));
+      audio.reset();
+      const restarted = createGame(content, level);
+      loop.reset(restarted);
+      audio.play(directInitialSound(restarted));
     },
   });
   const loop = startLoop({
     initial,
-    onEvents: (events, previous, current, time) => {
+    onEvents: (events, previous, current, time, commands) => {
+      for (const { command, events: commandEvents } of commands) {
+        const cue = directCommandSound(command, commandEvents);
+        if (cue !== undefined) audio.play([cue]);
+      }
       hud.onEvents(events);
       waveHud.onEvents(events, time.wallMs);
+      audio.play(directSound(events, previous, current));
       const immediate = shots.onEvents(events, current, previous, time.gameMs);
       combat.onEvents(immediate, previous, time.gameMs);
       enemies.observe(current);

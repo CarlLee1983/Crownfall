@@ -11,6 +11,7 @@
     "typecheck": "tsc -p src/core && tsc -p .",
     "test": "vitest run --project rules",
     "test:smoke": "playwright test",
+    "audio": "bun scripts/build-audio.ts",
     "models": "bun scripts/build-models.ts",
     "balance": "vitest run --project balance"
   },

@@ -350,6 +350,370 @@
         "technical_checks_passed": true,
         "approved_by": ""
       }
+    },
+    {
+      "id": "war-horns",
+      "role": "開戰號角",
+      "path": "src/audio/clips/war-horns.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/node/153572",
+        "creator": "Eldritch Grim",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "war_horns.wav, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "longbow-soft",
+      "role": "弓箭塔發射",
+      "path": "src/audio/clips/longbow-soft.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/medieval-sound-effects-weapon-textures",
+        "creator": "Ben Jaszczak / Brian Nelson",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "English Longbow Shoot.wav, second shot, softened, processed by scripts/build-audio.ts",
+        "archived_creator_terms_url": "https://web.archive.org/web/20220331020630/https://www.stillnorthmedia.com/libraries"
+      }
+    },
+    {
+      "id": "crossbow-1",
+      "role": "弩砲塔發射",
+      "path": "src/audio/clips/crossbow-1.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/medieval-sound-effects-weapon-textures",
+        "creator": "Ben Jaszczak / Brian Nelson",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "Crossbow Shoot.wav, first shot, processed by scripts/build-audio.ts",
+        "archived_creator_terms_url": "https://web.archive.org/web/20220331020630/https://www.stillnorthmedia.com/libraries"
+      }
+    },
+    {
+      "id": "archer-hit-soft",
+      "role": "弓箭塔命中",
+      "path": "src/audio/clips/archer-hit-soft.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/impact-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "impactSoft_medium_002.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "ballista-hit-plate",
+      "role": "弩砲塔命中",
+      "path": "src/audio/clips/ballista-hit-plate.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/impact-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "impactPlate_heavy_001.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "spell-fire-2",
+      "role": "法師塔命中",
+      "path": "src/audio/clips/spell-fire-2.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://lentikula.itch.io/freecc0-basic-spell-impacts-sfx",
+        "creator": "lentikula",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "04_magic_spells/Fire Spell Impact 2_s06.wav, source s06 in LICENSES.txt from the 150 Combat Sound Effects compilation, processed by scripts/build-audio.ts",
+        "compilation_url": "https://opengameart.org/content/150-combat-sound-effects"
+      }
+    },
+    {
+      "id": "bone-break-3",
+      "role": "一般敵人死亡",
+      "path": "src/audio/clips/bone-break-3.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/deep-bone-crackbreak-sfx",
+        "creator": "Zane Little Music",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "Deep Break 3.wav, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "lich-shade-1",
+      "role": "巫妖死亡",
+      "path": "src/audio/clips/lich-shade-1.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/rpg-sound-pack",
+        "creator": "artisticdude",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "RPG Sound Pack/NPC/shade/shade1.wav, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "catacombs",
+      "role": "備戰音樂",
+      "path": "src/audio/clips/catacombs.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/jrpg-pack-3-evil",
+        "creator": "Juhani Junkala",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "Evil2 - Catacombs.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "ancient-evil-awakens",
+      "role": "波次音樂",
+      "path": "src/audio/clips/ancient-evil-awakens.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/jrpg-pack-3-evil",
+        "creator": "Juhani Junkala",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "Evil1 - Ancient Evil Awakens.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "apocalypse",
+      "role": "巫妖波次音樂",
+      "path": "src/audio/clips/apocalypse.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/jrpg-pack-3-evil",
+        "creator": "Juhani Junkala",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "Evil3 - Apocalypse.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "the-sad-battle",
+      "role": "敗北曲",
+      "path": "src/audio/clips/the-sad-battle.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/the-sad-battle",
+        "creator": "Eldritch Grim",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "the_sad_battle.wav, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "leak-horn-1",
+      "role": "漏怪號角",
+      "path": "src/audio/clips/leak-horn-1.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/their-coming-generic-horn-sound",
+        "creator": "StumpyStrust",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "theircoming.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "jingle-steel-10",
+      "role": "清波樂句",
+      "path": "src/audio/clips/jingle-steel-10.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/music-jingles",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "jingles_STEEL10.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "jingle-steel-02",
+      "role": "勝利樂句",
+      "path": "src/audio/clips/jingle-steel-02.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/music-jingles",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "jingles_STEEL02.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "place-plank",
+      "role": "建塔介面音",
+      "path": "src/audio/clips/place-plank.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/impact-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "impactPlank_medium_002.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "upgrade-stone",
+      "role": "升級介面音",
+      "path": "src/audio/clips/upgrade-stone.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/impact-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "impactMining_004.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "sell-wood",
+      "role": "賣塔介面音",
+      "path": "src/audio/clips/sell-wood.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/impact-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "impactWood_medium_003.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "ui-error-03",
+      "role": "操作被拒絕介面音",
+      "path": "src/audio/clips/ui-error-03.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/interface-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "error_003.ogg, processed by scripts/build-audio.ts"
+      }
     }
   ]
 }
