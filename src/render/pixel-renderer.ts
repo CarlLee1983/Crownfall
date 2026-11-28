@@ -14,7 +14,8 @@ import {
 } from 'three';
 import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
 
-const PIXEL_SIZE = 3;
+// PROTOTYPE #103: ?px=3|2|1 switches pixel size.
+const PIXEL_SIZE = Number(new URLSearchParams(location.search).get('px') ?? 3);
 
 export function createPixelRenderer(renderer: WebGLRenderer, scene: Scene, camera: Camera) {
   const world = new WebGLRenderTarget(1, 1, {

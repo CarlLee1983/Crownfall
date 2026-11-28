@@ -35,13 +35,18 @@ function terrainColor(hex: number): Color {
   return color.setHSL(h, s * 0.35, l * 0.85);
 }
 
-function terrainTexture(moss: boolean): DataTexture {
+function terrainTexture(moss: boolean, rim = true): DataTexture {
   const size = 16;
   const pixels = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const grain = (x * 23 + y * 41 + x * y * 11) % 29;
       const offset = (y * size + x) * 4;
+      // PROTOTYPE #102 approximation: bright one-texel rim on top faces.
+      if (rim && (x === 0 || y === 0 || x === size - 1 || y === size - 1)) {
+        pixels.set(moss ? [236, 244, 214, 255] : [250, 250, 250, 255], offset);
+        continue;
+      }
       if (moss) {
         const patch = (Math.floor(x / 3) * 13 + Math.floor(y / 3) * 7) % 19;
         const shade = (patch < 9 ? 158 : 193) + grain;
@@ -95,6 +100,9 @@ export function createTerrain(
       new MeshLambertMaterial({ color: terrainColor(hex), map: name === 'low' ? moss : stone }),
     ]),
   ) as Record<Palette, MeshLambertMaterial>;
+  // PROTOTYPE #102 approximation: dedicated, brighter cliff face material.
+  const cliffTexture = terrainTexture(false, false);
+  const cliff = new MeshLambertMaterial({ color: terrainColor(0x8a8f9c), map: cliffTexture });
 
   for (let i = 0; i < level.cells.length; i++) {
     const index = i as CellIndex;
@@ -110,7 +118,10 @@ export function createTerrain(
     } else {
       // 地表至少厚一層，平地才不會是零厚度的面。
       const thickness = Math.max(top, LAYER_HEIGHT);
-      mesh = new Mesh(new BoxGeometry(1, thickness, 1), materials[paletteOf(level, index)]);
+      const topMaterial = materials[paletteOf(level, index)];
+      mesh = new Mesh(new BoxGeometry(1, thickness, 1), [
+        cliff, cliff, topMaterial, topMaterial, cliff, cliff,
+      ]);
       mesh.position.set(x, top - thickness / 2, y);
     }
     mesh.layers.set(WORLD_LAYER);
