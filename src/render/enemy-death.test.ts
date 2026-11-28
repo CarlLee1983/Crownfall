@@ -34,18 +34,23 @@ it('keeps the lich and its equipment on the ramp until the final pose starts sin
   const previous = { ...initial, enemies: [enemy] };
   const current = { ...initial, tick: previous.tick + 1 };
   const layer = createEnemyLayer(new PerspectiveCamera(), { boss: { scene, walk, death } });
-  layer.hold(enemy, previous);
-  const feedback = createCombatFeedback(layer);
-  feedback.onImpact(
-    { target: enemy, hp: 0, bounty: 1 },
-    'basic',
-    new Vector3(),
-    new Vector3(),
-    0,
-    false,
-  );
+  function defeatEnemy() {
+    layer.reset();
+    layer.hold(enemy, previous);
+    const feedback = createCombatFeedback(layer);
+    feedback.onImpact(
+      { target: enemy, hp: 0, bounty: 1 },
+      'basic',
+      new Vector3(),
+      new Vector3(),
+      0,
+      false,
+    );
+    return feedback;
+  }
+
   const vertex = new Vector3();
-  for (const gameMs of [0, 100, 350, 700, 1000]) {
+  function sample(feedback: ReturnType<typeof defeatEnemy>, gameMs: number) {
     const frame = feedback.update(gameMs, false);
     layer.update(previous, current, 1, frame.hitFlash, gameMs, {
       hp: () => undefined,
@@ -53,10 +58,12 @@ it('keeps the lich and its equipment on the ramp until the final pose starts sin
     });
     layer.group.updateMatrixWorld(true);
     let clearance = Infinity;
+    const positions: number[] = [];
     layer.group.traverseVisible((mesh) => {
       if (!(mesh instanceof Mesh) || !(mesh.material instanceof MeshStandardMaterial)) return;
       for (let index = 0; index < mesh.geometry.getAttribute('position').count; index++) {
         mesh.getVertexPosition(index, vertex).applyMatrix4(mesh.matrixWorld);
+        positions.push(...vertex.toArray());
         const floor = groundHeight(level, { x: vertex.x, y: vertex.z }) * LAYER_HEIGHT;
         clearance = Math.min(clearance, vertex.y - floor);
       }
@@ -64,5 +71,15 @@ it('keeps the lich and its equipment on the ramp until the final pose starts sin
     expect(clearance, `death pose at ${gameMs} ms`).toBeGreaterThanOrEqual(-0.005);
     // The enlarged lich preserves the walking pose's clearance at the start of its collapse.
     expect(clearance, `death pose at ${gameMs} ms`).toBeLessThan(0.035);
+    return positions;
   }
+  const stepped = defeatEnemy();
+  for (const gameMs of [0, 100, 350, 700, 1000]) sample(stepped, gameMs);
+  const steppedPositions = sample(stepped, 1000);
+  const directPositions = sample(defeatEnemy(), 1000);
+  expect(directPositions).toHaveLength(steppedPositions.length);
+  const differences = directPositions.map((value, index) =>
+    Math.abs(value - (steppedPositions[index] ?? 0)),
+  );
+  expect(Math.max(...differences)).toBeLessThan(0.000_01);
 });
