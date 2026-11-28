@@ -1,6 +1,6 @@
 import {
   BoxGeometry,
-  type BufferGeometry,
+  BufferGeometry,
   Color,
   DataTexture,
   Group,
@@ -20,10 +20,10 @@ import { placeableScenery } from './scenery-model';
 export const LAYER_HEIGHT = 0.6;
 
 const COLOURS = {
-  low: 0x5f774a,
+  low: 0x8fb070,
   high: 0xabaeba,
-  laneLow: 0xc0b1a0,
-  laneHigh: 0x9194a3,
+  laneLow: 0xa0a0a6,
+  laneHigh: 0x8b8e9d,
   spawn: 0xad6158,
   goal: 0x648bb4,
 } as const;
@@ -71,7 +71,7 @@ function paletteOf(level: Level, index: CellIndex): Palette {
 }
 
 /** 坡道楔形：上表面的頂點依沿上升方向的位置，從 0 線性升到一層高。 */
-function rampGeometry(dx: number, dy: number): BufferGeometry {
+function rampGeometry(dx: number, dy: number): BoxGeometry {
   const geometry = new BoxGeometry(1, LAYER_HEIGHT, 1);
   const position = geometry.getAttribute('position');
   for (let i = 0; i < position.count; i++) {
@@ -97,7 +97,21 @@ export function createTerrain(
     ]),
   ) as Record<Palette, MeshLambertMaterial>;
 
+  const cliff = new MeshLambertMaterial({
+    color: terrainColor(0xb6bac4),
+    map: stone,
+  });
   const geometryByMaterial = new Map<MeshLambertMaterial, BufferGeometry[]>();
+  const batchSurface = (source: BoxGeometry, indices: number[], material: MeshLambertMaterial) => {
+    const surface = new BufferGeometry();
+    for (const [name, attribute] of Object.entries(source.attributes)) {
+      surface.setAttribute(name, attribute);
+    }
+    surface.setIndex(indices);
+    const batch = geometryByMaterial.get(material);
+    if (batch === undefined) geometryByMaterial.set(material, [surface]);
+    else batch.push(surface);
+  };
   for (let i = 0; i < level.cells.length; i++) {
     const index = i as CellIndex;
     const { x, y } = cellPoint(level, index);
@@ -105,7 +119,7 @@ export function createTerrain(
     const direction = rampDirection(level, index);
     const top = cell.layer * LAYER_HEIGHT;
 
-    let geometry: BufferGeometry;
+    let geometry: BoxGeometry;
     let material: MeshLambertMaterial;
     if (direction !== undefined) {
       geometry = rampGeometry(direction.dx, direction.dy).translate(x, LAYER_HEIGHT / 2, y);
@@ -116,9 +130,17 @@ export function createTerrain(
       geometry = new BoxGeometry(1, thickness, 1).translate(x, top - thickness / 2, y);
       material = materials[paletteOf(level, index)];
     }
-    const batch = geometryByMaterial.get(material);
-    if (batch === undefined) geometryByMaterial.set(material, [geometry]);
-    else batch.push(geometry);
+    const horizontal: number[] = [];
+    const walls: number[] = [];
+    const indices = geometry.getIndex();
+    if (indices === null) throw new Error('Expected indexed terrain geometry');
+    for (const { start, count, materialIndex } of geometry.groups) {
+      // BoxGeometry orders faces +X, -X, +Y, -Y, +Z, -Z. A ramp keeps those groups.
+      const surface = materialIndex === 2 || materialIndex === 3 ? horizontal : walls;
+      for (let i = start; i < start + count; i++) surface.push(indices.getX(i));
+    }
+    batchSurface(geometry, horizontal, material);
+    batchSurface(geometry, walls, cliff);
   }
 
   for (const [material, geometries] of geometryByMaterial) {

@@ -1,4 +1,11 @@
-import { BoxGeometry, Mesh, MeshLambertMaterial, MeshStandardMaterial, Vector3 } from 'three';
+import {
+  BoxGeometry,
+  Mesh,
+  MeshLambertMaterial,
+  MeshStandardMaterial,
+  Raycaster,
+  Vector3,
+} from 'three';
 import { expect, it } from 'vitest';
 import { level as campaign } from '../content/level';
 import { parseLevel } from '../core';
@@ -38,6 +45,23 @@ it('draws the campaign terrain with at most a dozen meshes', () => {
   expect(ground.length).toBeLessThanOrEqual(12);
 });
 
+it('draws a platform top and its cliff face with different materials', () => {
+  const model = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+  const terrain = createTerrain(campaign, { entrance: model, castle: model });
+  const ground = terrain.group.children.filter((object) => object instanceof Mesh);
+  const visibleMaterial = (origin: Vector3, direction: Vector3) => {
+    const hit = new Raycaster(origin, direction).intersectObjects(ground, false)[0];
+    if (hit === undefined || !(hit.object instanceof Mesh)) {
+      throw new Error('Expected the terrain to cover this point');
+    }
+    return hit.object.material;
+  };
+
+  const platform = visibleMaterial(new Vector3(4, 2, 4), new Vector3(0, -1, 0));
+  const cliff = visibleMaterial(new Vector3(4, 0.3, 5), new Vector3(0, 0, -1));
+  expect(cliff).not.toBe(platform);
+});
+
 it('lights only the castle model red after a leak and restores it when the flash ends', () => {
   const level = parseLevel(['S=G']);
   const modelMaterial = new MeshStandardMaterial({
@@ -60,10 +84,10 @@ it('lights only the castle model red after a leak and restores it when the flash
       material.emissiveIntensity,
     ]);
   const before = groundAppearance();
+  expect(before.length).toBeGreaterThan(0);
 
   terrain.setCastleFlash(1);
 
-  expect(ground).toHaveLength(3);
   expect(groundAppearance()).toEqual(before);
   const displayedCastle = terrain.group.getObjectByName('castle');
   const displayedGate = terrain.group.getObjectByName('gate');

@@ -52,9 +52,9 @@ for (const dpr of [1, 2]) {
       expect(sample.height).toBe(30 * dpr);
       expect(sample.colors).toBeGreaterThanOrEqual(3);
       expect(sample.nonUniformPixels).toBe(0);
-      // Variant D's reference platform has a median luminance of about 17 out of 255.
-      expect(sample.medianLuminance).toBeGreaterThan(8);
-      expect(sample.medianLuminance).toBeLessThan(30);
+      // With stronger moonlight (#111), this patch reads around 35/255.
+      expect(sample.medianLuminance).toBeGreaterThan(25);
+      expect(sample.medianLuminance).toBeLessThan(50);
     });
   });
 }
