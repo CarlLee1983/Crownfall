@@ -553,6 +553,48 @@ describe('tower attacks', () => {
     expect(step(before.state, [])).toEqual(second);
   });
 
+  it('settles a nonlethal arrow and a killing arrow before a castle leak in the same tick', () => {
+    const start = startFirstWave(
+      {
+        ...content,
+        enemies: { grunt: { speed: 30, hp: 8, bounty: 5, leakDamage: 1 } },
+        towers: { basic: { ...basic, range: 3 } },
+      },
+      parseLevel(['S=G', '...']),
+    );
+    const before = run(start, 1).state;
+    const result = step(
+      before,
+      [3, 4, 5].map((cell) => ({
+        type: 'placeTower' as const,
+        kind: 'basic',
+        cell: cell as CellIndex,
+        tick: before.tick,
+      })),
+    );
+
+    expect(result.events).toMatchObject([
+      {
+        type: 'shot',
+        towerCell: 3,
+        towerKind: 'basic',
+        impacts: [{ target: { id: 1, hp: 8 }, hp: 4 }],
+      },
+      {
+        type: 'shot',
+        towerCell: 4,
+        towerKind: 'basic',
+        impacts: [{ target: { id: 1, hp: 4 }, hp: 0, bounty: 5 }],
+      },
+      { type: 'killed', enemyId: 1, bounty: 5 },
+      { type: 'waveCleared' },
+      { type: 'victory' },
+    ]);
+    expect(result.state.enemies).toEqual([]);
+    expect(result.state.money).toBe(27);
+    expect(result.state.lives).toBe(before.lives);
+  });
+
   it('sustains fractional-tick cadence and starts a fresh interval after idling', () => {
     let state = startFirstWave(
       {
