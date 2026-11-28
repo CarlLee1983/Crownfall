@@ -7,6 +7,7 @@ import { createCamera } from './camera';
 import { createCombatFeedback } from './combat-feedback';
 import { createEnemyLayer } from './enemies';
 import type { LoadedModels } from './models';
+import { createOutskirts } from './outskirts';
 import { createShotLayer, type PresentedImpact } from './shots';
 import { createTerrain } from './terrain';
 import { createTorches } from './torches';
@@ -36,12 +37,14 @@ export function createBattlefield(
 
   const scene = new Scene();
   scene.fog = new FogExp2(0x10180f, 0.012);
+  scene.background = scene.fog.color;
   const sun = new DirectionalLight(0xb4c4ff, 3.0);
   sun.position.set(-6, 14, 4);
   scene.add(
     new HemisphereLight(0xcfe3ff, 0x2e2a22, 0.9),
     sun,
     terrain.group,
+    createOutskirts(level, models.outskirts, scene.background),
     torches.group,
     enemies.group,
     builds.group,

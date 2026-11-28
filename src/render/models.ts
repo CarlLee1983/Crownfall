@@ -1,12 +1,17 @@
 import { LoadingManager, type Object3D } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { loadEnemyModels } from './enemy-model-assets';
+import brokenWallUrl from './models/decor-broken-wall.glb?url';
+import gravemarkerUrl from './models/decor-gravemarker.glb?url';
+import gravestoneUrl from './models/decor-gravestone.glb?url';
+import rubbleUrl from './models/decor-rubble.glb?url';
 import castleUrl from './models/prop-castle.glb?url';
 import entranceUrl from './models/prop-entrance.glb?url';
 import torchUrl from './models/prop-torch.glb?url';
 import archerUrl from './models/tower-archer.glb?url';
 import ballistaUrl from './models/tower-ballista.glb?url';
 import mageUrl from './models/tower-mage.glb?url';
+import type { OutskirtsModels } from './outskirts';
 import { type LoadedTowerModel, prepareTowerModel } from './tower-model';
 
 export interface LoadedModels {
@@ -16,6 +21,7 @@ export interface LoadedModels {
     readonly sniper: LoadedTowerModel;
     readonly splash: LoadedTowerModel;
   };
+  readonly outskirts: OutskirtsModels;
   readonly scenery: {
     readonly entrance: Object3D;
     readonly castle: Object3D;
@@ -31,7 +37,19 @@ export async function loadModels(source?: Pick<GLTFLoader, 'loadAsync'>): Promis
     resourceFailed = true;
   };
   const loader = source ?? new GLTFLoader(manager);
-  const [enemies, archer, ballista, mage, entrance, castle, torch] = await Promise.all([
+  const [
+    enemies,
+    archer,
+    ballista,
+    mage,
+    entrance,
+    castle,
+    torch,
+    gravestone,
+    gravemarker,
+    rubble,
+    brokenWall,
+  ] = await Promise.all([
     loadEnemyModels(loader),
     loader.loadAsync(archerUrl),
     loader.loadAsync(ballistaUrl),
@@ -39,6 +57,10 @@ export async function loadModels(source?: Pick<GLTFLoader, 'loadAsync'>): Promis
     loader.loadAsync(entranceUrl),
     loader.loadAsync(castleUrl),
     loader.loadAsync(torchUrl),
+    loader.loadAsync(gravestoneUrl),
+    loader.loadAsync(gravemarkerUrl),
+    loader.loadAsync(rubbleUrl),
+    loader.loadAsync(brokenWallUrl),
   ]);
   if (resourceFailed) throw new Error('3D 模型資源載入失敗');
   return {
@@ -47,6 +69,12 @@ export async function loadModels(source?: Pick<GLTFLoader, 'loadAsync'>): Promis
       basic: prepareTowerModel(archer.scene),
       sniper: prepareTowerModel(ballista.scene),
       splash: prepareTowerModel(mage.scene),
+    },
+    outskirts: {
+      gravestone: gravestone.scene,
+      gravemarker: gravemarker.scene,
+      rubble: rubble.scene,
+      brokenWall: brokenWall.scene,
     },
     scenery: { entrance: entrance.scene, castle: castle.scene, torch: torch.scene },
   };

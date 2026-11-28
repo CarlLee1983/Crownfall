@@ -36,7 +36,9 @@ async function prepareSceneryModel(document: Document, id: string): Promise<void
 }
 
 export async function buildSceneryModels(io: NodeIO): Promise<void> {
-  for (const asset of manifest.assets.filter(({ id }) => id.startsWith('prop-'))) {
+  for (const asset of manifest.assets.filter(
+    ({ id }) => id.startsWith('prop-') || id.startsWith('decor-'),
+  )) {
     const { id, source, path } = asset;
     const document = await io.read(pinnedModelUrl(source));
     await prepareSceneryModel(document, id);

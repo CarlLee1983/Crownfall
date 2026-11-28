@@ -83,7 +83,7 @@ export function createPixelRenderer(renderer: WebGLRenderer, scene: Scene, camer
 
   function render(): void {
     const { mask } = camera.layers;
-    const { fog } = scene;
+    const { background, fog } = scene;
     const { autoClear } = renderer;
 
     try {
@@ -106,12 +106,14 @@ export function createPixelRenderer(renderer: WebGLRenderer, scene: Scene, camer
       renderer.autoClear = false;
       renderer.clearDepth();
       scene.fog = null;
+      scene.background = null;
       camera.layers.set(OVERLAY_LAYER);
       renderer.render(scene, camera);
     } finally {
       renderer.setRenderTarget(null);
       renderer.autoClear = autoClear;
       scene.fog = fog;
+      scene.background = background;
       camera.layers.mask = mask;
     }
   }
