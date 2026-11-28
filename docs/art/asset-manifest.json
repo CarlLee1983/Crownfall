@@ -3,6 +3,121 @@
   "art_direction_brief": "docs/art/art-direction.md",
   "assets": [
     {
+      "id": "decor-gravestone",
+      "role": "外圍帶直立墓碑",
+      "path": "src/render/models/decor-gravestone.glb",
+      "status": "implemented",
+      "technical": {
+        "format": "glb",
+        "dimensions": "≤0.38 tile height",
+        "origin": "bottom-center at placement",
+        "up": "+Y",
+        "max_triangles": 300,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Halloween-Bits-1.0",
+        "commit": "6dc69bf6b2fa766a985754f35ec6a0324090e6c6",
+        "creator": "Kay Lousberg",
+        "license": "CC0-1.0",
+        "prompt_or_source_record": "addons/kaykit_halloween_bits/Assets/gltf/gravestone.gltf"
+      }
+    },
+    {
+      "id": "decor-gravemarker",
+      "role": "外圍帶矮墓碑",
+      "path": "src/render/models/decor-gravemarker.glb",
+      "status": "implemented",
+      "technical": {
+        "format": "glb",
+        "dimensions": "≤0.16 tile height on the near side",
+        "origin": "bottom-center at placement",
+        "up": "+Y",
+        "max_triangles": 120,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Halloween-Bits-1.0",
+        "commit": "6dc69bf6b2fa766a985754f35ec6a0324090e6c6",
+        "creator": "Kay Lousberg",
+        "license": "CC0-1.0",
+        "prompt_or_source_record": "addons/kaykit_halloween_bits/Assets/gltf/gravemarker_A.gltf"
+      }
+    },
+    {
+      "id": "decor-barrier",
+      "role": "高台胸牆",
+      "path": "src/render/models/decor-barrier.glb",
+      "status": "implemented",
+      "technical": {
+        "format": "glb",
+        "dimensions": "0.88 tile wide × 0.24 tile high at placement",
+        "origin": "bottom-center at placement",
+        "up": "+Y",
+        "max_triangles": 90,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Dungeon-Remastered-1.0",
+        "commit": "b0ca9bd96a8072ab36a3a5464f00ed1e06a16d07",
+        "creator": "Kay Lousberg",
+        "license": "CC0-1.0",
+        "prompt_or_source_record": "addons/kaykit_dungeon_remastered/Assets/gltf/barrier.gltf.glb"
+      }
+    },
+    {
+      "id": "decor-rubble",
+      "role": "外圍帶與峭壁腳碎石",
+      "path": "src/render/models/decor-rubble.glb",
+      "status": "implemented",
+      "technical": {
+        "format": "glb",
+        "dimensions": "≤0.16 tile height on the near side",
+        "origin": "bottom-center at placement",
+        "up": "+Y",
+        "max_triangles": 310,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Dungeon-Remastered-1.0",
+        "commit": "b0ca9bd96a8072ab36a3a5464f00ed1e06a16d07",
+        "creator": "Kay Lousberg",
+        "license": "CC0-1.0",
+        "prompt_or_source_record": "addons/kaykit_dungeon_remastered/Assets/gltf/rubble_half.gltf.glb"
+      }
+    },
+    {
+      "id": "decor-broken-wall",
+      "role": "外圍帶碎石牆",
+      "path": "src/render/models/decor-broken-wall.glb",
+      "status": "implemented",
+      "technical": {
+        "format": "glb",
+        "dimensions": "≤0.38 tile height",
+        "origin": "bottom-center at placement",
+        "up": "+Y",
+        "max_triangles": 900,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Dungeon-Remastered-1.0",
+        "commit": "b0ca9bd96a8072ab36a3a5464f00ed1e06a16d07",
+        "creator": "Kay Lousberg",
+        "license": "CC0-1.0",
+        "prompt_or_source_record": "addons/kaykit_dungeon_remastered/Assets/gltf/wall_broken.gltf.glb"
+      }
+    },
+    {
       "id": "tower-archer",
       "role": "弓箭塔",
       "path": "src/render/models/tower-archer.glb",

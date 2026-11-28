@@ -8,14 +8,17 @@ import knightUrl from './models/enemy-skeleton-knight.glb?url';
 export interface LoadedEnemyModel {
   readonly scene: Object3D;
   readonly walk: AnimationClip;
+  readonly death: AnimationClip;
 }
 
-export async function loadEnemyModels(loader: GLTFLoader) {
+export async function loadEnemyModels(loader: Pick<GLTFLoader, 'loadAsync'>) {
   const load = async (url: string, name: string): Promise<LoadedEnemyModel> => {
     const { scene, animations } = await loader.loadAsync(url);
     const walk = animations.find((clip) => clip.name === 'Walking_A');
     if (walk === undefined) throw new Error(`${name}模型缺少 Walking_A`);
-    return { scene, walk };
+    const death = animations.find((clip) => clip.name === 'Death_C_Skeletons');
+    if (death === undefined) throw new Error(`${name}模型缺少 Death_C_Skeletons`);
+    return { scene, walk, death };
   };
 
   const [grunt, runner, tank, boss] = await Promise.all([

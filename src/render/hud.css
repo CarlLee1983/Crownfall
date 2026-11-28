@@ -1,10 +1,10 @@
 :root {
   --hud-text: #e9fff9;
-  --hud-muted: #b2cfca;
-  --hud-accent: #a7eadb;
-  --hud-panel: #102226f5;
-  --hud-edge: #668b87;
-  --hud-button: #122528;
+  --hud-muted: #b8cacb;
+  --hud-accent: #a9ddd5;
+  --hud-panel: #172126f5;
+  --hud-edge: #778991;
+  --hud-button: #1b272e;
   --hud-shadow: 0 3px 10px #0007;
   --hud-mono: ui-monospace, monospace;
   --hud-inset: 18px;
@@ -144,7 +144,7 @@ body {
 .tower-action:disabled,
 .tower-action.unaffordable {
   color: var(--hud-muted);
-  background: #1d3033;
+  background: #253139;
   border-color: var(--hud-edge);
 }
 
@@ -528,7 +528,7 @@ body {
 #start-game:disabled {
   border-color: var(--hud-edge);
   color: var(--hud-muted);
-  background: #1d3033;
+  background: #253139;
   cursor: default;
 }
 

@@ -19,8 +19,7 @@ test('demonstrates a real lane detour and dismisses the guide after building', a
   const ring = await selectBuildCell(page);
   await expect(lane).toBeVisible();
   await expect(plateau).toBeVisible();
-  // The marker's diamond is centered on the lane tile in this view.
-  await page.mouse.click(712, 146);
+  await lane.click();
   const archer = ring.getByRole('button', { name: /弓箭塔/ });
   await archer.hover();
   await expect(page.getByText('路線 +2 格', { exact: true })).toBeVisible();
@@ -96,7 +95,7 @@ test('frames both guide cells when the first selection is zoomed in near the ent
   for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowDown');
   await page.mouse.wheel(0, -900);
   // An open tile near the entrance in the resulting close-up view.
-  await page.getByLabel('Crownfall 關卡').click({ position: { x: 654, y: 175 } });
+  await page.getByLabel('Crownfall 關卡').click({ position: { x: 655, y: 185 } });
 
   const guide = page.getByRole('region', { name: '建造引導' });
   await expect(guide.getByRole('button', { name: '路障示範格' })).toBeInViewport();
@@ -107,7 +106,7 @@ test('frames both guide cells when the first selection is zoomed in near the ent
   // The selected tile stays selected when the overview is restored.
   const bounds = await page.locator('#build-anchor').boundingBox();
   expect(bounds).not.toBeNull();
-  expect(Math.round((bounds?.y ?? 0) + (bounds?.height ?? 0) / 2)).toBe(462);
+  expect(Math.round((bounds?.y ?? 0) + (bounds?.height ?? 0) / 2)).toBe(500);
 });
 
 test('guide text leaves the unrelated board cell underneath it selectable', async ({ page }) => {
@@ -120,7 +119,7 @@ test('guide text leaves the unrelated board cell underneath it selectable', asyn
   await page.keyboard.press('Escape');
 
   // A buildable lane tile behind the explanatory text, away from the pin.
-  const point = { x: 838, y: 164 };
+  const point = { x: 860, y: 172 };
   const containsPoint = async (target: typeof pin) =>
     target.evaluate((node, { x, y }) => {
       const { left, right, top, bottom } = node.getBoundingClientRect();
@@ -132,7 +131,7 @@ test('guide text leaves the unrelated board cell underneath it selectable', asyn
   await expect(page.getByRole('region', { name: '建造環' })).toBeVisible();
   const bounds = await page.locator('#build-anchor').boundingBox();
   expect(bounds).not.toBeNull();
-  expect(Math.round((bounds?.x ?? 0) + (bounds?.width ?? 0) / 2)).toBe(839);
+  expect(Math.round((bounds?.x ?? 0) + (bounds?.width ?? 0) / 2)).toBe(860);
 });
 
 test('keeps both first-selection pins clear of the wave controls after panning', async ({
@@ -153,7 +152,7 @@ test('fits both guide captions at a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('./');
   await page.getByRole('button', { name: '開始遊戲' }).click();
-  await page.getByLabel('Crownfall 關卡').click({ position: { x: 161, y: 406 } });
+  await page.getByLabel('Crownfall 關卡').click({ position: { x: 162, y: 422 } });
   const guide = page.getByRole('region', { name: '建造引導' });
   for (const name of ['路障示範格', '高台示範格']) {
     const pin = guide.getByRole('button', { name });
@@ -169,7 +168,7 @@ test('keeps the guide caption legible while previewing a tower in a low build ri
   await page.goto('./');
   await page.getByRole('button', { name: '開始遊戲' }).click();
   // A lane tile that cannot be blocked, with the build ring below the guide.
-  await page.getByLabel('Crownfall 關卡').click({ position: { x: 221, y: 384 } });
+  await page.getByLabel('Crownfall 關卡').click({ position: { x: 232, y: 396 } });
   const ring = page.getByRole('region', { name: '建造環' });
   await ring.getByRole('button', { name: /弓箭塔/ }).hover();
   const preview = page.getByText('會讓入口到城堡斷線', { exact: true });

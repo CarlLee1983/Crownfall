@@ -97,7 +97,7 @@ function towerMesh(tower: Tower, level: Level, model: TowerModel): Group {
   return group;
 }
 
-interface BuildPreview {
+export interface BuildPreview {
   readonly cell: CellIndex;
   readonly range: number;
   readonly route?: readonly CellIndex[];

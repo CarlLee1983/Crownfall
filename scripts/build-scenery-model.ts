@@ -33,10 +33,17 @@ async function prepareSceneryModel(document: Document, id: string): Promise<void
     await document.transform(simplify({ simplifier: castleSimplifier, ratio: 0.26, error: 0.12 }));
   }
   await prepareHexagonModel(document);
+  if (id === 'decor-rubble') {
+    // The rubble is instanced around the outskirts and along cliff feet.
+    await MeshoptSimplifier.ready;
+    await document.transform(simplify({ simplifier: MeshoptSimplifier, ratio: 0.66, error: 0.03 }));
+  }
 }
 
 export async function buildSceneryModels(io: NodeIO): Promise<void> {
-  for (const asset of manifest.assets.filter(({ id }) => id.startsWith('prop-'))) {
+  for (const asset of manifest.assets.filter(
+    ({ id }) => id.startsWith('prop-') || id.startsWith('decor-'),
+  )) {
     const { id, source, path } = asset;
     const document = await io.read(pinnedModelUrl(source));
     await prepareSceneryModel(document, id);

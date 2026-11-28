@@ -1,4 +1,4 @@
-import { Node, type NodeIO } from '@gltf-transform/core';
+import { Accessor, type Animation, Node, type NodeIO, PropertyType } from '@gltf-transform/core';
 import {
   dedup,
   mergeDocuments,
@@ -20,6 +20,39 @@ const enemies = [
   { id: 'enemy-lich', ratio: 0.85, lift: 0.06 },
 ];
 
+function removeBindPoseTracks(clip: Animation): void {
+  for (const channel of clip.listChannels()) {
+    const node = channel.getTargetNode();
+    const sampler = channel.getSampler();
+    const output = sampler?.getOutput();
+    if (
+      node === null ||
+      sampler?.getInterpolation() !== 'LINEAR' ||
+      output == null ||
+      output.getComponentType() !== Accessor.ComponentType.FLOAT
+    ) {
+      continue;
+    }
+    const path = channel.getTargetPath();
+    if (path === null || path === 'weights') continue;
+    const bind =
+      path === 'translation'
+        ? node.getTranslation()
+        : path === 'rotation'
+          ? node.getRotation()
+          : node.getScale();
+    const values = output.getArray();
+    // The authored rig already supplies these transforms, up to float32 rounding.
+    if (values?.every((value, i) => Math.abs(value - (bind[i % bind.length] ?? NaN)) <= 1e-7)) {
+      channel.dispose();
+    }
+  }
+  const samplersInUse = new Set(clip.listChannels().map((channel) => channel.getSampler()));
+  for (const sampler of clip.listSamplers()) {
+    if (!samplersInUse.has(sampler)) sampler.dispose();
+  }
+}
+
 export async function buildEnemyModels(io: NodeIO): Promise<void> {
   for (const { id, ratio, lift } of enemies) {
     const asset = manifest.assets.find((item) => item.id === id);
@@ -31,8 +64,10 @@ export async function buildEnemyModels(io: NodeIO): Promise<void> {
     const animations = root.listAnimations();
     const walk = animations.find((clip) => clip.getName() === 'Walking_A');
     if (walk === undefined) throw new Error(`${id} 原檔缺少 Walking_A`);
+    const death = animations.find((clip) => clip.getName() === 'Death_C_Skeletons');
+    if (death === undefined) throw new Error(`${id} 原檔缺少 Death_C_Skeletons`);
     for (const clip of animations) {
-      if (clip === walk) continue;
+      if (clip === walk || clip === death) continue;
       // Discard the subproperties too, so their accessors become eligible for pruning.
       for (const channel of clip.listChannels()) channel.dispose();
       for (const sampler of clip.listSamplers()) sampler.dispose();
@@ -64,10 +99,10 @@ export async function buildEnemyModels(io: NodeIO): Promise<void> {
       }
     }
 
+    await document.transform(prune(), resample(), dedup());
+    removeBindPoseTracks(death);
     await document.transform(
-      prune(),
-      resample(),
-      dedup(),
+      prune({ propertyTypes: [PropertyType.ACCESSOR] }),
       textureCompress({ encoder: sharp, resize: [128, 128], targetFormat: 'png' }),
     );
     if (source.equipment !== undefined) {

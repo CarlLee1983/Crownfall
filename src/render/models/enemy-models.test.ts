@@ -4,11 +4,15 @@ import sharp from 'sharp';
 import { expect, it } from 'vitest';
 import { countModelTriangles } from './model-triangles';
 
+const MAX_DEATH_CLIP_DELTA = 36_000;
+
+// Walking-only GLBs immediately before the collapse was added (445adfa).
 const loadouts = [
-  { id: 'enemy-skeleton', maxKiB: 375, equipment: [] },
+  { id: 'enemy-skeleton', walkingOnlyBytes: 357_752, maxKiB: 410, equipment: [] },
   {
     id: 'enemy-ghoul',
-    maxKiB: 375,
+    walkingOnlyBytes: 366_120,
+    maxKiB: 410,
     equipment: [
       ['Skeleton_Blade', 'handslot.l', 'hand.l'],
       ['Skeleton_Blade', 'handslot.r', 'hand.r'],
@@ -16,7 +20,8 @@ const loadouts = [
   },
   {
     id: 'enemy-skeleton-knight',
-    maxKiB: 400,
+    walkingOnlyBytes: 404_480,
+    maxKiB: 440,
     equipment: [
       ['Skeleton_Blade', 'handslot.r', 'hand.r'],
       ['Skeleton_Shield_Large_A', 'handslot.l', 'hand.l'],
@@ -24,18 +29,25 @@ const loadouts = [
   },
   {
     id: 'enemy-lich',
-    maxKiB: 375,
+    walkingOnlyBytes: 353_112,
+    maxKiB: 410,
     equipment: [['Skeleton_Staff', 'handslot.r', 'hand.r']],
   },
 ];
 
 it.each(loadouts)(
-  'ships $id with its walk animation and equipped hands within budget',
-  async ({ id, maxKiB, equipment }) => {
+  'ships $id with its walk and death animations and equipped hands within budget',
+  async ({ id, walkingOnlyBytes, maxKiB, equipment }) => {
     const binary = await readFile(new URL(`./${id}.glb`, import.meta.url));
     expect(binary.byteLength).toBeLessThanOrEqual(maxKiB * 1024);
+    expect(binary.byteLength - walkingOnlyBytes).toBeLessThanOrEqual(MAX_DEATH_CLIP_DELTA);
     const root = (await new NodeIO().readBinary(binary)).getRoot();
-    expect(root.listAnimations().map((animation) => animation.getName())).toEqual(['Walking_A']);
+    expect(
+      root
+        .listAnimations()
+        .map((animation) => animation.getName())
+        .sort(),
+    ).toEqual(['Death_C_Skeletons', 'Walking_A']);
     expect(root.listSkins()).not.toHaveLength(0);
     const joints = new Set(root.listSkins().flatMap((skin) => skin.listJoints()));
     const equippedNodes = root

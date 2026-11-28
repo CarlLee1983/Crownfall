@@ -1,11 +1,11 @@
-import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
+import { Box3, MathUtils, type Object3D, PerspectiveCamera, Vector3 } from 'three';
 import type { Level } from '../core';
 import { LAYER_HEIGHT } from './terrain';
 
-const FOV_DEGREES = 45;
+const FOV_DEGREES = 40;
 const YAW = Math.PI / 4;
 const PITCH = (35 * Math.PI) / 180;
-const OVERVIEW_FILL = 0.85;
+const OVERVIEW_FILL = 1.0;
 const CLOSEST_DISTANCE_RATIO = 0.5;
 
 function panFraction(position: number, delta: number, limit: number): number {
@@ -15,7 +15,7 @@ function panFraction(position: number, delta: number, limit: number): number {
 }
 
 /** 固定斜俯視相機。 */
-export function createCamera(level: Level) {
+export function createCamera(level: Level, landmarks: readonly Object3D[] = []) {
   const camera = new PerspectiveCamera(FOV_DEGREES, 1, 0.1, 200);
   const centerX = (level.width - 1) / 2;
   const centerZ = (level.height - 1) / 2;
@@ -23,18 +23,29 @@ export function createCamera(level: Level) {
   const halfWidth = level.width / 2;
   const halfLength = level.height / 2;
   const top = topLayer * LAYER_HEIGHT;
-  const radius = Math.hypot(halfWidth, halfLength, top);
   camera.rotation.set(-PITCH, YAW, 0, 'YXZ');
   const backward = new Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
   const inverseRotation = camera.quaternion.clone().invert();
   const corners: Vector3[] = [];
-  for (const x of [-halfWidth, halfWidth]) {
-    for (const y of [-LAYER_HEIGHT, top]) {
-      for (const z of [-halfLength, halfLength]) {
-        corners.push(new Vector3(x, y, z).applyQuaternion(inverseRotation));
+  const includeBounds = ({ min, max }: Box3): void => {
+    for (const x of [min.x, max.x]) {
+      for (const y of [min.y, max.y]) {
+        for (const z of [min.z, max.z]) {
+          corners.push(new Vector3(x - centerX, y, z - centerZ).applyQuaternion(inverseRotation));
+        }
       }
     }
+  };
+  includeBounds(
+    new Box3(
+      new Vector3(centerX - halfWidth, -LAYER_HEIGHT, centerZ - halfLength),
+      new Vector3(centerX + halfWidth, top, centerZ + halfLength),
+    ),
+  );
+  for (const landmark of landmarks) {
+    includeBounds(new Box3().setFromObject(landmark, true));
   }
+  const radius = Math.max(...corners.map((corner) => corner.length()));
 
   let targetX = centerX;
   let targetZ = centerZ;
