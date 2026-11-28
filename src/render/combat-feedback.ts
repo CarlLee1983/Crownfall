@@ -1,16 +1,6 @@
-import {
-  BoxGeometry,
-  Group,
-  Mesh,
-  MeshBasicMaterial,
-  MeshLambertMaterial,
-  OctahedronGeometry,
-  Vector2,
-  Vector3,
-} from 'three';
+import { Vector2, Vector3 } from 'three';
 import type { EnemyId, GameEvent, GameState, ShotImpact } from '../core';
-import { type EnemyLayer, enemyGlowColor } from './enemies';
-import { WORLD_LAYER } from './layers';
+import type { EnemyLayer } from './enemies';
 
 const HIT_FLASH_MS = 100;
 const HIT_FLASH_GAP_MS = 50;
@@ -18,9 +8,6 @@ const HIT_FLASH_STRENGTH = 0.5;
 const LEAK_FLASH_MS = 220;
 const LEAK_FLASH_STRENGTH = 0.45;
 const LEAK_SHAKE_STRENGTH = 0.025;
-const FRAGMENT_MS = 480;
-const FRAGMENTS_PER_KILL = 6;
-const MAX_FRAGMENTS = 48;
 const BOUNTY_MS = 720;
 const BOUNTY_HEIGHT = 0.55;
 const PRESET_A_FLASH_MS = 72;
@@ -28,10 +15,7 @@ const PRESET_A_FLASH_GAP_MS = 16;
 const PRESET_A_FLASH_STRENGTH = 0.36;
 const PRESET_A_RECOIL = 0.035;
 const RECOIL_MS = 174;
-const DEATH_MS = 85;
-const PRESET_A_SHARDS = 3;
-const PRESET_A_SHARD_MS = 230;
-const PRESET_A_SCATTER = 0.34;
+const SINK_MS = 300;
 
 interface Hit {
   readonly duration: number;
@@ -42,28 +26,18 @@ interface Hit {
 }
 
 export function createCombatFeedback(
-  enemies: Pick<EnemyLayer, 'impactPosition' | 'spawnPosition' | 'targetPosition' | 'release'>,
+  enemies: Pick<
+    EnemyLayer,
+    'impactPosition' | 'spawnPosition' | 'targetPosition' | 'hold' | 'release' | 'deathDurationMs'
+  >,
 ) {
-  const group = new Group();
-  const geometry = new BoxGeometry(0.14, 0.14, 0.14);
-  const presetAShardGeometry = new OctahedronGeometry(0.09);
-  const materials = new Map<number, MeshLambertMaterial>();
-  const presetAShardMaterials = new Map<number, MeshBasicMaterial>();
-  const fragments = new Set<{
-    readonly mesh: Mesh;
-    readonly origin: Vector3;
-    readonly heading: number;
-    readonly usesPresetA: boolean;
-    readonly speed: number;
-    readonly start: number;
-  }>();
   const hits = new Map<EnemyId, Hit>();
   const reactions = new Map<
     EnemyId,
     {
       readonly start: number;
       readonly direction: Vector3;
-      readonly death: boolean;
+      readonly collapseMs?: number;
       readonly usesPresetA: boolean;
       readonly releaseAfterMs?: number;
       readonly hp?: number;
@@ -78,48 +52,6 @@ export function createCombatFeedback(
     readonly start: number;
     readonly duration: number;
   }>();
-
-  function removeExpiredFragments(gameTime: number): void {
-    for (const fragment of fragments) {
-      if (gameTime - fragment.start < (fragment.usesPresetA ? PRESET_A_SHARD_MS : FRAGMENT_MS))
-        continue;
-      group.remove(fragment.mesh);
-      fragments.delete(fragment);
-    }
-  }
-
-  function shatter(
-    kind: string,
-    id: EnemyId,
-    origin: Vector3,
-    start: number,
-    usesPresetA = false,
-  ): void {
-    removeExpiredFragments(start);
-    const count = usesPresetA ? PRESET_A_SHARDS : FRAGMENTS_PER_KILL;
-    if (!usesPresetA && fragments.size + count > MAX_FRAGMENTS) return;
-    const color = enemyGlowColor(kind);
-    const palette = usesPresetA ? presetAShardMaterials : materials;
-    let material = palette.get(color);
-    if (material === undefined) {
-      if (usesPresetA) {
-        material = new MeshBasicMaterial({ color });
-        presetAShardMaterials.set(color, material);
-      } else {
-        material = new MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.45 });
-        materials.set(color, material);
-      }
-    }
-    for (let index = 0; index < count; index++) {
-      const mesh = new Mesh(usesPresetA ? presetAShardGeometry : geometry, material);
-      mesh.layers.set(WORLD_LAYER);
-      group.add(mesh);
-      const heading = usesPresetA
-        ? (index / count) * Math.PI * 2 + id
-        : ((index + id * 0.37) * Math.PI) / 3;
-      fragments.add({ mesh, origin, heading, usesPresetA, speed: 0.6 + 0.4 * (index / 2), start });
-    }
-  }
 
   function bountyAt(
     id: EnemyId,
@@ -170,19 +102,25 @@ export function createCombatFeedback(
       start: gameTime,
       drewOriginalColor: false,
     });
-    const releaseAfterMs =
-      bounty !== undefined ? DEATH_MS : finalHitOnLeakedEnemy ? duration : undefined;
+    if (bounty !== undefined) {
+      const collapseMs = enemies.deathDurationMs(target.kind);
+      reactions.set(target.id, {
+        start: gameTime,
+        direction,
+        usesPresetA,
+        collapseMs,
+        releaseAfterMs: collapseMs + SINK_MS,
+        hp,
+      });
+      bountyAt(target.id, bounty, position, gameTime, usesPresetA ? 690 : BOUNTY_MS);
+      return;
+    }
     reactions.set(target.id, {
       start: gameTime,
       direction,
-      death: bounty !== undefined,
       usesPresetA,
-      ...(releaseAfterMs === undefined ? {} : { releaseAfterMs, hp }),
+      ...(finalHitOnLeakedEnemy ? { releaseAfterMs: duration, hp } : {}),
     });
-    if (bounty !== undefined) {
-      shatter(target.kind, target.id, position, gameTime, usesPresetA);
-      bountyAt(target.id, bounty, position, gameTime, usesPresetA ? 690 : BOUNTY_MS);
-    }
   }
 
   function onEvents(events: readonly GameEvent[], previous: GameState, gameTime: number): void {
@@ -201,19 +139,23 @@ export function createCombatFeedback(
         }
       }
       if (event.type !== 'killed') continue;
-      hits.delete(event.enemyId);
+      const { enemyId, enemyKind, bounty } = event;
+      const enemy =
+        previous.enemies.find(({ id }) => id === enemyId) ??
+        events
+          .flatMap((candidate) => (candidate.type === 'shot' ? candidate.impacts : []))
+          .find(({ target }) => target.id === enemyId)?.target;
       const position = new Vector3();
-      if (enemies.targetPosition(event.enemyId, position) === undefined) {
-        const enemy = previous.enemies.find(({ id }) => id === event.enemyId);
-        if (enemy === undefined) {
-          // 開波指令可以在同一 tick 生成敵人並讓塔在入口擊殺牠們。
-          enemies.spawnPosition(previous, event.enemyKind, position);
-        } else {
-          enemies.impactPosition(previous, enemy, position);
-        }
+      if (enemies.targetPosition(enemyId, position) === undefined) {
+        if (enemy === undefined) enemies.spawnPosition(previous, enemyKind, position);
+        else enemies.impactPosition(previous, enemy, position);
       }
-      shatter(event.enemyKind, event.enemyId, position, gameTime);
-      bountyAt(event.enemyId, event.bounty, position, gameTime);
+      if (enemy !== undefined) {
+        enemies.hold(enemy, previous);
+        onImpact({ target: enemy, bounty, hp: 0 }, '', position, new Vector3(), gameTime, false);
+      } else {
+        bountyAt(enemyId, bounty, position, gameTime);
+      }
     }
   }
 
@@ -245,22 +187,6 @@ export function createCombatFeedback(
       shake.set(Math.cos(sinceLeak * 0.079) * strength, Math.sin(sinceLeak * 0.11) * strength);
     }
     const castleFlash = leak * LEAK_FLASH_STRENGTH;
-    removeExpiredFragments(gameTime);
-    for (const { mesh, origin, heading, usesPresetA, speed, start } of fragments) {
-      const progress = (gameTime - start) / (usesPresetA ? PRESET_A_SHARD_MS : FRAGMENT_MS);
-      const distance = usesPresetA
-        ? (0.05 + PRESET_A_SCATTER * progress) * speed
-        : 0.12 + 0.62 * progress;
-      mesh.position.set(
-        origin.x + Math.cos(heading) * distance,
-        origin.y + progress * (usesPresetA ? 1.9 - 2.6 * progress : 1.7 - 2.3 * progress),
-        origin.z + Math.sin(heading) * distance,
-      );
-      if (usesPresetA)
-        mesh.rotation.set(heading + 6 * progress, 7 * progress, heading - 4 * progress);
-      else mesh.rotation.set(heading + 3 * progress, 6 * progress, 3 * progress);
-      mesh.scale.setScalar((usesPresetA ? speed : 1) * (1 - progress * progress));
-    }
     return {
       hitFlash: (id: EnemyId) => {
         const hit = hits.get(id);
@@ -272,6 +198,15 @@ export function createCombatFeedback(
         const reaction = reactions.get(id);
         if (reaction === undefined) return undefined;
         const age = gameTime - reaction.start;
+        const { collapseMs, hp } = reaction;
+        if (collapseMs !== undefined) {
+          return {
+            recoil: new Vector3(),
+            hp: 0,
+            deathAgeMs: age,
+            sink: Math.max(0, (age - collapseMs) / SINK_MS),
+          };
+        }
         const recoil = reaction.direction
           .clone()
           .multiplyScalar(
@@ -279,10 +214,9 @@ export function createCombatFeedback(
               ? PRESET_A_RECOIL * Math.max(0, 1 - age / RECOIL_MS) ** 2
               : 0,
           );
-        const scale = reaction.death ? Math.max(0.05, 1 - (age / DEATH_MS) ** 2) : 1;
-        return { recoil, scale, ...(reaction.hp === undefined ? {} : { hp: reaction.hp }) };
+        return { recoil, ...(hp === undefined ? {} : { hp }) };
       },
-      settling: fragments.size > 0 || leak > 0 || hasHeldReaction,
+      settling: leak > 0 || hasHeldReaction,
       castleFlash,
       lifePulse: castleFlash * 0.38,
       shake,
@@ -309,13 +243,11 @@ export function createCombatFeedback(
   }
 
   function reset(): void {
-    fragments.clear();
     bounties.clear();
-    group.clear();
     hits.clear();
     reactions.clear();
     leakStart = -Infinity;
   }
 
-  return { group, onEvents, onImpact, canPresentImpact, update, reset };
+  return { onEvents, onImpact, canPresentImpact, update, reset };
 }

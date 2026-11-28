@@ -5,10 +5,10 @@ import { expect, it } from 'vitest';
 import { countModelTriangles } from './model-triangles';
 
 const loadouts = [
-  { id: 'enemy-skeleton', maxKiB: 375, equipment: [] },
+  { id: 'enemy-skeleton', maxKiB: 410, equipment: [] },
   {
     id: 'enemy-ghoul',
-    maxKiB: 375,
+    maxKiB: 410,
     equipment: [
       ['Skeleton_Blade', 'handslot.l', 'hand.l'],
       ['Skeleton_Blade', 'handslot.r', 'hand.r'],
@@ -16,7 +16,7 @@ const loadouts = [
   },
   {
     id: 'enemy-skeleton-knight',
-    maxKiB: 400,
+    maxKiB: 440,
     equipment: [
       ['Skeleton_Blade', 'handslot.r', 'hand.r'],
       ['Skeleton_Shield_Large_A', 'handslot.l', 'hand.l'],
@@ -24,18 +24,23 @@ const loadouts = [
   },
   {
     id: 'enemy-lich',
-    maxKiB: 375,
+    maxKiB: 410,
     equipment: [['Skeleton_Staff', 'handslot.r', 'hand.r']],
   },
 ];
 
 it.each(loadouts)(
-  'ships $id with its walk animation and equipped hands within budget',
+  'ships $id with its walk and death animations and equipped hands within budget',
   async ({ id, maxKiB, equipment }) => {
     const binary = await readFile(new URL(`./${id}.glb`, import.meta.url));
     expect(binary.byteLength).toBeLessThanOrEqual(maxKiB * 1024);
     const root = (await new NodeIO().readBinary(binary)).getRoot();
-    expect(root.listAnimations().map((animation) => animation.getName())).toEqual(['Walking_A']);
+    expect(
+      root
+        .listAnimations()
+        .map((animation) => animation.getName())
+        .sort(),
+    ).toEqual(['Death_C_Skeletons', 'Walking_A']);
     expect(root.listSkins()).not.toHaveLength(0);
     const joints = new Set(root.listSkins().flatMap((skin) => skin.listJoints()));
     const equippedNodes = root

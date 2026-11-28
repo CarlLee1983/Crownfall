@@ -92,7 +92,6 @@ function startGame(models: LoadedModels): void {
     enemies.group,
     builds.group,
     shots.group,
-    combat.group,
   );
 
   const pixelRenderer = createPixelRenderer(renderer, scene, camera);

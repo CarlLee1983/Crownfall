@@ -29,7 +29,7 @@ import {
   TICKS_PER_SECOND,
 } from '../core';
 import { cellIndex, neighbors } from '../core/level';
-import { createEnemyModel } from './enemy-model';
+import { createEnemyModel, DEATH_PLAYBACK_RATE } from './enemy-model';
 import type { LoadedEnemyModel } from './enemy-model-assets';
 import { type EnemyMotion, enemyHeading, enemyMotion, sampleEnemyMotion } from './enemy-motion';
 import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
@@ -60,10 +60,6 @@ const BAR_GAP = 0.08;
 
 function enemyLook(kind: string): Look {
   return LOOKS.get(kind) ?? DEFAULT_LOOK;
-}
-
-export function enemyGlowColor(kind: string): number {
-  return enemyLook(kind).glowColor;
 }
 
 function enemyGeometry({ size, cornerCut, round }: Look): BufferGeometry {
@@ -205,9 +201,14 @@ interface EnemyView {
 
 interface EnemyPresentation {
   readonly hp: (id: EnemyId) => number | undefined;
-  readonly reaction: (
-    id: EnemyId,
-  ) => { readonly recoil: Vector3; readonly scale: number; readonly hp?: number } | undefined;
+  readonly reaction: (id: EnemyId) =>
+    | {
+        readonly recoil: Vector3;
+        readonly hp?: number;
+        readonly deathAgeMs?: number;
+        readonly sink?: number;
+      }
+    | undefined;
 }
 
 export interface EnemyLayer {
@@ -226,6 +227,7 @@ export interface EnemyLayer {
   ): void;
   hold(enemy: Enemy, state: GameState): void;
   release(id: EnemyId): void;
+  deathDurationMs(kind: string): number;
   aimPosition(id: EnemyId, alpha: number, output: Vector3): Vector3 | undefined;
   targetPosition(id: EnemyId, output: Vector3): Vector3 | undefined;
   impactPosition(state: GameState, enemy: Enemy, output: Vector3): Vector3;
@@ -337,7 +339,7 @@ export function createEnemyLayer(
       const view = viewFor(enemy, look);
       const flash = hitFlash?.(enemy.id) ?? 0;
       const reaction = presentation?.reaction(enemy.id);
-      view.group.scale.setScalar(reaction?.scale ?? 1);
+      view.bar.visible = reaction?.deathAgeMs === undefined;
       if (view.visual === undefined) {
         const glow = look.glowColor;
         view.body.material.color.setHex(glow).multiplyScalar(0.36).lerp(WHITE, flash);
@@ -349,7 +351,7 @@ export function createEnemyLayer(
             ? (current.enemyRules[enemy.kind]?.speedPerTick ?? 0) * TICKS_PER_SECOND
             : 0;
         view.visual.model.rotation.y = enemyHeading(motion, progress);
-        view.visual.update(gameMs, walkingSpeed, flash);
+        view.visual.update(gameMs, walkingSpeed, flash, reaction?.deathAgeMs);
       }
       const half = look.size / 2;
       const ground = supportBody(current.level, point, look, normal, view.body.position);
@@ -384,7 +386,16 @@ export function createEnemyLayer(
         }
         model.position.y += flatClearance - clearance;
       }
-      if (reaction !== undefined) view.group.position.add(reaction.recoil);
+      if (reaction?.deathAgeMs !== undefined && normal.y < 1) {
+        view.visual?.fitCollapseToGround(
+          (x, z) => groundHeight(current.level, { x, y: z }) * LAYER_HEIGHT,
+        );
+      }
+      if (reaction !== undefined) {
+        view.group.position.add(reaction.recoil);
+        view.group.position.y -= (reaction.sink ?? 0) * LAYER_HEIGHT;
+      }
+      if (!view.bar.visible) continue;
       view.bar.quaternion.copy(camera.quaternion);
       // Project the tilted body bounds onto the camera's up axis to clear its silhouette.
       bodyTransform.setFromMatrix4(view.body.matrix).transpose();
@@ -433,10 +444,14 @@ export function createEnemyLayer(
     observe,
     update,
     hold: (enemy, state) => {
-      const motion = enemyMotion(state, enemy, motions.get(enemy.id));
-      held.set(enemy.id, { ...motion, start: motion.end });
+      const { route, distance, end } = enemyMotion(state, enemy, motions.get(enemy.id));
+      held.set(enemy.id, { enemy, route, distance, start: end, end });
     },
     release: (id) => held.delete(id),
+    deathDurationMs: (kind) => {
+      const clip = models[kind]?.death;
+      return clip === undefined ? 1000 : (clip.duration * 1000) / DEATH_PLAYBACK_RATE;
+    },
     aimPosition: (id, alpha, output) => {
       const motion = motions.get(id) ?? held.get(id);
       return motion === undefined || observed === undefined

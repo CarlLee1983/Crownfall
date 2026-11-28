@@ -1,14 +1,38 @@
-import { AnimationMixer, Color, Mesh, MeshStandardMaterial, SkinnedMesh } from 'three';
+import {
+  type AnimationAction,
+  AnimationMixer,
+  Color,
+  Matrix4,
+  Mesh,
+  MeshStandardMaterial,
+  SkinnedMesh,
+  Vector3,
+} from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import type { LoadedEnemyModel } from './enemy-model-assets';
 import { WORLD_LAYER } from './layers';
 
+export const DEATH_PLAYBACK_RATE = 2;
+
 const MODEL_SCALE = 0.26;
 const GLOW_INTENSITY = 0.22;
 const WHITE = new Color(0xffffff);
+const PIECE_BONES = new Map([
+  ['Body', 'hips'],
+  ['Cloak', 'hips'],
+  ['Head', 'head'],
+  ['Skull', 'head'],
+  ['Eyes', 'head'],
+  ['Jaw', 'head'],
+  ['ArmLeft', 'upperarml'],
+  ['ArmRight', 'upperarmr'],
+  ['LegLeft', 'upperlegl'],
+  ['LegRight', 'upperlegr'],
+]);
+const PIECE_ROOTS = ['hips', 'head', 'upperarml', 'upperarmr', 'upperlegl', 'upperlegr'];
 
 export function createEnemyModel(
-  { scene, walk }: LoadedEnemyModel,
+  { scene, walk, death }: LoadedEnemyModel,
   footHeight: number,
   glow: number,
   scale = MODEL_SCALE,
@@ -40,16 +64,81 @@ export function createEnemyModel(
   const mixer = new AnimationMixer(model);
   const action = mixer.clipAction(walk).play();
   let previousMs: number | undefined;
+  let collapse: AnimationAction | undefined;
+  let pieces: Map<string, Mesh[]> | undefined;
+  const vertex = new Vector3();
+  const joint = new Vector3();
+  const inverseParent = new Matrix4();
   return {
     model,
-    update(gameMs: number, walkingSpeed: number, flash: number) {
-      // Calibrate one clip cycle at the minion's reference speed of 1.6 cells per second.
-      action.timeScale = walkingSpeed / 1.6;
-      mixer.update((gameMs - (previousMs ?? gameMs)) / 1000);
-      previousMs = gameMs;
+    update(gameMs: number, walkingSpeed: number, flash: number, deathAgeMs?: number) {
+      if (deathAgeMs === undefined) {
+        // Calibrate one clip cycle at the minion's reference speed of 1.6 cells per second.
+        action.timeScale = walkingSpeed / 1.6;
+        mixer.update((gameMs - (previousMs ?? gameMs)) / 1000);
+        previousMs = gameMs;
+      } else {
+        if (collapse === undefined) {
+          action.stop();
+          collapse = mixer.clipAction(death).play();
+          collapse.paused = true;
+        }
+        // Use presentation time so skipped frames and paused draws sample the same pose.
+        collapse.time = Math.min(death.duration, (deathAgeMs * DEATH_PLAYBACK_RATE) / 1000);
+        mixer.update(0);
+      }
       for (const material of materials.values()) {
         material.emissive.copy(glowColor).lerp(WHITE, flash);
         material.emissiveIntensity = GLOW_INTENSITY + flash;
+      }
+    },
+    fitCollapseToGround(heightAt: (x: number, z: number) => number) {
+      if (pieces === undefined) {
+        const byBone = new Map<string, Mesh[]>();
+        model.traverse((object) => {
+          if (!(object instanceof Mesh)) return;
+          // Skinned pieces sit under the rig. Rigid gear follows its existing bone attachment.
+          let name = PIECE_BONES.get(object.name.split('_').at(-1) ?? '');
+          for (
+            let ancestor = object.parent;
+            name === undefined && ancestor;
+            ancestor = ancestor.parent
+          ) {
+            if (PIECE_ROOTS.includes(ancestor.name)) name = ancestor.name;
+          }
+          if (name === undefined) return;
+          const assigned = byBone.get(name) ?? [];
+          assigned.push(object);
+          byBone.set(name, assigned);
+        });
+        pieces = byBone;
+      }
+
+      model.updateWorldMatrix(true, false);
+      model.updateMatrixWorld(true);
+      let hipsLift = 0;
+      // Measure each piece before moving any joints. The child pieces can land separately.
+      for (const name of PIECE_ROOTS) {
+        const bone = model.getObjectByName(name);
+        const part = pieces.get(name);
+        if (bone?.parent == null || part === undefined) continue;
+        let clearance = Infinity;
+        for (const mesh of part) {
+          for (let index = 0; index < mesh.geometry.getAttribute('position').count; index++) {
+            mesh.getVertexPosition(index, vertex).applyMatrix4(mesh.matrixWorld);
+            clearance = Math.min(clearance, vertex.y - heightAt(vertex.x, vertex.z));
+          }
+        }
+        const lift = Math.max(0, -clearance);
+        const offset = name === 'hips' ? lift : lift - hipsLift;
+        if (name === 'hips') hipsLift = lift;
+        if (offset === 0) continue;
+        // Read the unadjusted parent transform so every offset remains in world Y.
+        joint.copy(bone.position).applyMatrix4(bone.parent.matrixWorld);
+        joint.y += offset;
+        bone.position.copy(
+          joint.applyMatrix4(inverseParent.copy(bone.parent.matrixWorld).invert()),
+        );
       }
     },
     dispose() {
