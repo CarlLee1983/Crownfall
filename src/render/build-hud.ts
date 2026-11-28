@@ -220,14 +220,12 @@ export function createBuildHud(
     const below = point.y - gap;
     const width = ring.offsetWidth;
     const left = x - width / 2;
-    const belowOptions = managing ? [below] : [below, point.y + gap];
-    const clearBelow = guide?.overlaps(new DOMRect(left, above, width, height))
-      ? belowOptions.find(
-          (y) =>
-            y + height <= window.innerHeight - EDGE_MARGIN &&
-            !guide.overlaps(new DOMRect(left, y, width, height)),
-        )
-      : undefined;
+    const clear = (y: number) =>
+      y >= EDGE_MARGIN &&
+      y + height <= window.innerHeight - EDGE_MARGIN &&
+      !guide?.overlaps(new DOMRect(left, y, width, height));
+    const alternatives = managing ? [below] : [below, point.y + gap, point.y + 2 * gap];
+    const clearBelow = !clear(above) ? alternatives.find(clear) : undefined;
     const placeBelow = above < EDGE_MARGIN || clearBelow !== undefined;
     const top = placeBelow ? (clearBelow ?? below) : above;
     ring.classList.toggle('below-cell', placeBelow);

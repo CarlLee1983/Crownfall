@@ -976,11 +976,13 @@ describe('placing towers', () => {
       { from: 5, to: 6 },
     ]);
 
-    const result = step(behind.state, [
-      { type: 'placeTower', kind: 'basic', cell: 4 as CellIndex, tick: 9 },
-    ]);
+    const cell = 4 as CellIndex;
+    const preview = previewPlacement(behind.state, cell, 'basic');
+    expect(preview.reason).toBe('trappedEnemy');
+    expect(preview.route.at(-1)).toBe(level.goal);
+    const result = step(behind.state, [{ type: 'placeTower', kind: 'basic', cell, tick: 9 }]);
 
-    expect(result.events).toEqual([{ type: 'rejected', cell: 4, reason: 'trappedEnemy' }]);
+    expect(result.events).toEqual([{ type: 'rejected', cell, reason: 'trappedEnemy' }]);
     expect(result.state).toEqual(step(behind.state, []).state);
   });
 
