@@ -1,7 +1,17 @@
 import { BoxGeometry, Mesh, MeshLambertMaterial, MeshStandardMaterial } from 'three';
 import { expect, it } from 'vitest';
+import { level as campaignLevel } from '../content/level';
 import { parseLevel } from '../core';
 import { createTerrain } from './terrain';
+
+it('draws the campaign terrain with at most a dozen meshes', () => {
+  const model = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+  const terrain = createTerrain(campaignLevel, { entrance: model, castle: model });
+  const ground = terrain.group.children.filter((object) => object instanceof Mesh);
+
+  expect(ground.length).toBeGreaterThan(0);
+  expect(ground.length).toBeLessThanOrEqual(12);
+});
 
 it('lights only the castle model red after a leak and restores it when the flash ends', () => {
   const level = parseLevel(['S=G']);
