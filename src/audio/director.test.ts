@@ -8,7 +8,11 @@ it('plays a horn that ducks music when a startWave command opens a wave', () => 
   const preparation = step(createGame(content, level), []).state;
   const opened = step(preparation, [{ type: 'startWave', tick: preparation.tick }]);
 
-  expect(directSound(opened.events, preparation, opened.state)).toEqual([
+  expect(
+    directSound(opened.events, preparation, opened.state).filter(
+      (command) => command.kind === 'effect',
+    ),
+  ).toEqual([
     { kind: 'effect', sound: 'war-horns', bus: 'effects', pitchSemitones: 0, duck: true },
   ]);
 

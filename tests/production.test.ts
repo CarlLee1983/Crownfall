@@ -187,7 +187,9 @@ test('horizontal pan stops at the map edge without drifting vertically', async (
   expect(await anchorPosition()).toEqual(edge);
 });
 
-test('unlocks audio on Start Game and plays the first wave horn', async ({ page }) => {
+test('unlocks audio on Start Game, changes music, and plays the first wave horn', async ({
+  page,
+}) => {
   const hornAsset = /\/assets\/war-horns-[\w-]+\.opus$/;
   const hornRequests: string[] = [];
   page.on('request', (request) => {
@@ -197,11 +199,41 @@ test('unlocks audio on Start Game and plays the first wave horn', async ({ page 
   await page.addInitScript(() => {
     const contexts: AudioContext[] = [];
     const scheduled: AudioBuffer[] = [];
+    const decoded: number[] = [];
+    const gainValues: number[][] = [];
+    const fadeDurations: number[] = [];
     const NativeAudioContext = window.AudioContext;
     window.AudioContext = class extends NativeAudioContext {
       constructor(options?: AudioContextOptions) {
         super(options);
         contexts.push(this);
+      }
+
+      override async decodeAudioData(
+        ...args: Parameters<AudioContext['decodeAudioData']>
+      ): Promise<AudioBuffer> {
+        const buffer = await super.decodeAudioData(...args);
+        decoded.push(buffer.duration);
+        return buffer;
+      }
+
+      override createGain(): GainNode {
+        const node = super.createGain();
+        const values: number[] = [];
+        let setAt = Number.NaN;
+        gainValues.push(values);
+        const set = node.gain.setValueAtTime.bind(node.gain);
+        const ramp = node.gain.linearRampToValueAtTime.bind(node.gain);
+        node.gain.setValueAtTime = (value, at) => {
+          setAt = at;
+          values.push(value);
+          return set(value, at);
+        };
+        node.gain.linearRampToValueAtTime = (value, at) => {
+          fadeDurations.push(at - setAt);
+          return ramp(value, at);
+        };
+        return node;
       }
 
       override createBufferSource(): AudioBufferSourceNode {
@@ -218,6 +250,9 @@ test('unlocks audio on Start Game and plays the first wave horn', async ({ page 
       value: () => ({
         contexts: contexts.map((context) => context.state),
         scheduled: scheduled.map((buffer) => buffer.duration),
+        decoded,
+        gainValues,
+        fadeDurations,
       }),
     });
   });
@@ -225,11 +260,20 @@ test('unlocks audio on Start Game and plays the first wave horn', async ({ page 
   const readAudio = () =>
     page.evaluate(() => {
       const probe = window as Window & {
-        audioProbe?(): { contexts: AudioContextState[]; scheduled: number[] };
+        audioProbe?(): {
+          contexts: AudioContextState[];
+          scheduled: number[];
+          decoded: number[];
+          gainValues: number[][];
+          fadeDurations: number[];
+        };
       };
       if (probe.audioProbe === undefined) throw new Error('Audio probe did not initialize');
       return probe.audioProbe();
     });
+
+  const scheduledHorn = async () =>
+    (await readAudio()).scheduled.filter((seconds) => Math.abs(seconds - 4.5) < 0.05);
 
   let releaseHorn = () => {};
   const hornDownload = new Promise<void>((resolve) => {
@@ -244,20 +288,48 @@ test('unlocks audio on Start Game and plays the first wave horn', async ({ page 
   const startGame = page.getByRole('button', { name: '開始遊戲' });
   await expect(startGame).toBeEnabled();
   expect(hornRequests).toEqual([]);
-  expect(await readAudio()).toEqual({ contexts: [], scheduled: [] });
+  expect(await readAudio()).toEqual({
+    contexts: [],
+    scheduled: [],
+    decoded: [],
+    gainValues: [],
+    fadeDurations: [],
+  });
 
   try {
     await startGame.click();
     await expect.poll(async () => (await readAudio()).contexts).toEqual(['running']);
     await expect.poll(() => hornRequests.length).toBe(1);
+    await expect
+      .poll(async () => (await readAudio()).scheduled)
+      .toContainEqual(expect.closeTo(81.0, 0));
+    await page.getByRole('button', { name: '暫停' }).click();
+    expect((await readAudio()).gainValues).toContainEqual([0.5]);
+    await page.getByRole('button', { name: '繼續', exact: true }).click();
+    expect((await readAudio()).gainValues).toContainEqual([0.5, 1]);
+
     const openWave = page.getByRole('button', { name: /開波/ });
     await openWave.click();
     await expect(openWave).toBeDisabled();
-    expect((await readAudio()).scheduled).toEqual([]);
+    await expect
+      .poll(async () => (await readAudio()).scheduled)
+      .toContainEqual(expect.closeTo(92.9, 0));
+    expect((await readAudio()).fadeDurations).toEqual([expect.closeTo(2), expect.closeTo(2)]);
+    expect(await scheduledHorn()).toEqual([]);
   } finally {
     releaseHorn();
   }
 
-  await expect.poll(async () => (await readAudio()).scheduled).toEqual([expect.any(Number)]);
-  expect((await readAudio()).scheduled[0]).toBeCloseTo(4.5, 1);
+  await expect.poll(scheduledHorn).toEqual([expect.closeTo(4.5, 1)]);
+  await expect
+    .poll(async () => (await readAudio()).decoded)
+    .toEqual(
+      expect.arrayContaining([
+        expect.closeTo(4.5, 1),
+        expect.closeTo(81.0, 0),
+        expect.closeTo(92.9, 0),
+        expect.closeTo(58.5, 0),
+        expect.closeTo(95.0, 0),
+      ]),
+    );
 });

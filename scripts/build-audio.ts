@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { combatClips } from './combat-audio';
+import { musicClips } from './music-clips';
 
 export interface Clip {
   readonly name: string;
@@ -20,6 +21,7 @@ export interface Clip {
   readonly archiveMember?: string;
   readonly edit?: string;
   readonly gainDb?: number;
+  readonly minimumSourceSeconds?: number;
 }
 
 // War Horns by Eldritch Grim (CC0), https://opengameart.org/node/153572
@@ -30,6 +32,7 @@ const clips: readonly Clip[] = [
     edit: 'atrim=start=0.2:end=4.7,asetpts=PTS-STARTPTS,afade=t=out:st=3.8:d=0.7',
   },
   ...combatClips,
+  ...musicClips,
 ];
 
 const targetLufs = -21;
@@ -69,7 +72,7 @@ function measure(input: string, edit = ''): { lufs: number; truePeak: number } {
 
 function sourceFor(clip: Clip, workspace: string): string {
   const downloadName = basename(new URL(clip.download).pathname);
-  const rawName = clip.rawFile ?? downloadName;
+  const rawName = clip.rawFile ?? basename(clip.archiveMember ?? downloadName);
   const rawDirectory = process.env.CROWNFALL_AUDIO_SOURCES;
   const localSource = rawDirectory === undefined ? undefined : join(rawDirectory, rawName);
   if (localSource !== undefined && existsSync(localSource)) return localSource;
@@ -112,10 +115,22 @@ function sourceFor(clip: Clip, workspace: string): string {
 }
 
 function buildClip(clip: Clip, workspace: string): void {
-  const { name, edit = '', gainDb = 0 } = clip;
+  const { name, edit = '', gainDb = 0, minimumSourceSeconds } = clip;
   const output = join(outputDir, `${name}.opus`);
   mkdirSync(dirname(output), { recursive: true });
   const source = sourceFor(clip, workspace);
+  if (minimumSourceSeconds !== undefined) {
+    const durationProbe = spawnSync(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', source],
+      { encoding: 'utf8' },
+    );
+    if (durationProbe.error !== undefined) throw durationProbe.error;
+    if (durationProbe.status !== 0) throw new Error(durationProbe.stderr);
+    if (!(Number(durationProbe.stdout.trim()) >= minimumSourceSeconds)) {
+      throw new Error(`${name} source is shorter than ${minimumSourceSeconds} seconds`);
+    }
+  }
   const { lufs, truePeak } = measure(source, edit);
   const gain = Math.min(targetLufs - lufs, peakHeadroom - truePeak) + gainDb;
   const prepared = join(workspace, `${name}.opus`);

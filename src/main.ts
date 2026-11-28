@@ -1,5 +1,5 @@
 import { DirectionalLight, FogExp2, HemisphereLight, Scene, Vector3, WebGLRenderer } from 'three';
-import { directSound } from './audio/director';
+import { directInitialSound, directSound } from './audio/director';
 import { createMixer } from './audio/mixer';
 import { content } from './content/content';
 import { torchPositions } from './content/decor';
@@ -30,7 +30,6 @@ if (!(help instanceof HTMLDialogElement) || !(start instanceof HTMLButtonElement
 }
 const audio = createMixer();
 connectAudioHud(audio.setVolumes);
-start.addEventListener('click', () => void audio.unlock());
 
 const loading = element('model-loading');
 const error = element('model-error');
@@ -99,6 +98,10 @@ function startGame(models: LoadedModels): void {
   onResize();
 
   const initial = createGame(content, level);
+  start.addEventListener('click', () => {
+    void audio.unlock();
+    audio.play(directInitialSound(initial));
+  });
   const hud = createBuildHud(
     canvas,
     camera,
@@ -113,7 +116,10 @@ function startGame(models: LoadedModels): void {
   const waveHud = createWaveHud(canvas, camera, {
     startWave: () => loop.enqueue((tick) => ({ type: 'startWave', tick })),
     continueEndless: () => loop.enqueue((tick) => ({ type: 'continueEndless', tick })),
-    setSpeed: (speed) => loop.setSpeed(speed),
+    setSpeed: (speed) => {
+      loop.setSpeed(speed);
+      audio.setPaused(speed === 0);
+    },
     restart: () => {
       hud.reset();
       shots.reset();
@@ -121,7 +127,9 @@ function startGame(models: LoadedModels): void {
       combat.reset();
       combatHud.reset();
       audio.reset();
-      loop.reset(createGame(content, level));
+      const restarted = createGame(content, level);
+      loop.reset(restarted);
+      audio.play(directInitialSound(restarted));
     },
   });
   const loop = startLoop({

@@ -1,4 +1,5 @@
 import type { EnemyId, GameEvent, GameState } from '../core';
+import { type MusicCommand, musicForPhase } from './music-director';
 
 export type SoundId =
   | 'war-horns'
@@ -18,7 +19,11 @@ export type EffectCommand = {
   readonly duck: boolean;
 };
 
-export type SoundCommand = EffectCommand;
+export type SoundCommand = EffectCommand | MusicCommand;
+
+export function directInitialSound(state: GameState): readonly SoundCommand[] {
+  return [musicForPhase(state)];
+}
 
 interface HitTarget {
   readonly id: EnemyId;
@@ -89,5 +94,6 @@ export function directSound(
     }
   }
 
+  if (current.phase !== previous.phase) commands.push(musicForPhase(current));
   return commands;
 }

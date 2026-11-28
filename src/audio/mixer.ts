@@ -1,5 +1,6 @@
 import type { SoundCommand } from './director';
 import { connectEffects } from './effects';
+import { connectMusic } from './music';
 import { type AudioSettings, DEFAULT_AUDIO_SETTINGS } from './settings';
 
 function connectMixer(context: AudioContext, initialVolumes: AudioSettings) {
@@ -29,12 +30,26 @@ function connectMixer(context: AudioContext, initialVolumes: AudioSettings) {
   setVolumes(initialVolumes);
 
   const sound = connectEffects(context, { effects, ui, ducking });
+  const nowPlaying = connectMusic(context, music);
 
   return {
-    unlock: () => sound.unlock(context.resume()),
-    play: sound.play,
+    async unlock(): Promise<void> {
+      const running = context.resume();
+      await Promise.all([sound.unlock(running), nowPlaying.unlock(running)]);
+    },
+    play(commands: readonly SoundCommand[]): void {
+      for (const command of commands) {
+        if (command.kind === 'effect') sound.play([command]);
+        else if (command.kind === 'music') nowPlaying.select(command.track);
+        else nowPlaying.stop();
+      }
+    },
+    setPaused: nowPlaying.setPaused,
     setVolumes,
-    reset: sound.reset,
+    reset(): void {
+      nowPlaying.stop();
+      sound.reset();
+    },
   };
 }
 
@@ -58,6 +73,9 @@ export function createMixer() {
     },
     play(commands: readonly SoundCommand[]): void {
       if (commands.length > 0) mixer?.play(commands);
+    },
+    setPaused(paused: boolean): void {
+      mixer?.setPaused(paused);
     },
     reset(): void {
       mixer?.reset();
