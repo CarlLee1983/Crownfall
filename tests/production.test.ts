@@ -728,7 +728,11 @@ test('plays impact and death with the final kill before opening the victory dial
   const bounty = page.locator('.combat-bounty');
   await expect(bounty).toHaveCount(0);
   expect(await combatSounds()).toEqual([expect.stringContaining('longbow-soft')]);
-  await page.clock.runFor(128);
+  // The arrow takes longer to reach the entrance from the high platform.
+  for (let elapsed = 0; elapsed < 1_000; elapsed += 16) {
+    await page.clock.runFor(16);
+    if ((await bounty.count()) > 0) break;
+  }
   await expect(bounty).toHaveText('+5');
   expect(await combatSounds()).toEqual([
     expect.stringContaining('longbow-soft'),
