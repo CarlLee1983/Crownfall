@@ -17,5 +17,7 @@ it('plays a horn that ducks music when a startWave command opens a wave', () => 
   ]);
 
   const rejected = step(opened.state, [{ type: 'startWave', tick: opened.state.tick }]);
-  expect(directSound(rejected.events, opened.state, rejected.state)).toEqual([]);
+  expect(directSound(rejected.events, opened.state, rejected.state)).toEqual([
+    { kind: 'effect', sound: 'ui-error-03', bus: 'ui', pitchSemitones: 0, duck: false },
+  ]);
 });

@@ -23,6 +23,7 @@ export interface LoopOptions {
     previous: GameState,
     current: GameState,
     time: FrameTime,
+    accepted: readonly Command[],
   ) => void;
   /** 畫面比最新 tick 慢一格：previous 到 current 之間以 alpha 內插。 */
   readonly draw: (previous: GameState, current: GameState, alpha: number, time: FrameTime) => void;
@@ -47,10 +48,19 @@ export function startLoop({ initial, onEvents, draw }: LoopOptions): LoopSession
   let lastFrame: number | undefined;
   const pending: CommandFactory[] = [];
   const commandLog: Command[] = [];
-  const takeCommands = (): readonly Command[] => {
-    const commands = pending.splice(0).map((createCommand) => createCommand(current.tick));
-    commandLog.push(...commands);
-    return commands;
+  const applyPendingCommands = () => {
+    const events: GameEvent[] = [];
+    const accepted: Command[] = [];
+    for (const createCommand of pending.splice(0)) {
+      const command = createCommand(current.tick);
+      commandLog.push(command);
+      const result = applyCommands(current, [command]);
+      // A successful edit can be undone by another command before this tick is drawn.
+      if (result.state !== current) accepted.push(command);
+      current = result.state;
+      events.push(...result.events);
+    }
+    return { events, accepted };
   };
 
   const frame = (now: number): void => {
@@ -61,22 +71,32 @@ export function startLoop({ initial, onEvents, draw }: LoopOptions): LoopSession
     accumulatedMs = advance.accumulatedMs;
     for (let i = 0; i < advance.ticks; i++) {
       previous = current;
-      const result = step(current, takeCommands());
+      const { events, accepted } = applyPendingCommands();
+      const result = step(current, []);
       current = result.state;
       elapsedTicks++;
-      onEvents(result.events, previous, current, {
-        wallMs: now,
-        gameMs: elapsedTicks * MS_PER_TICK,
-      });
+      events.push(...result.events);
+      onEvents(
+        events,
+        previous,
+        current,
+        { wallMs: now, gameMs: elapsedTicks * MS_PER_TICK },
+        accepted,
+      );
     }
     if (speed === 0 && pending.length > 0) {
       const beforeCommands = current;
-      const result = applyCommands(current, takeCommands());
-      current = result.state;
-      onEvents(result.events, beforeCommands, current, {
-        wallMs: now,
-        gameMs: elapsedTicks * MS_PER_TICK + accumulatedMs,
-      });
+      const { events, accepted } = applyPendingCommands();
+      onEvents(
+        events,
+        beforeCommands,
+        current,
+        {
+          wallMs: now,
+          gameMs: elapsedTicks * MS_PER_TICK + accumulatedMs,
+        },
+        accepted,
+      );
     }
 
     draw(previous, current, accumulatedMs / MS_PER_TICK, {

@@ -2,9 +2,16 @@ import archerHitUrl from './clips/archer-hit-soft.opus?url&no-inline';
 import ballistaHitUrl from './clips/ballista-hit-plate.opus?url&no-inline';
 import boneBreakUrl from './clips/bone-break-3.opus?url&no-inline';
 import crossbowUrl from './clips/crossbow-1.opus?url&no-inline';
+import victoryUrl from './clips/jingle-steel-02.opus?url&no-inline';
+import waveClearedUrl from './clips/jingle-steel-10.opus?url&no-inline';
+import leakHornUrl from './clips/leak-horn-1.opus?url&no-inline';
 import lichShadeUrl from './clips/lich-shade-1.opus?url&no-inline';
 import longbowUrl from './clips/longbow-soft.opus?url&no-inline';
+import placePlankUrl from './clips/place-plank.opus?url&no-inline';
+import sellWoodUrl from './clips/sell-wood.opus?url&no-inline';
 import spellFireUrl from './clips/spell-fire-2.opus?url&no-inline';
+import uiErrorUrl from './clips/ui-error-03.opus?url&no-inline';
+import upgradeStoneUrl from './clips/upgrade-stone.opus?url&no-inline';
 import warHornsUrl from './clips/war-horns.opus?url&no-inline';
 import type { EffectCommand, SoundId } from './director';
 
@@ -13,12 +20,21 @@ const EFFECT_URLS: Record<SoundId, readonly string[]> = {
   'ballista-hit-plate': [ballistaHitUrl],
   'bone-break-3': [boneBreakUrl],
   'crossbow-1': [crossbowUrl],
+  'jingle-steel-02': [victoryUrl],
+  'jingle-steel-10': [waveClearedUrl],
+  'leak-horn-1': [leakHornUrl],
   'lich-shade-1': [lichShadeUrl],
   'longbow-soft': [longbowUrl],
+  'place-plank': [placePlankUrl],
+  'sell-wood': [sellWoodUrl],
   'spell-fire-2': [spellFireUrl],
+  'ui-error-03': [uiErrorUrl],
+  'upgrade-stone': [upgradeStoneUrl],
   'war-horns': [warHornsUrl],
 };
 const DUCK_GAIN = 10 ** (-12 / 20);
+const RELEASE_TIME_CONSTANT = 0.1;
+const LEAK_RECOVERY_SECONDS = 0.4;
 const VOICE_LIMIT = 4;
 
 interface EffectBank {
@@ -42,6 +58,7 @@ export function connectEffects(
   let loading: Promise<unknown> | undefined;
   let ready = false;
   let duckUntil = 0;
+  let nextLeakDuck = 0;
 
   function play(commands: readonly EffectCommand[]): void {
     if (!ready || context.state !== 'running') {
@@ -78,12 +95,17 @@ export function connectEffects(
 
       source.start(now);
       bank.playing.add(source);
-      if (command.duck) {
-        duckUntil = Math.max(duckUntil, now + buffer.duration / rate);
-        buses.ducking.gain.cancelScheduledValues(now);
-        buses.ducking.gain.setTargetAtTime(DUCK_GAIN, now, 0.015);
-        buses.ducking.gain.setTargetAtTime(1, duckUntil, 0.1);
+      if (!command.duck) continue;
+      const endsAt = now + buffer.duration / rate;
+      if (command.sound === 'leak-horn-1') {
+        // Keep the first leak's duck window so a stream of leaks can release between alerts.
+        if (now < nextLeakDuck) continue;
+        nextLeakDuck = Math.max(duckUntil, endsAt) + LEAK_RECOVERY_SECONDS;
       }
+      duckUntil = Math.max(duckUntil, endsAt);
+      buses.ducking.gain.cancelScheduledValues(now);
+      buses.ducking.gain.setTargetAtTime(DUCK_GAIN, now, 0.015);
+      buses.ducking.gain.setTargetAtTime(1, duckUntil, RELEASE_TIME_CONSTANT);
     }
   }
 
@@ -113,6 +135,7 @@ export function connectEffects(
       }
       const now = context.currentTime;
       duckUntil = 0;
+      nextLeakDuck = 0;
       buses.ducking.gain.cancelScheduledValues(now);
       buses.ducking.gain.setValueAtTime(1, now);
     },

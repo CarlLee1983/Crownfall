@@ -134,11 +134,11 @@ function startGame(models: LoadedModels): void {
   });
   const loop = startLoop({
     initial,
-    onEvents: (events, previous, current, time) => {
+    onEvents: (events, previous, current, time, accepted) => {
       hud.onEvents(events);
       waveHud.onEvents(events, time.wallMs);
       const hits = shots.onEvents(events, current, time.gameMs);
-      audio.play(directSound(events, previous, current, hits));
+      audio.play(directSound(events, previous, current, hits, accepted));
       combat.onEvents(events, previous, time.gameMs);
       enemies.observe(current);
     },

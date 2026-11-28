@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   closeSync,
   copyFileSync,
@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { alertClips } from './alerts-audio';
 import { combatClips } from './combat-audio';
 import { musicClips } from './music-clips';
 
@@ -32,6 +33,7 @@ const clips: readonly Clip[] = [
     edit: 'atrim=start=0.2:end=4.7,asetpts=PTS-STARTPTS,afade=t=out:st=3.8:d=0.7',
   },
   ...combatClips,
+  ...alertClips,
   ...musicClips,
 ];
 
@@ -70,8 +72,30 @@ function measure(input: string, edit = ''): { lufs: number; truePeak: number } {
   return { lufs, truePeak };
 }
 
+const curlDownload = ['--fail', '--silent', '--show-error', '--location', '--max-time', '120'];
+
+function downloadSource(source: URL, output: string): void {
+  const headers: string[] = [];
+  let url = source.href;
+  if (source.origin === 'https://kenney.nl' && source.pathname.startsWith('/assets/')) {
+    // Kenney's public asset pages issue a short-lived link for each download.
+    const pack = Buffer.from(source.pathname.slice(1)).toString('hex');
+    headers.push('--user-agent', 'Mozilla/5.0', '--referer', source.href);
+    const response = execFileSync(
+      'curl',
+      [...curlDownload, ...headers, `https://kenney.nl/download-link/${pack}`],
+      { encoding: 'utf8' },
+    );
+    const signed = new URL(JSON.parse(response).url);
+    if (signed.origin !== source.origin) throw new Error('Unexpected Kenney download origin');
+    url = signed.href;
+  }
+  run('curl', [...curlDownload, ...headers, '--output', output, url]);
+}
+
 function sourceFor(clip: Clip, workspace: string): string {
-  const downloadName = basename(new URL(clip.download).pathname);
+  const source = new URL(clip.download);
+  const downloadName = basename(source.pathname);
   const rawName = clip.rawFile ?? basename(clip.archiveMember ?? downloadName);
   const rawDirectory = process.env.CROWNFALL_AUDIO_SOURCES;
   const localSource = rawDirectory === undefined ? undefined : join(rawDirectory, rawName);
@@ -79,19 +103,7 @@ function sourceFor(clip: Clip, workspace: string): string {
 
   const downloaded = join(workspace, downloadName);
   try {
-    if (!existsSync(downloaded)) {
-      run('curl', [
-        '--fail',
-        '--silent',
-        '--show-error',
-        '--location',
-        '--max-time',
-        '120',
-        '--output',
-        downloaded,
-        clip.download,
-      ]);
-    }
+    if (!existsSync(downloaded)) downloadSource(source, downloaded);
     if (clip.archiveMember === undefined) return downloaded;
 
     const extracted = join(workspace, rawName);

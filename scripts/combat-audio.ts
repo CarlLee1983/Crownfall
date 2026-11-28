@@ -1,8 +1,7 @@
 import type { Clip } from './build-audio';
 
 const weapons = 'https://opengameart.org/sites/default/files/medieval_sfx_textures_1_of_2.7z';
-const impacts =
-  'https://kenney.nl/media/pages/assets/impact-sounds/87b4ddecda-1677589768/kenney_impact-sounds.zip';
+export const kenneyImpactSounds = 'https://kenney.nl/assets/impact-sounds';
 
 export const combatClips = [
   {
@@ -22,13 +21,13 @@ export const combatClips = [
   },
   {
     name: 'archer-hit-soft',
-    download: impacts,
+    download: kenneyImpactSounds,
     rawFile: 'impactSoft_medium_002.ogg',
     archiveMember: '*impactSoft_medium_002.ogg',
   },
   {
     name: 'ballista-hit-plate',
-    download: impacts,
+    download: kenneyImpactSounds,
     rawFile: 'impactPlate_heavy_001.ogg',
     archiveMember: '*impactPlate_heavy_001.ogg',
   },

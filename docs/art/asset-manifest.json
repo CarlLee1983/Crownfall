@@ -580,6 +580,139 @@
         "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
         "prompt_or_source_record": "the_sad_battle.wav, processed by scripts/build-audio.ts"
       }
+    },
+    {
+      "id": "leak-horn-1",
+      "role": "漏怪號角",
+      "path": "src/audio/clips/leak-horn-1.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/their-coming-generic-horn-sound",
+        "creator": "StumpyStrust",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "theircoming.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "jingle-steel-10",
+      "role": "清波樂句",
+      "path": "src/audio/clips/jingle-steel-10.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/music-jingles",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "jingles_STEEL10.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "jingle-steel-02",
+      "role": "勝利樂句",
+      "path": "src/audio/clips/jingle-steel-02.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/music-jingles",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "jingles_STEEL02.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "place-plank",
+      "role": "建塔介面音",
+      "path": "src/audio/clips/place-plank.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/impact-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "impactPlank_medium_002.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "upgrade-stone",
+      "role": "升級介面音",
+      "path": "src/audio/clips/upgrade-stone.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/impact-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "impactMining_004.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "sell-wood",
+      "role": "賣塔介面音",
+      "path": "src/audio/clips/sell-wood.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/impact-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "impactWood_medium_003.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "ui-error-03",
+      "role": "操作被拒絕介面音",
+      "path": "src/audio/clips/ui-error-03.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/interface-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "error_003.ogg, processed by scripts/build-audio.ts"
+      }
     }
   ]
 }
