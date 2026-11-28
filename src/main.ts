@@ -81,11 +81,11 @@ function startGame(models: LoadedModels): void {
   const cameraPosition = new Vector3();
 
   const scene = new Scene();
-  scene.fog = new FogExp2(0x10180f, 0.022);
-  const sun = new DirectionalLight(0x9fb4ff, 0.8);
+  scene.fog = new FogExp2(0x10180f, 0.012);
+  const sun = new DirectionalLight(0xb4c4ff, 3.0);
   sun.position.set(-6, 14, 4);
   scene.add(
-    new HemisphereLight(0xcfe3ff, 0x40382a, 0.75),
+    new HemisphereLight(0xcfdcff, 0x2e2a22, 0.9),
     sun,
     terrain.group,
     torches.group,
