@@ -3,9 +3,12 @@ import { element } from './hud-dom';
 
 export function connectAudioHud(setVolumes: (settings: AudioSettings) => void) {
   const controls = element('game-audio');
+  const hudSlot = element('game-audio-slot');
   const help = element('game-help');
   const result = element('game-result');
+  const board = element('game');
   const levelPanel = element('audio-levels');
+  const levelTrigger = element('open-audio-levels');
   const mute = element('mute-audio');
   const music = element('music-volume');
   const effects = element('effects-volume');
@@ -39,9 +42,51 @@ export function connectAudioHud(setVolumes: (settings: AudioSettings) => void) {
   // Keep game shortcuts from overriding native button and slider keys.
   controls.addEventListener('keydown', (event) => event.stopPropagation());
 
+  // Give the volume panel Escape before the build ring or game dialog can handle it.
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key !== 'Escape' || event.isComposing || !levelPanel.matches(':popover-open'))
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      levelPanel.hidePopover();
+      levelTrigger.focus();
+    },
+    { capture: true },
+  );
+
+  function isBoardTarget(target: EventTarget | null): boolean {
+    return (
+      target === board ||
+      (target instanceof Element && target.closest('[data-board-cell]') !== null)
+    );
+  }
+
+  // Native light dismiss happens on pointerup, before the board receives click.
+  let dismissesOnBoard = false;
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      if (!event.isPrimary || event.button !== 0) return;
+      dismissesOnBoard = levelPanel.matches(':popover-open') && isBoardTarget(event.target);
+      if (dismissesOnBoard) event.stopPropagation();
+    },
+    { capture: true },
+  );
+  document.addEventListener(
+    'click',
+    (event) => {
+      if (!dismissesOnBoard || event.detail === 0) return;
+      dismissesOnBoard = false;
+      if (isBoardTarget(event.target)) event.stopPropagation();
+    },
+    { capture: true },
+  );
+
   function setDialog(dialog: HTMLDialogElement | null): void {
     if (levelPanel.matches(':popover-open')) levelPanel.hidePopover();
-    if (dialog === null) help.before(controls);
+    if (dialog === null) hudSlot.append(controls);
     else dialog.append(controls);
   }
 

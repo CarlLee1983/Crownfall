@@ -184,6 +184,7 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
       );
 
       if (state.phase === 'victory' || state.phase === 'defeat') {
+        updateText(preview, '');
         flag.hidden = true;
         if (result.open || !resultReady) return;
         continueButton.hidden = continueRejection(state) !== undefined;

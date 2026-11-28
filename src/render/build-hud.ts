@@ -14,6 +14,7 @@ import {
   samePlacementPreviewInputs,
   type Tower,
 } from '../core';
+import { createBuildGuide } from './build-guide';
 import { cellProjection, element, isGameDialogOpen, updateText } from './hud-dom';
 import { LAYER_HEIGHT } from './terrain';
 
@@ -40,6 +41,7 @@ type TowerAction = 'upgradeTower' | 'sellTower';
 interface BuildActions {
   placeTower(cell: CellIndex, kind: string): void;
   manageTower(cell: CellIndex, action: TowerAction): void;
+  frameOverview(): void;
 }
 
 function towerActionButton(label: string, shortcut: string) {
@@ -62,7 +64,7 @@ function describePreview(state: GameState, cell: CellIndex, kind: string) {
     cellAt(state.level, cell).lane && preview.route.length > 0 ? preview.route : undefined;
   const lines: string[] = [];
   if (route !== undefined) lines.push(`路線 +${route.length - currentRoute(state).length} 格`);
-  if (preview.heightBonus > 0) lines.push(`對低地射程 +${preview.heightBonus}`);
+  if (preview.heightBonus > 0) lines.push(`對高度層 0 的射程 +${preview.heightBonus}`);
   if (preview.reason !== undefined) lines.push(REASONS[preview.reason]);
   return {
     text: lines.join('\n'),
@@ -138,7 +140,7 @@ export function createBuildHud(
     const name = state.towerDefinitions[tower.kind]?.name ?? tower.kind;
     updateText(
       towerDetails,
-      `${name} · 等級 ${tower.level}\n對低地射程 ${tower.range} · 傷害 ${tower.damage}`,
+      `${name} · 等級 ${tower.level}\n對高度層 0 的射程 ${tower.range} · 傷害 ${tower.damage}`,
     );
     const price = tower.upgradeCost;
     updateText(upgrade.price, price === null ? '已滿級' : `${price} 金`);
@@ -209,12 +211,32 @@ export function createBuildHud(
     const x = centeredX(ring, point.x);
     const above = point.y - height + gap;
     const below = point.y - gap;
-    const placeBelow = above < EDGE_MARGIN;
+    const width = ring.offsetWidth;
+    const left = x - width / 2;
+    const fitsBelow = below + height <= window.innerHeight - EDGE_MARGIN;
+    const clearsGuide =
+      fitsBelow &&
+      guide?.overlaps(new DOMRect(left, above, width, height)) &&
+      !guide.overlaps(new DOMRect(left, below, width, height));
+    const placeBelow = above < EDGE_MARGIN || clearsGuide === true;
     const top = placeBelow ? below : above;
     ring.classList.toggle('below-cell', placeBelow);
     ring.style.left = `${x}px`;
     ring.style.top = `${Math.max(EDGE_MARGIN, Math.min(top, window.innerHeight - height - EDGE_MARGIN))}px`;
     return { point, below: placeBelow };
+  };
+
+  const positionPreview = (point: ScreenPoint, ringBelow: boolean): void => {
+    positionNear(detail, point, RING_GAP + 8, ringBelow);
+    if (!ringBelow) return;
+    const bounds = detail.getBoundingClientRect();
+    if (!guide?.overlaps(bounds)) return;
+
+    const top = ring.getBoundingClientRect().bottom + EDGE_MARGIN;
+    const docked = new DOMRect(bounds.left, top, bounds.width, bounds.height);
+    if (docked.bottom <= window.innerHeight - EDGE_MARGIN && !guide.overlaps(docked)) {
+      detail.style.top = `${top}px`;
+    }
   };
 
   const showReason = (cell: CellIndex, reason: RejectionReason): void => {
@@ -223,8 +245,48 @@ export function createBuildHud(
     feedback.textContent = REASONS[reason];
   };
 
+  const openCell = (cell: CellIndex, bounds: DOMRect, tower = queryTower(state, cell)): void => {
+    if (tower === null) {
+      const first = choices[0];
+      if (first === undefined) return;
+      const { reason } = previewPlacement(state, cell, first.kind);
+      if (reason === 'unbuildableCell' || reason === 'occupiedCell') {
+        actions.placeTower(cell, first.kind);
+        return;
+      }
+    }
+
+    chosen = cell;
+    managing = tower !== null;
+    notice = undefined;
+    feedback.textContent = '';
+    detail.textContent = '';
+    options.hidden = managing;
+    towerPanel.hidden = !managing;
+    ring.setAttribute('aria-label', managing ? '升級／賣出環' : '建造環');
+    if (tower === null) {
+      ring.removeAttribute('aria-describedby');
+    } else {
+      ring.setAttribute('aria-describedby', towerDetails.id);
+      refreshTower(tower);
+    }
+    ring.hidden = false;
+    anchor.hidden = false;
+    if (tower === null) guide?.show(actions.frameOverview);
+    if (positionRing(cell, bounds) === undefined) return;
+    ring.focus({ preventScroll: true });
+  };
+
+  const guideKind = choices[0]?.kind;
+  const guide =
+    guideKind === undefined
+      ? undefined
+      : createBuildGuide(canvas, ring, camera, guideKind, (cell) =>
+          openCell(cell, canvas.getBoundingClientRect()),
+        );
+
   document.addEventListener('click', (event) => {
-    if (event.composedPath().includes(ring)) return;
+    if (event.composedPath().includes(ring) || guide?.includes(event)) return;
     if (event.target !== canvas) {
       if (
         managing &&
@@ -257,33 +319,7 @@ export function createBuildHud(
       return;
     }
     if (cell === undefined) return;
-    if (tower === null) {
-      const first = choices[0];
-      if (first === undefined) return;
-      const { reason } = previewPlacement(state, cell, first.kind);
-      if (reason === 'unbuildableCell' || reason === 'occupiedCell') {
-        actions.placeTower(cell, first.kind);
-        return;
-      }
-    }
-
-    chosen = cell;
-    managing = tower !== null;
-    notice = undefined;
-    feedback.textContent = '';
-    detail.textContent = '';
-    options.hidden = managing;
-    towerPanel.hidden = !managing;
-    ring.setAttribute('aria-label', managing ? '升級／賣出環' : '建造環');
-    if (tower === null) {
-      ring.removeAttribute('aria-describedby');
-    } else {
-      ring.setAttribute('aria-describedby', towerDetails.id);
-      refreshTower(tower);
-    }
-    ring.hidden = false;
-    anchor.hidden = false;
-    if (positionRing(cell, bounds) !== undefined) ring.focus({ preventScroll: true });
+    openCell(cell, bounds, tower);
   });
 
   document.addEventListener('contextmenu', (event) => {
@@ -317,6 +353,7 @@ export function createBuildHud(
   return {
     reset(): void {
       close();
+      guide?.reset();
       notice = undefined;
       feedback.textContent = '';
     },
@@ -327,6 +364,7 @@ export function createBuildHud(
     },
     update(current: GameState) {
       state = current;
+      guide?.update(state);
       updateText(balance, String(state.money));
       if (chosen !== undefined && (state.phase === 'victory' || state.phase === 'defeat')) close();
       if (chosen === undefined && notice === undefined) return undefined;
@@ -384,8 +422,7 @@ export function createBuildHud(
         };
       }
       updateText(detail, cached.preview.text);
-      if (cached.preview.text !== '')
-        positionNear(detail, position.point, RING_GAP + 8, position.below);
+      if (cached.preview.text !== '') positionPreview(position.point, position.below);
       return cached.preview.render;
     },
   };

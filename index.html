@@ -17,40 +17,47 @@
       <p id="build-feedback" role="status"></p>
       <div id="wave-flag" role="img" aria-label="入口旗" hidden></div>
       <div id="game-hud">
-        <div id="game-status">
-          <p id="game-version"></p>
-          <section id="game-vitals" aria-label="生命與金錢">
-            <span>生命 <strong id="game-lives"></strong></span>
-            <span>金錢 <strong id="build-balance"></strong></span>
-          </section>
-        </div>
         <section id="game-controls" aria-label="波次與時間控制">
           <p id="wave-number"></p>
-          <p id="wave-preview"></p>
           <span id="start-wave-target">
             <button id="start-wave" type="button" aria-keyshortcuts="N">開波 <kbd>N</kbd></button>
           </span>
           <button id="pause" type="button" aria-keyshortcuts="Space">暫停</button>
           <button id="speed" type="button" aria-keyshortcuts="F" aria-label="切換倍速">1×</button>
+          <p id="wave-preview"></p>
         </section>
+        <div id="game-status">
+          <section id="game-vitals" aria-label="生命與金錢">
+            <span><span class="rune" aria-hidden="true">◇</span> 生命 <strong id="game-lives"></strong></span>
+            <span><span class="rune" aria-hidden="true">⬡</span> 金錢 <strong id="build-balance"></strong></span>
+          </section>
+          <div id="game-audio-slot">
+            <section id="game-audio" aria-label="音訊">
+              <button id="mute-audio" type="button" aria-label="靜音" aria-pressed="false">
+                <span class="speaker-icon" aria-hidden="true"></span>
+              </button>
+              <button id="open-audio-levels" type="button" aria-label="音量設定" popovertarget="audio-levels">
+                <span class="volume-arrow" aria-hidden="true"></span>
+              </button>
+              <fieldset id="audio-levels" aria-labelledby="open-audio-levels" popover>
+                <label for="music-volume">音樂音量</label>
+                <input id="music-volume" type="range" min="0" max="100" />
+                <label for="effects-volume">音效音量</label>
+                <input id="effects-volume" type="range" min="0" max="100" />
+              </fieldset>
+            </section>
+          </div>
+        </div>
       </div>
+      <p id="game-version"></p>
       <p id="wave-feedback" role="status"></p>
-      <section id="game-audio" aria-label="音訊">
-        <button id="mute-audio" type="button" aria-pressed="false">靜音</button>
-        <button id="open-audio-levels" type="button" popovertarget="audio-levels">音量設定</button>
-        <fieldset id="audio-levels" aria-labelledby="open-audio-levels" popover>
-          <label for="music-volume">音樂音量</label>
-          <input id="music-volume" type="range" min="0" max="100" />
-          <label for="effects-volume">音效音量</label>
-          <input id="effects-volume" type="range" min="0" max="100" />
-        </fieldset>
-      </section>
       <dialog id="game-help" aria-labelledby="help-title">
-        <h1 id="help-title">操作說明</h1>
+        <h1 class="dialog-title">Crownfall</h1>
+        <h2 id="help-title">操作說明</h2>
         <ul>
           <li>點空地打開建造環，選擇塔種或按 <kbd>1</kbd>～<kbd>3</kbd> 建塔。</li>
           <li>點塔打開升級／賣出環，按 <kbd>U</kbd> 升級、<kbd>S</kbd> 賣出。</li>
-          <li>點右下方的「開波」或按 <kbd>N</kbd> 開始下一波。</li>
+          <li>點左上方的「開波」或按 <kbd>N</kbd> 開始下一波。</li>
           <li>按 <kbd>Space</kbd> 暫停或繼續，按 <kbd>F</kbd> 切換倍速。</li>
           <li>按住滑鼠左鍵拖曳或按方向鍵平移鏡頭，滾動滾輪縮放。</li>
         </ul>
@@ -64,7 +71,7 @@
         </form>
       </dialog>
       <dialog id="game-result" aria-labelledby="result-title" closedby="none">
-        <h1 id="result-title">遊戲結果</h1>
+        <h1 id="result-title" class="dialog-title">遊戲結果</h1>
         <p id="result-detail"></p>
         <form method="dialog">
           <button id="continue-endless" type="button" autofocus hidden>繼續（無盡模式）</button>
