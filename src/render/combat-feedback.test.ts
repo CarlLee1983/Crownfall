@@ -93,10 +93,10 @@ it('keeps all six death fragments on the world layer', () => {
 });
 
 it.each([
-  ['grunt', 0xe0ac4f],
-  ['runner', 0xb5ec69],
-  ['tank', 0xffad73],
-  ['boss', 0xf37b55],
+  ['grunt', 0xffd060],
+  ['runner', 0x60ff90],
+  ['tank', 0x60a0ff],
+  ['boss', 0xff60e0],
 ])('lights the %s body and its death fragments with the same glow color', (enemyKind, color) => {
   const initial = fixture({ enemyKind, immediate: true });
   const state = step(initial, [{ type: 'startWave', tick: 0 }]).state;
