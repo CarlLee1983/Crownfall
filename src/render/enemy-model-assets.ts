@@ -10,7 +10,7 @@ export interface LoadedEnemyModel {
   readonly walk: AnimationClip;
 }
 
-export async function loadEnemyModels(loader: GLTFLoader) {
+export async function loadEnemyModels(loader: Pick<GLTFLoader, 'loadAsync'>) {
   const load = async (url: string, name: string): Promise<LoadedEnemyModel> => {
     const { scene, animations } = await loader.loadAsync(url);
     const walk = animations.find((clip) => clip.name === 'Walking_A');
