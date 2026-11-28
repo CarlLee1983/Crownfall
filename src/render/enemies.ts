@@ -51,7 +51,7 @@ const LOOKS: ReadonlyMap<string, Look> = new Map([
   ['boss', { size: 1, glowColor: 0xf37b55, round: true, modelScale: 0.37 }],
 ]);
 const DEFAULT_LOOK: Look = { size: 0.5, glowColor: 0xbbbbbb };
-const GLOW_INTENSITY = 0.55;
+const GLOW_INTENSITY = 0.12;
 const WHITE = new Color(0xffffff);
 const UP = new Vector3(0, 1, 0);
 const BACK = new Vector3(0, 0, 1);
