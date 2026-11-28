@@ -201,6 +201,14 @@ interface EnemyView {
   readonly barWidth: number;
   readonly visual: ReturnType<typeof createEnemyModel> | undefined;
   readonly lichFeet: readonly SkinnedMesh[];
+  pose?: { motion: EnemyMotion; progress: number };
+}
+
+interface EnemyReaction {
+  readonly recoil: Vector3;
+  readonly hp: number | undefined;
+  readonly scale: number;
+  readonly freeze: boolean;
 }
 
 export interface EnemyLayer {
@@ -215,7 +223,10 @@ export interface EnemyLayer {
     alpha: number,
     hitFlash?: (id: EnemyId) => number,
     gameMs?: number,
+    reaction?: (id: EnemyId) => EnemyReaction,
   ): void;
+  hold(enemy: Enemy, state: GameState): void;
+  release(id: EnemyId): void;
   targetPosition(id: EnemyId, output: Vector3): Vector3 | undefined;
   impactPosition(state: GameState, enemy: Enemy, output: Vector3): Vector3;
   spawnPosition(state: GameState, kind: string, output: Vector3): Vector3;
@@ -235,6 +246,7 @@ export function createEnemyLayer(
   const bodyTransform = new Matrix3();
   const footVertex = new Vector3();
   const views = new Map<EnemyId, EnemyView>();
+  const held = new Map<EnemyId, EnemyMotion>();
   let motions = new Map<EnemyId, EnemyMotion>();
   let observed: GameState | undefined;
   const barGeometry = new PlaneGeometry(1, 1);
@@ -305,18 +317,36 @@ export function createEnemyLayer(
     views.delete(id);
   };
 
-  const update: EnemyLayer['update'] = (previous, current, alpha, hitFlash, gameMs = 0) => {
+  const update: EnemyLayer['update'] = (
+    previous,
+    current,
+    alpha,
+    hitFlash,
+    gameMs = 0,
+    reaction,
+  ) => {
     if (observed === undefined || observed.tick < previous.tick) observe(previous);
     observe(current);
     cameraUp.copy(UP).applyQuaternion(camera.quaternion);
     cameraBack.copy(BACK).applyQuaternion(camera.quaternion);
-    for (const enemy of current.enemies) {
-      const motion = motions.get(enemy.id);
-      if (motion === undefined) continue;
-      const progress = previous === current ? 1 : alpha;
-      const point = sampleEnemyMotion(motion, progress);
+    const visible =
+      held.size === 0
+        ? current.enemies
+        : [...current.enemies, ...Array.from(held.values(), ({ enemy }) => enemy)];
+    for (const enemy of visible) {
+      const ghost = held.has(enemy.id);
+      const next = held.get(enemy.id) ?? motions.get(enemy.id);
+      if (next === undefined) continue;
       const look = enemyLook(enemy.kind);
       const view = viewFor(enemy, look);
+      const response = reaction?.(enemy.id);
+      const pose = {
+        motion: next,
+        progress: ghost || previous === current ? 1 : alpha,
+      };
+      if (ghost || !response?.freeze || view.pose === undefined) view.pose = pose;
+      const { motion, progress } = view.pose;
+      const point = sampleEnemyMotion(motion, progress);
       const flash = hitFlash?.(enemy.id) ?? 0;
       if (view.visual === undefined) {
         const glow = look.glowColor;
@@ -325,7 +355,7 @@ export function createEnemyLayer(
         view.body.material.emissiveIntensity = GLOW_INTENSITY;
       } else {
         const walkingSpeed =
-          current.phase === 'wave' && motion.end > motion.start
+          !ghost && !response?.freeze && current.phase === 'wave' && motion.end > motion.start
             ? (current.enemyRules[enemy.kind]?.speedPerTick ?? 0) * TICKS_PER_SECOND
             : 0;
         view.visual.model.rotation.y = enemyHeading(motion, progress);
@@ -334,6 +364,8 @@ export function createEnemyLayer(
       const half = look.size / 2;
       const ground = supportBody(current.level, point, look, normal, view.body.position);
       view.group.position.set(point.x, ground, point.y);
+      view.group.scale.setScalar(response?.scale ?? 1);
+      view.bar.visible = response?.scale === undefined || response.scale === 1;
       if (!look.round) view.body.quaternion.setFromUnitVectors(UP, normal);
       view.body.updateMatrix();
       const slopeX = look.round ? -normal.x / normal.y : 0;
@@ -388,14 +420,16 @@ export function createEnemyLayer(
         .addScaledVector(cameraUp, bodyTop * perspectiveScale + BAR_GAP + BAR_HEIGHT / 2);
 
       const { maxHp } = enemy;
-      const ratio = maxHp > 0 ? Math.min(1, Math.max(0, enemy.hp / maxHp)) : 0;
+      const hp = response?.hp ?? enemy.hp;
+      const ratio = maxHp > 0 ? Math.min(1, Math.max(0, hp / maxHp)) : 0;
       view.fill.visible = ratio > 0;
       view.fill.scale.x = view.barWidth * ratio;
       view.fill.position.x = (view.fill.scale.x - view.barWidth) / 2;
+      if (response !== undefined) view.group.position.add(response.recoil);
     }
 
     for (const [id, view] of views) {
-      if (motions.has(id)) continue;
+      if (motions.has(id) || held.has(id)) continue;
       remove(id, view);
     }
   };
@@ -410,8 +444,17 @@ export function createEnemyLayer(
     routeMotions: () => motions.values(),
     observe,
     update,
+    hold: (enemy, state) => {
+      const motion = motions.get(enemy.id) ?? enemyMotion(state, enemy);
+      held.set(enemy.id, { ...motion, enemy });
+    },
+    release: (id) => held.delete(id),
     targetPosition: (id, output) => {
       const view = views.get(id);
+      const ghost = held.get(id);
+      if (ghost !== undefined && observed !== undefined) {
+        return bodyPosition(observed.level, sampleEnemyMotion(ghost, 1), ghost.enemy.kind, output);
+      }
       return view === undefined
         ? undefined
         : output.copy(view.group.position).add(view.body.position);
@@ -426,6 +469,7 @@ export function createEnemyLayer(
     reset: () => {
       for (const [id, view] of views) remove(id, view);
       motions.clear();
+      held.clear();
       observed = undefined;
     },
   };

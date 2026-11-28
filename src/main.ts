@@ -3,6 +3,13 @@ import { content } from './content/content';
 import { torchPositions } from './content/decor';
 import { level } from './content/level';
 import { createGame } from './core';
+import {
+  createDemoState,
+  demoRangePreview,
+  mountHitDemo,
+  readHitVariant,
+} from './prototype/hit-demo';
+import { createHitEffects } from './prototype/hit-effects';
 import { createBuildHud } from './render/build-hud';
 import { createBuildLayer } from './render/build-layer';
 import { createCamera } from './render/camera';
@@ -27,6 +34,7 @@ if (!(help instanceof HTMLDialogElement) || !(start instanceof HTMLButtonElement
 }
 const loading = element('model-loading');
 const error = element('model-error');
+const hitVariant = import.meta.env.DEV ? readHitVariant(window.location.search) : undefined;
 help.addEventListener('cancel', (event) => {
   if (start.disabled) event.preventDefault();
 });
@@ -37,7 +45,8 @@ loadModels().then(
     startGame(models);
     loading.hidden = true;
     start.disabled = false;
-    start.focus();
+    if (hitVariant === undefined) start.focus();
+    else help.close();
   },
   () => {
     loading.hidden = true;
@@ -61,6 +70,13 @@ function startGame(models: LoadedModels): void {
   const builds = createBuildLayer(models.towers);
   const shots = createShotLayer(enemies, builds.towerHeight);
   const combat = createCombatFeedback(enemies);
+  const effects =
+    hitVariant === undefined ? undefined : createHitEffects(enemies, builds.towerHeight);
+  const getVariant = () => readHitVariant(window.location.search) ?? hitVariant ?? 'A';
+  if (effects !== undefined) {
+    document.addEventListener('pointerdown', effects.unlockAudio, { once: true });
+    document.addEventListener('keydown', effects.unlockAudio, { once: true });
+  }
   const combatHud = createCombatHud(canvas, camera);
   const allowShake = window.matchMedia('(prefers-reduced-motion: no-preference)');
   const cameraPosition = new Vector3();
@@ -79,6 +95,7 @@ function startGame(models: LoadedModels): void {
     shots.group,
     combat.group,
   );
+  if (effects !== undefined) scene.add(effects.group);
 
   const pixelRenderer = createPixelRenderer(renderer, scene, camera);
 
@@ -91,42 +108,67 @@ function startGame(models: LoadedModels): void {
   window.addEventListener('resize', onResize);
   onResize();
 
-  const initial = createGame(content, level);
-  const hud = createBuildHud(
-    canvas,
-    camera,
-    initial,
-    {
-      placeTower: (cell, kind) =>
-        loop.enqueue((tick) => ({ type: 'placeTower', cell, kind, tick })),
-      manageTower: (cell, type) => loop.enqueue((tick) => ({ type, cell, tick })),
-    },
-    builds.towerStructure,
-  );
-  const waveHud = createWaveHud(canvas, camera, {
-    startWave: () => loop.enqueue((tick) => ({ type: 'startWave', tick })),
-    continueEndless: () => loop.enqueue((tick) => ({ type: 'continueEndless', tick })),
-    setSpeed: (speed) => loop.setSpeed(speed),
-    restart: () => {
-      hud.reset();
-      shots.reset();
-      enemies.reset();
-      combat.reset();
-      combatHud.reset();
-      loop.reset(createGame(content, level));
-    },
-  });
+  const newGame = () => (hitVariant === undefined ? createGame(content, level) : createDemoState());
+  const initial = newGame();
+  const restart = () => {
+    hud?.reset();
+    shots.reset();
+    enemies.reset();
+    combat.reset();
+    combatHud.reset();
+    effects?.reset();
+    loop.reset(newGame());
+  };
+  const hud =
+    hitVariant === undefined
+      ? createBuildHud(
+          canvas,
+          camera,
+          initial,
+          {
+            placeTower: (cell, kind) =>
+              loop.enqueue((tick) => ({ type: 'placeTower', cell, kind, tick })),
+            manageTower: (cell, type) => loop.enqueue((tick) => ({ type, cell, tick })),
+          },
+          builds.towerStructure,
+        )
+      : undefined;
+  const waveHud =
+    hitVariant === undefined
+      ? createWaveHud(canvas, camera, {
+          startWave: () => loop.enqueue((tick) => ({ type: 'startWave', tick })),
+          continueEndless: () => loop.enqueue((tick) => ({ type: 'continueEndless', tick })),
+          setSpeed: (speed) => loop.setSpeed(speed),
+          restart,
+        })
+      : undefined;
+  const demo =
+    hitVariant === undefined
+      ? undefined
+      : mountHitDemo(hitVariant, { replay: restart, setSpeed: (speed) => loop.setSpeed(speed) });
   const loop = startLoop({
     initial,
     onEvents: (events, previous, current, time) => {
-      hud.onEvents(events);
-      waveHud.onEvents(events, time.wallMs);
-      shots.onEvents(events, current, time.gameMs);
-      combat.onEvents(events, previous, time.gameMs);
+      hud?.onEvents(events);
+      waveHud?.onEvents(events, time.wallMs);
+      demo?.onEvents(events);
+      if (effects === undefined) {
+        shots.onEvents(events, current, time.gameMs);
+        combat.onEvents(events, previous, time.gameMs);
+      } else {
+        effects.onEvents(events, previous, current, time.gameMs, getVariant());
+      }
       enemies.observe(current);
     },
     draw: (previous, current, alpha, time) => {
-      const feedback = combat.update(time.gameMs, !allowShake.matches);
+      const reducedMotion = !allowShake.matches;
+      const prototypeFeedback = effects?.update(
+        time.gameMs,
+        time.wallMs,
+        getVariant(),
+        reducedMotion,
+      );
+      const feedback = prototypeFeedback ?? combat.update(time.gameMs, reducedMotion);
       terrain.setCastleFlash(feedback.castleFlash);
       const shaking = feedback.shake.lengthSq() > 0;
       if (shaking) {
@@ -135,10 +177,20 @@ function startGame(models: LoadedModels): void {
         camera.translateY(feedback.shake.y);
         camera.updateMatrixWorld();
       }
-      enemies.update(previous, current, alpha, feedback.hitFlash, time.gameMs);
-      builds.update(previous, current, alpha, hud.update(current), enemies.routeMotions());
-      waveHud.update(current, time.wallMs);
-      shots.update(time.gameMs);
+      enemies.update(
+        previous,
+        current,
+        alpha,
+        feedback.hitFlash,
+        time.gameMs,
+        prototypeFeedback?.reaction,
+      );
+      const preview =
+        import.meta.env.DEV && demo ? demoRangePreview(current) : hud?.update(current);
+      builds.update(previous, current, alpha, preview, enemies.routeMotions());
+      waveHud?.update(current, time.wallMs);
+      demo?.update(current, prototypeFeedback?.presentedKills ?? 0);
+      if (effects === undefined) shots.update(time.gameMs);
       combatHud.update(feedback);
       torches.update(time.gameMs / 1000);
       pixelRenderer.render();
