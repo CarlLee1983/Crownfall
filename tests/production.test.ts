@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import manifest from '../docs/art/asset-manifest.json' with { type: 'json' };
 
 // An open tile in the initial 1280×720 view.
 const openTile = { x: 654, y: 395 };
@@ -191,15 +192,27 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
   page,
 }) => {
   const hornAsset = /\/assets\/war-horns-[\w-]+\.opus$/;
-  const hornRequests: string[] = [];
+  const expectedClips = manifest.assets
+    .flatMap(({ path }) => /^src\/audio\/clips\/(.+)\.opus$/.exec(path)?.slice(1) ?? [])
+    .sort();
+  const requestedAudio: string[] = [];
   page.on('request', (request) => {
-    if (hornAsset.test(new URL(request.url()).pathname)) hornRequests.push(request.url());
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('.opus')) requestedAudio.push(path);
   });
 
   await page.addInitScript(() => {
     const contexts: AudioContext[] = [];
     const scheduled: AudioBuffer[] = [];
-    const decoded: number[] = [];
+    const decoded: { path: string; duration: number }[] = [];
+    // Identify the asset whose original response bytes reach the native decoder.
+    const responsePaths = new WeakMap<ArrayBuffer, string>();
+    const arrayBuffer = Response.prototype.arrayBuffer;
+    Response.prototype.arrayBuffer = async function () {
+      const bytes = await arrayBuffer.call(this);
+      if (this.url !== '') responsePaths.set(bytes, new URL(this.url).pathname);
+      return bytes;
+    };
     const gainValues: number[][] = [];
     const fadeDurations: number[] = [];
     const NativeAudioContext = window.AudioContext;
@@ -213,7 +226,8 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
         ...args: Parameters<AudioContext['decodeAudioData']>
       ): Promise<AudioBuffer> {
         const buffer = await super.decodeAudioData(...args);
-        decoded.push(buffer.duration);
+        const path = responsePaths.get(args[0]);
+        if (path !== undefined) decoded.push({ path, duration: buffer.duration });
         return buffer;
       }
 
@@ -263,7 +277,7 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
         audioProbe?(): {
           contexts: AudioContextState[];
           scheduled: number[];
-          decoded: number[];
+          decoded: { path: string; duration: number }[];
           gainValues: number[][];
           fadeDurations: number[];
         };
@@ -287,7 +301,7 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
   await page.goto('./');
   const startGame = page.getByRole('button', { name: '開始遊戲' });
   await expect(startGame).toBeEnabled();
-  expect(hornRequests).toEqual([]);
+  expect(requestedAudio).toEqual([]);
   expect(await readAudio()).toEqual({
     contexts: [],
     scheduled: [],
@@ -299,7 +313,13 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
   try {
     await startGame.click();
     await expect.poll(async () => (await readAudio()).contexts).toEqual(['running']);
-    await expect.poll(() => hornRequests.length).toBe(1);
+    await expect
+      .poll(() =>
+        requestedAudio
+          .map((path) => /^\/crownfall\/assets\/(.+)-[\w-]{8}\.opus$/.exec(path)?.[1] ?? path)
+          .sort(),
+      )
+      .toEqual(expectedClips);
     await expect
       .poll(async () => (await readAudio()).scheduled)
       .toContainEqual(expect.closeTo(81.0, 0));
@@ -322,14 +342,15 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
 
   await expect.poll(scheduledHorn).toEqual([expect.closeTo(4.5, 1)]);
   await expect
-    .poll(async () => (await readAudio()).decoded)
-    .toEqual(
-      expect.arrayContaining([
-        expect.closeTo(4.5, 1),
-        expect.closeTo(81.0, 0),
-        expect.closeTo(92.9, 0),
-        expect.closeTo(58.5, 0),
-        expect.closeTo(95.0, 0),
-      ]),
-    );
+    .poll(async () => (await readAudio()).decoded.map(({ path }) => path).sort())
+    .toEqual([...requestedAudio].sort());
+  expect((await readAudio()).decoded.map(({ duration }) => duration)).toEqual(
+    expect.arrayContaining([
+      expect.closeTo(4.5, 1),
+      expect.closeTo(81.0, 0),
+      expect.closeTo(92.9, 0),
+      expect.closeTo(58.5, 0),
+      expect.closeTo(95.0, 0),
+    ]),
+  );
 });

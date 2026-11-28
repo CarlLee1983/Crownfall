@@ -464,7 +464,8 @@
         "creator": "lentikula",
         "license": "CC0-1.0",
         "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-        "prompt_or_source_record": "Fire Spell Impact 2_s06.wav, 150 Game Effect Sounds CC0 compilation, processed by scripts/build-audio.ts"
+        "prompt_or_source_record": "04_magic_spells/Fire Spell Impact 2_s06.wav, source s06 in LICENSES.txt from the 150 Combat Sound Effects compilation, processed by scripts/build-audio.ts",
+        "compilation_url": "https://opengameart.org/content/150-combat-sound-effects"
       }
     },
     {
