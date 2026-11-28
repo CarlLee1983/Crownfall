@@ -1,4 +1,4 @@
-import { Mesh, PerspectiveCamera, RingGeometry, Vector3 } from 'three';
+import { Mesh, PerspectiveCamera, Vector3 } from 'three';
 import { expect, it } from 'vitest';
 import { createGame, parseLevel, step } from '../core';
 import { cellIndex } from '../core/level';
@@ -7,7 +7,7 @@ import { createCombatFeedback } from './combat-feedback';
 import { createEnemyLayer } from './enemies';
 import { createShotLayer, type PresentedImpact } from './shots';
 
-function archerBattle(layout: string[], speed = 30, damage = 12) {
+function archerBattle(layout: string[], speed = 30, damage = 12, startingLives = 10) {
   let previous = createGame(
     {
       enemies: { grunt: { speed, hp: 12, bounty: 5, leakDamage: 1 } },
@@ -19,7 +19,7 @@ function archerBattle(layout: string[], speed = 30, damage = 12) {
       },
       towerUpgrades: { costPercents: [60, 100], damageMultiplier: 1, rangeBonus: 0 },
       startingMoney: 100,
-      startingLives: 10,
+      startingLives,
       waveClearReward: 0,
       heightRangeBonus: 0,
     },
@@ -31,9 +31,8 @@ function archerBattle(layout: string[], speed = 30, damage = 12) {
   const enemies = createEnemyLayer(new PerspectiveCamera());
   const combat = createCombatFeedback(enemies);
   const sounds: PresentedImpact[] = [];
-  const shots = createShotLayer(enemies, createBuildLayer().towerHeight, {
+  const shots = createShotLayer(enemies, createBuildLayer().towerHeight, combat, {
     onImpact: (impact) => sounds.push(impact),
-    onDelayedImpact: combat.onImpact,
   });
   enemies.update(previous, current, 1);
   return {
@@ -58,7 +57,7 @@ function archerBattle(layout: string[], speed = 30, damage = 12) {
             ],
       );
       current = result.state;
-      combat.onEvents(shots.onEvents(result.events, current, at), previous, at);
+      combat.onEvents(shots.onEvents(result.events, current, previous, at), previous, at);
       enemies.observe(current);
       return current;
     },
@@ -101,6 +100,49 @@ it('keeps a defeated enemy and its health visible until the arrow lands', () => 
   expect(combat.group.children).toHaveLength(0);
 });
 
+it.each([
+  { speed: 30, leakAt: 67, approachX: 1 },
+  { speed: 15, leakAt: 133, approachX: 1.5 },
+])(
+  'shows a pending hit on a leaking enemy and deducts the last life immediately',
+  ({ speed, leakAt, approachX }) => {
+    const battle = archerBattle(['S=G', '...'], speed, 4, 1);
+    let settled = battle.advance(67, [1, 1]);
+    for (let at = 100; at <= leakAt; at += 33) {
+      battle.draw(at - 1);
+      settled = battle.advance(at);
+    }
+    expect(settled.phase).toBe('defeat');
+    expect(settled.lives).toBe(0);
+    expect(settled.enemies).toEqual([]);
+
+    const approach = battle.draw(leakAt);
+    expect(approach.castleFlash).toBeCloseTo(0.45);
+    expect(battle.enemies.targetPosition(battle.target.id, new Vector3())?.x).toBe(approachX);
+    expect(battle.shots.displayHp(battle.target.id)).toBe(12);
+    expect(battle.sounds).toEqual([]);
+
+    const impact = battle.draw(159);
+    expect(impact.hitFlash(battle.target.id)).toBeCloseTo(0.36);
+    expect(impact.reaction(battle.target.id)?.hp).toBe(8);
+    expect(impact.bounties).toEqual([]);
+    expect(battle.sounds.map(({ lethal }) => lethal)).toEqual([false]);
+    battle.draw(231);
+    expect(battle.enemies.targetPosition(battle.target.id, new Vector3())).toBeUndefined();
+  },
+);
+
+it('draws the original color before the next ordered hit even when a frame runs late', () => {
+  const battle = archerBattle(['S=====G', '.......'], 0, 6);
+  battle.advance(100, [6, 1]);
+  battle.advance(133, [0, 1], 'sniper');
+  expect(battle.draw(400).hitFlash(battle.target.id)).toBeCloseTo(0.36);
+  expect(battle.draw(530).hitFlash(battle.target.id)).toBe(0);
+  expect(battle.sounds.map(({ lethal }) => lethal)).toEqual([false]);
+  expect(battle.draw(546).hitFlash(battle.target.id)).toBeCloseTo(0.36);
+  expect(battle.sounds.map(({ lethal }) => lethal)).toEqual([false, true]);
+});
+
 it('shows a distant bolt’s damage before a nearer arrow kills the same enemy', () => {
   const battle = archerBattle(['S=====G', '.......'], 0, 6);
   const { sounds, target, shots } = battle;
@@ -123,9 +165,9 @@ it('shows a distant bolt’s damage before a nearer arrow kills the same enemy',
   expect(boltImpact.reaction(target.id)?.recoil.length()).toBeCloseTo(0.035);
   expect(shots.displayHp(target.id)).toBe(6);
   expect(sounds.map(({ towerKind, lethal }) => [towerKind, lethal])).toEqual([['sniper', false]]);
-  expect(battle.draw(317).bounties).toEqual([]);
-  expect(battle.draw(318).bounties.map(({ text }) => text)).toEqual(['+5']);
-  expect(battle.draw(350).bounties.map(({ text }) => text)).toEqual(['+5']);
+  expect(battle.draw(367).bounties).toEqual([]);
+  expect(battle.draw(368).bounties.map(({ text }) => text)).toEqual(['+5']);
+  expect(battle.draw(400).bounties.map(({ text }) => text)).toEqual(['+5']);
   expect(sounds.map(({ towerKind, lethal }) => [towerKind, lethal])).toEqual([
     ['sniper', false],
     ['basic', true],
@@ -145,8 +187,8 @@ it('shows the first arrow’s damage before the nearer second arrow kills the sa
   expect(battle.draw(400).bounties).toEqual([]);
   expect(shots.displayHp(target.id)).toBe(6);
   expect(sounds.map(({ lethal }) => lethal)).toEqual([false]);
-  expect(battle.draw(437).bounties).toEqual([]);
-  expect(battle.draw(438).bounties.map(({ text }) => text)).toEqual(['+5']);
+  expect(battle.draw(487).bounties).toEqual([]);
+  expect(battle.draw(488).bounties.map(({ text }) => text)).toEqual(['+5']);
   expect(sounds.map(({ lethal }) => lethal)).toEqual([false, true]);
 });
 
@@ -180,48 +222,21 @@ it('shows a distant arrow’s damage before a nearer bolt kills the same enemy',
   expect(battle.draw(240).bounties).toEqual([]);
   expect(battle.sounds).toEqual([]);
   expect(battle.draw(400).bounties).toEqual([]);
-  expect(battle.draw(438).bounties.map(({ text }) => text)).toEqual(['+5']);
+  expect(battle.draw(487).hitFlash(battle.target.id)).toBe(0);
+  expect(battle.draw(488).bounties.map(({ text }) => text)).toEqual(['+5']);
   expect(battle.sounds.map(({ towerKind, lethal }) => [towerKind, lethal])).toEqual([
     ['basic', false],
     ['sniper', true],
   ]);
 });
 
-it('anchors the expanding splash ring at the rounded target on the ramp at arrival', () => {
-  const battle = archerBattle(['S^.', '.g.'], 7.5, 4);
-  battle.advance(0);
-  battle.advance(33);
-  battle.advance(100, [0, 1], 'splash');
-  const splashRing = () =>
-    battle.shots.group.children.find(
-      (child) => child instanceof Mesh && child.geometry instanceof RingGeometry,
-    );
-  battle.draw(150, 0.25);
-  expect(splashRing()).toBeUndefined();
-  const impact = battle.draw(250, 0.5);
-  expect(impact.hitFlash(battle.target.id)).toBeCloseTo(0.36);
-  battle.shots.update(250);
-  const ring = splashRing();
-  expect(ring?.layers.mask).toBe(1);
-  expect(ring?.position.toArray()).toEqual([
-    expect.closeTo(0.777785, 5),
-    expect.closeTo(0.343385, 5),
-    expect.closeTo(-0.044359, 5),
-  ]);
-  expect(ring?.scale.x).toBeCloseTo(0.224);
-  battle.shots.update(351);
-  expect(ring?.scale.x).toBeCloseTo(0.512);
-  battle.shots.update(452);
-  expect(splashRing()).toBeUndefined();
-});
-
-function mageBattle() {
+function mageBattle(runnerHp = 4) {
   let previous = createGame(
     {
       enemies: {
         still: { speed: 0, hp: 12, bounty: 5, leakDamage: 1 },
         grunt: { speed: 11.25, hp: 10, bounty: 4, leakDamage: 1 },
-        runner: { speed: 22.5, hp: 4, bounty: 3, leakDamage: 1 },
+        runner: { speed: 22.5, hp: runnerHp, bounty: 3, leakDamage: 1 },
       },
       waves: [
         {
@@ -260,9 +275,8 @@ function mageBattle() {
   const enemies = createEnemyLayer(new PerspectiveCamera());
   const combat = createCombatFeedback(enemies);
   const sounds: PresentedImpact[] = [];
-  const shots = createShotLayer(enemies, createBuildLayer().towerHeight, {
+  const shots = createShotLayer(enemies, createBuildLayer().towerHeight, combat, {
     onImpact: (impact) => sounds.push(impact),
-    onDelayedImpact: combat.onImpact,
   });
   enemies.update(previous, current, 1);
 
@@ -285,7 +299,7 @@ function mageBattle() {
         })),
       );
       current = result.state;
-      combat.onEvents(shots.onEvents(result.events, current, at), previous, at);
+      combat.onEvents(shots.onEvents(result.events, current, previous, at), previous, at);
       enemies.observe(current);
       return result;
     },
@@ -341,6 +355,41 @@ it('presents a spell orb’s wounded and defeated targets together on arrival', 
   expect(enemies.targetPosition(defeated.id, new Vector3())).toBeUndefined();
 });
 
+it('shows localized spell impacts on moving recipients that separate during flight', () => {
+  const battle = mageBattle(5);
+  const { enemies, unaffected, survivor, defeated: primary, shots } = battle;
+  battle.advance(67);
+  battle.advance(100, ['splash', 2]);
+  battle.draw(100);
+  for (const at of [133, 167]) {
+    battle.advance(at);
+    battle.draw(at);
+  }
+  battle.advance(200);
+  const survivorPosition = enemies.aimPosition(survivor.id, 1, new Vector3());
+  const primaryPosition = enemies.aimPosition(primary.id, 1, new Vector3());
+  if (survivorPosition === undefined || primaryPosition === undefined) {
+    throw new Error('Expected both targets to keep moving');
+  }
+  expect(survivorPosition.distanceTo(primaryPosition)).toBeGreaterThan(0.75);
+
+  const impact = battle.draw(200);
+  expect(impact.hitFlash(unaffected.id)).toBe(0);
+  expect(impact.hitFlash(survivor.id)).toBeCloseTo(0.36);
+  expect(impact.hitFlash(primary.id)).toBeCloseTo(0.36);
+  const markers = shots.group.children.filter((child) => child instanceof Mesh);
+  const atTarget = (point: Vector3) =>
+    markers.some(
+      (marker) =>
+        Math.hypot(marker.position.x - point.x, marker.position.z - point.z) < 0.01 &&
+        marker.scale.x < 0.5,
+    );
+  expect(atTarget(survivorPosition)).toBe(true);
+  expect(atTarget(primaryPosition)).toBe(true);
+  battle.draw(452);
+  expect(shots.group.children).toEqual([]);
+});
+
 it('presents secondary splash damage before the nearer arrow that kills that enemy', () => {
   const battle = mageBattle();
   const { enemies, survivor, defeated, shots, sounds } = battle;
@@ -358,9 +407,9 @@ it('presents secondary splash damage before the nearer arrow that kills that ene
   expect(splash.hitFlash(survivor.id)).toBeCloseTo(0.36);
   expect(splash.bounties.map(({ id }) => id)).toEqual([defeated.id]);
   expect(enemies.targetPosition(survivor.id, new Vector3())).toBeDefined();
-  expect(battle.draw(587).bounties.map(({ id }) => id)).toEqual([defeated.id]);
+  expect(battle.draw(637).bounties.map(({ id }) => id)).toEqual([defeated.id]);
 
-  const arrow = battle.draw(588);
+  const arrow = battle.draw(638);
   expect(arrow.reaction(survivor.id)?.hp).toBe(0);
   expect(arrow.bounties.map(({ id, text }) => [id, text])).toEqual([
     [defeated.id, '+3'],
@@ -370,7 +419,7 @@ it('presents secondary splash damage before the nearer arrow that kills that ene
     ['splash', defeated.id, true],
     ['basic', survivor.id, true],
   ]);
-  expect(battle.draw(675).bounties.map(({ id }) => id)).toEqual([defeated.id, survivor.id]);
+  expect(battle.draw(725).bounties.map(({ id }) => id)).toEqual([defeated.id, survivor.id]);
   expect(enemies.targetPosition(survivor.id, new Vector3())).toBeUndefined();
 });
 
@@ -386,9 +435,9 @@ it('waits for an arrow before the same enemy dies as a secondary spell target', 
   expect(arrow.hitFlash(survivor.id)).toBeCloseTo(0.36);
   expect(arrow.hitFlash(defeated.id)).toBe(0);
   expect(shots.displayHp(survivor.id)).toBe(4);
-  expect(battle.draw(287).bounties).toEqual([]);
+  expect(battle.draw(337).bounties).toEqual([]);
 
-  const orb = battle.draw(288);
+  const orb = battle.draw(338);
   expect(orb.bounties.map(({ id, text }) => [id, text])).toEqual([
     [survivor.id, '+4'],
     [defeated.id, '+3'],

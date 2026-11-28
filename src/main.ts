@@ -60,7 +60,7 @@ function startGame(models: LoadedModels): void {
   const enemies = createEnemyLayer(camera, models.enemies);
   const builds = createBuildLayer(models.towers);
   const combat = createCombatFeedback(enemies);
-  const shots = createShotLayer(enemies, builds.towerHeight, { onDelayedImpact: combat.onImpact });
+  const shots = createShotLayer(enemies, builds.towerHeight, combat);
   const combatHud = createCombatHud(canvas, camera);
   const allowShake = window.matchMedia('(prefers-reduced-motion: no-preference)');
   const cameraPosition = new Vector3();
@@ -121,7 +121,7 @@ function startGame(models: LoadedModels): void {
     onEvents: (events, previous, current, time) => {
       hud.onEvents(events);
       waveHud.onEvents(events, time.wallMs);
-      const immediate = shots.onEvents(events, current, time.gameMs);
+      const immediate = shots.onEvents(events, current, previous, time.gameMs);
       combat.onEvents(immediate, previous, time.gameMs);
       enemies.observe(current);
     },
@@ -141,7 +141,7 @@ function startGame(models: LoadedModels): void {
         reaction: feedback.reaction,
       });
       builds.update(previous, current, alpha, hud.update(current), enemies.routeMotions());
-      waveHud.update(current, time.wallMs);
+      waveHud.update(current, time.wallMs, !shots.hasFlights() && !feedback.settling);
       shots.update(time.gameMs);
       combatHud.update(feedback);
       torches.update(time.gameMs / 1000);

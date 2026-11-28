@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { build } from 'vite';
 
 // An open tile in the initial 1280×720 view.
 const openTile = { x: 654, y: 395 };
@@ -185,4 +186,80 @@ test('horizontal pan stops at the map edge without drifting vertically', async (
   await page.keyboard.press('ArrowRight');
   await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
   expect(await anchorPosition()).toEqual(edge);
+});
+
+test('shows the final kill before opening the victory dialog', async ({ page, baseURL }) => {
+  // Use the normal production entry and map with one enemy and one lethal shot.
+  const bundled = await build({
+    build: { write: false },
+    plugins: [
+      {
+        name: 'one-enemy-campaign',
+        transform(code, id) {
+          if (!id.endsWith('/src/content/content.ts')) return;
+          return `${code}
+            Object.assign(content.towers.basic, { range: 20, damage: 100 });
+            content.waves.splice(0, content.waves.length, {
+              groups: [{ enemy: 'grunt', count: 1, interval: 1, delay: 0 }]
+            });
+          `;
+        },
+      },
+    ],
+  });
+  if (!('output' in bundled)) throw new Error('Expected a single production bundle');
+  const output = new Map(bundled.output.map((asset) => [asset.fileName, asset]));
+  const mount = new URL('./', baseURL);
+  await page.route(`${mount.href}**`, async (route) => {
+    const path = new URL(route.request().url()).pathname.slice(mount.pathname.length);
+    const asset = output.get(path || 'index.html');
+    if (asset === undefined) return route.fulfill({ status: 404 });
+    const contentType = path.endsWith('.wasm')
+      ? 'application/wasm'
+      : path.endsWith('.css')
+        ? 'text/css'
+        : path.endsWith('.js')
+          ? 'text/javascript'
+          : path.endsWith('.glb')
+            ? 'model/gltf-binary'
+            : 'text/html';
+    const source = asset.type === 'chunk' ? asset.code : asset.source;
+    await route.fulfill({
+      contentType,
+      body: typeof source === 'string' ? source : Buffer.from(source),
+    });
+  });
+
+  const startTime = new Date('2026-01-01T00:00:00Z');
+  await page.clock.install({ time: startTime });
+  await page.clock.pauseAt(new Date(startTime.getTime() + 1_000));
+  await page.goto('./');
+  const startGame = page.getByRole('button', { name: '開始遊戲' });
+  await expect(startGame).toBeEnabled();
+  await startGame.dispatchEvent('click');
+  await page.clock.runFor(16);
+
+  await page.getByLabel('Crownfall 關卡').dispatchEvent('click', {
+    clientX: openTile.x,
+    clientY: openTile.y,
+    button: 0,
+  });
+  const ring = page.getByRole('region', { name: '建造環' });
+  await page.clock.runFor(16);
+  await ring.getByRole('button', { name: /弓箭塔/ }).dispatchEvent('click');
+  await page.clock.runFor(48);
+
+  const startWave = page.getByRole('button', { name: /開波/ });
+  await startWave.dispatchEvent('click');
+  await page.clock.runFor(64);
+  const victory = page.getByRole('dialog', { name: '勝利' });
+  await expect(page.locator('#wave-feedback')).toContainText('清波獎勵');
+  await expect(victory).toBeHidden();
+  const bounty = page.locator('.combat-bounty');
+  await expect(bounty).toHaveCount(0);
+  await page.clock.runFor(128);
+  await expect(bounty).toHaveText('+5');
+  await expect(victory).toBeHidden();
+  await page.clock.runFor(230);
+  await expect(victory).toBeVisible();
 });

@@ -16,21 +16,21 @@ import {
   type GameState,
   groundHeight,
   type Level,
-  type ShotImpact,
 } from '../core';
+import type { createCombatFeedback } from './combat-feedback';
 import type { EnemyLayer } from './enemies';
 import { WORLD_LAYER } from './layers';
 import { LAYER_HEIGHT } from './terrain';
 
 const SPLASH_DURATION_MS = 202;
 const SPLASH_COLOR = 0xc169ff;
+const SPLASH_MARKER_RADIUS = 0.32;
 const PROJECTILES = {
   basic: { speed: 0.021, arc: 0.25 },
   sniper: { speed: 0.037, arc: 0.05 },
   splash: { speed: 0.016, arc: 0.4 },
 } as const;
 const MIN_FLIGHT_MS = 92;
-const IMPACT_GAP_MS = 38;
 const UP = new Vector3(0, 1, 0);
 
 type FiredShot = Extract<GameEvent, { type: 'shot' }>;
@@ -46,13 +46,6 @@ export interface PresentedImpact {
 
 interface ImpactHandlers {
   readonly onImpact?: (impact: PresentedImpact) => void;
-  readonly onDelayedImpact?: (
-    impact: ShotImpact,
-    towerKind: string,
-    position: Vector3,
-    direction: Vector3,
-    gameMs: number,
-  ) => void;
 }
 
 interface Flight {
@@ -70,18 +63,20 @@ interface Flight {
 export function createShotLayer(
   enemies: Pick<EnemyLayer, 'aimPosition' | 'hold' | 'impactPosition'>,
   towerHeight: (kind: string) => number,
+  feedback: Pick<ReturnType<typeof createCombatFeedback>, 'canPresentImpact' | 'onImpact'>,
   handlers: ImpactHandlers = {},
 ) {
   const group = new Group();
   const ringGeometry = new RingGeometry(0.88, 1, 36).rotateX(-Math.PI / 2);
   const flights = new Set<Flight>();
-  const splashes = new Set<{
+  const splashMarkers = new Set<{
     readonly ring: Mesh<RingGeometry, MeshBasicMaterial>;
-    readonly radius: number;
     readonly start: number;
   }>();
-  const pending = new Map<EnemyId, { hp: number; remaining: number }>();
-  const lastImpact = new Map<EnemyId, number>();
+  const pending = new Map<
+    EnemyId,
+    { hp: number; remaining: number; target: Enemy; leaked: boolean }
+  >();
   const shaftGeometry = new BoxGeometry(0.055, 0.36, 0.055);
   const tipGeometry = new ConeGeometry(0.07, 0.15, 4);
   const tailGeometry = new BoxGeometry(0.12, 0.095, 0.026);
@@ -120,7 +115,7 @@ export function createShotLayer(
     return model;
   }
 
-  function splash(level: Level, endpoint: Vector3, radius: number, start: number): void {
+  function markSplashHit(level: Level, endpoint: Vector3, start: number): void {
     const ring = new Mesh(
       ringGeometry,
       new MeshBasicMaterial({ color: SPLASH_COLOR, transparent: true, depthWrite: false }),
@@ -130,7 +125,7 @@ export function createShotLayer(
     ring.layers.set(WORLD_LAYER);
     ring.position.set(x, ground + 0.07, z);
     group.add(ring);
-    splashes.add({ ring, radius, start });
+    splashMarkers.add({ ring, start });
   }
 
   function notify(shot: FiredShot): void {
@@ -154,6 +149,7 @@ export function createShotLayer(
   function onEvents(
     events: readonly GameEvent[],
     state: GameState,
+    previous: GameState,
     frameTime: number,
   ): GameEvent[] {
     const deferred = new Set<GameEvent>();
@@ -179,7 +175,12 @@ export function createShotLayer(
           deferredKills.add(target.id);
           enemies.hold(target, state);
         }
-        const result = pending.get(target.id) ?? { hp: target.hp, remaining: 0 };
+        const result = pending.get(target.id) ?? {
+          hp: target.hp,
+          remaining: 0,
+          target,
+          leaked: false,
+        };
         result.remaining++;
         pending.set(target.id, result);
         impactPositions.set(target.id, enemies.impactPosition(state, target, new Vector3()));
@@ -197,6 +198,15 @@ export function createShotLayer(
         duration: Math.max(MIN_FLIGHT_MS, origin.distanceTo(aim) / speed),
       });
     }
+    for (const event of events) {
+      if (event.type !== 'leaked') continue;
+      const impact = pending.get(event.enemyId);
+      if (impact === undefined) continue;
+      impact.leaked = true;
+      // Keep the last approach pose clear of the castle while its life loss plays immediately.
+      const target = previous.enemies.find(({ id }) => id === event.enemyId) ?? impact.target;
+      enemies.hold(target, previous);
+    }
     return events.filter(
       (event) =>
         !deferred.has(event) && (event.type !== 'killed' || !deferredKills.has(event.enemyId)),
@@ -213,8 +223,7 @@ export function createShotLayer(
         elapsed >= duration &&
         shot.impacts.every(
           ({ target }) =>
-            !blocked.has(target.id) &&
-            frameTime - (lastImpact.get(target.id) ?? -Infinity) >= IMPACT_GAP_MS,
+            !blocked.has(target.id) && feedback.canPresentImpact(target.id, frameTime),
         );
       const tangent = endpoint.clone().sub(origin);
       if (ready) {
@@ -227,15 +236,21 @@ export function createShotLayer(
             result.remaining--;
             if (result.remaining === 0) pending.delete(id);
           }
-          lastImpact.set(id, frameTime);
           const position = flight.impactPositions.get(id) ?? endpoint;
           enemies.aimPosition(id, alpha, position);
-          handlers.onDelayedImpact?.(impact, shot.towerKind, position, direction, frameTime);
+          // Mark each resolved recipient at its drawn position. A radius around the
+          // moving orb endpoint would imply that damage was calculated on arrival.
+          if (shot.splashRadius !== undefined) markSplashHit(flight.level, position, frameTime);
+          feedback.onImpact(
+            impact,
+            shot.towerKind,
+            position,
+            direction,
+            frameTime,
+            result?.leaked === true && result.remaining === 0,
+          );
         }
         notify(shot);
-        if (shot.splashRadius !== undefined && shot.splashRadius > 0) {
-          splash(flight.level, endpoint, shot.splashRadius, frameTime);
-        }
         group.remove(model);
         flights.delete(flight);
         continue;
@@ -247,22 +262,19 @@ export function createShotLayer(
       tangent.y += 4 * arc * (1 - 2 * progress);
       if (tangent.lengthSq() > 0) model.quaternion.setFromUnitVectors(UP, tangent.normalize());
     }
-    for (const [id, at] of lastImpact) {
-      if (frameTime - at >= IMPACT_GAP_MS) lastImpact.delete(id);
-    }
   }
 
   function update(frameTime: number): void {
-    for (const effect of splashes) {
-      const { ring, radius, start } = effect;
+    for (const effect of splashMarkers) {
+      const { ring, start } = effect;
       const progress = (frameTime - start) / SPLASH_DURATION_MS;
       if (progress >= 1) {
         group.remove(ring);
         ring.material.dispose();
-        splashes.delete(effect);
+        splashMarkers.delete(effect);
         continue;
       }
-      const size = radius * (0.28 + 0.72 * progress);
+      const size = SPLASH_MARKER_RADIUS * (0.28 + 0.72 * progress);
       ring.scale.set(size, 1, size);
       ring.material.opacity = 0.36 * (1 - progress);
     }
@@ -272,15 +284,15 @@ export function createShotLayer(
     group,
     onEvents,
     advanceFlights,
+    hasFlights: () => flights.size > 0,
     update,
     displayHp: (id: EnemyId) => pending.get(id)?.hp,
     reset: () => {
-      for (const { ring } of splashes) ring.material.dispose();
-      splashes.clear();
+      for (const { ring } of splashMarkers) ring.material.dispose();
+      splashMarkers.clear();
       group.clear();
       flights.clear();
       pending.clear();
-      lastImpact.clear();
     },
   };
 }

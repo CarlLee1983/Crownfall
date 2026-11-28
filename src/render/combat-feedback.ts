@@ -24,6 +24,7 @@ const MAX_FRAGMENTS = 48;
 const BOUNTY_MS = 720;
 const BOUNTY_HEIGHT = 0.55;
 const PRESET_A_FLASH_MS = 72;
+const PRESET_A_FLASH_GAP_MS = 16;
 const PRESET_A_FLASH_STRENGTH = 0.36;
 const PRESET_A_RECOIL = 0.035;
 const RECOIL_MS = 174;
@@ -31,6 +32,14 @@ const DEATH_MS = 85;
 const PRESET_A_SHARDS = 3;
 const PRESET_A_SHARD_MS = 230;
 const PRESET_A_SCATTER = 0.34;
+
+interface Hit {
+  readonly duration: number;
+  readonly gap: number;
+  readonly strength: number;
+  start?: number;
+  drewOriginalColor: boolean;
+}
 
 export function createCombatFeedback(
   enemies: Pick<EnemyLayer, 'impactPosition' | 'spawnPosition' | 'targetPosition' | 'release'>,
@@ -48,7 +57,7 @@ export function createCombatFeedback(
     readonly speed: number;
     readonly start: number;
   }>();
-  const hits = new Map<EnemyId, { start?: number; drewOriginalColor: boolean }>();
+  const hits = new Map<EnemyId, Hit>();
   const reactions = new Map<
     EnemyId,
     {
@@ -56,6 +65,8 @@ export function createCombatFeedback(
       readonly direction: Vector3;
       readonly death: boolean;
       readonly usesPresetA: boolean;
+      readonly releaseAfterMs?: number;
+      readonly hp?: number;
     }
   >();
   let leakStart = -Infinity;
@@ -132,20 +143,41 @@ export function createCombatFeedback(
     });
   }
 
+  function canPresentImpact(id: EnemyId, gameTime: number): boolean {
+    const hit = hits.get(id);
+    return (
+      hit === undefined ||
+      (hit.drewOriginalColor &&
+        hit.start !== undefined &&
+        gameTime - hit.start >= hit.duration + hit.gap)
+    );
+  }
+
   function onImpact(
-    { target, bounty }: ShotImpact,
+    { target, bounty, hp }: ShotImpact,
     towerKind: string,
     position: Vector3,
     direction: Vector3,
     gameTime: number,
+    finalHitOnLeakedEnemy: boolean,
   ): void {
     const usesPresetA = towerKind === 'basic' || towerKind === 'sniper' || towerKind === 'splash';
-    hits.delete(target.id);
+    const duration = usesPresetA ? PRESET_A_FLASH_MS : HIT_FLASH_MS;
+    hits.set(target.id, {
+      duration,
+      gap: usesPresetA ? PRESET_A_FLASH_GAP_MS : HIT_FLASH_GAP_MS,
+      strength: usesPresetA ? PRESET_A_FLASH_STRENGTH : HIT_FLASH_STRENGTH,
+      start: gameTime,
+      drewOriginalColor: false,
+    });
+    const releaseAfterMs =
+      bounty !== undefined ? DEATH_MS : finalHitOnLeakedEnemy ? duration : undefined;
     reactions.set(target.id, {
       start: gameTime,
       direction,
       death: bounty !== undefined,
       usesPresetA,
+      ...(releaseAfterMs === undefined ? {} : { releaseAfterMs, hp }),
     });
     if (bounty !== undefined) {
       shatter(target.kind, target.id, position, gameTime, usesPresetA);
@@ -158,15 +190,14 @@ export function createCombatFeedback(
     for (const event of events) {
       if (event.type === 'shot') {
         const id = event.target.id;
-        const hit = hits.get(id);
         // Catch-up ticks alone cannot satisfy the visible gap between pulses.
-        if (
-          hit === undefined ||
-          (hit.drewOriginalColor &&
-            hit.start !== undefined &&
-            gameTime - hit.start >= HIT_FLASH_MS + HIT_FLASH_GAP_MS)
-        ) {
-          hits.set(id, { drewOriginalColor: false });
+        if (canPresentImpact(id, gameTime)) {
+          hits.set(id, {
+            duration: HIT_FLASH_MS,
+            gap: HIT_FLASH_GAP_MS,
+            strength: HIT_FLASH_STRENGTH,
+            drewOriginalColor: false,
+          });
         }
       }
       if (event.type !== 'killed') continue;
@@ -191,14 +222,17 @@ export function createCombatFeedback(
       // Start on the first draw. A catch-up batch can otherwise skip the entire pulse.
       hit.start ??= gameTime;
       const elapsed = gameTime - hit.start;
-      if (elapsed >= HIT_FLASH_MS + HIT_FLASH_GAP_MS) hits.delete(id);
-      else if (elapsed >= HIT_FLASH_MS) hit.drewOriginalColor = true;
+      if (elapsed >= hit.duration + hit.gap) hits.delete(id);
+      else if (elapsed >= hit.duration) hit.drewOriginalColor = true;
     }
+    let hasHeldReaction = false;
     for (const [id, reaction] of reactions) {
       const age = gameTime - reaction.start;
-      if (reaction.death && age >= DEATH_MS) {
+      if (reaction.releaseAfterMs !== undefined && age >= reaction.releaseAfterMs) {
         enemies.release(id);
         reactions.delete(id);
+      } else if (reaction.releaseAfterMs !== undefined) {
+        hasHeldReaction = true;
       } else if (age >= (reaction.usesPresetA ? RECOIL_MS : HIT_FLASH_MS)) {
         reactions.delete(id);
       }
@@ -229,16 +263,10 @@ export function createCombatFeedback(
     }
     return {
       hitFlash: (id: EnemyId) => {
-        const reaction = reactions.get(id);
-        if (reaction !== undefined) {
-          const duration = reaction.usesPresetA ? PRESET_A_FLASH_MS : HIT_FLASH_MS;
-          const strength = reaction.usesPresetA ? PRESET_A_FLASH_STRENGTH : HIT_FLASH_STRENGTH;
-          return strength * Math.max(0, 1 - (gameTime - reaction.start) / duration);
-        }
-        const start = hits.get(id)?.start;
-        return start === undefined
+        const hit = hits.get(id);
+        return hit?.start === undefined
           ? 0
-          : HIT_FLASH_STRENGTH * Math.max(0, 1 - (gameTime - start) / HIT_FLASH_MS);
+          : hit.strength * Math.max(0, 1 - (gameTime - hit.start) / hit.duration);
       },
       reaction: (id: EnemyId) => {
         const reaction = reactions.get(id);
@@ -252,8 +280,9 @@ export function createCombatFeedback(
               : 0,
           );
         const scale = reaction.death ? Math.max(0.05, 1 - (age / DEATH_MS) ** 2) : 1;
-        return { recoil, scale, ...(reaction.death ? { hp: 0 } : {}) };
+        return { recoil, scale, ...(reaction.hp === undefined ? {} : { hp: reaction.hp }) };
       },
+      settling: fragments.size > 0 || leak > 0 || hasHeldReaction,
       castleFlash,
       lifePulse: castleFlash * 0.38,
       shake,
@@ -288,5 +317,5 @@ export function createCombatFeedback(
     leakStart = -Infinity;
   }
 
-  return { group, onEvents, onImpact, update, reset };
+  return { group, onEvents, onImpact, canPresentImpact, update, reset };
 }
