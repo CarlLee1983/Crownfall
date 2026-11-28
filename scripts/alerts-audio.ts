@@ -6,9 +6,10 @@ const kenneyInterface = 'https://kenney.nl/assets/interface-sounds';
 
 export const alertClips = [
   {
-    name: 'leak-horn-1',
-    download: 'https://opengameart.org/sites/default/files/theircoming.ogg',
-    edit: 'atrim=end=2.7,afade=t=out:st=2.1:d=0.6',
+    name: 'leak-bell',
+    download: kenneyImpactSounds,
+    rawFile: 'impactBell_heavy_000.ogg',
+    archiveMember: '*impactBell_heavy_000.ogg',
   },
   {
     name: 'jingle-steel-10',
