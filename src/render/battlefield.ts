@@ -8,6 +8,7 @@ import { createCombatFeedback } from './combat-feedback';
 import { createEnemyLayer } from './enemies';
 import type { LoadedModels } from './models';
 import { createOutskirts } from './outskirts';
+import { createPlainsScenery } from './plains-scenery';
 import { createShotLayer, type PresentedImpact } from './shots';
 import { createTerrain } from './terrain';
 import { createTorches } from './torches';
@@ -44,6 +45,7 @@ export function createBattlefield(
     new HemisphereLight(0xcfe3ff, 0x2e2a22, 0.9),
     sun,
     terrain.group,
+    createPlainsScenery(level),
     createOutskirts(level, models.outskirts, scene.background),
     torches.group,
     enemies.group,

@@ -24,8 +24,8 @@ export const LAYER_HEIGHT = 0.6;
 const COLOURS = {
   low: 0x8fb070,
   high: 0xabaeba,
-  laneLow: 0xa0a0a6,
-  laneHigh: 0x8b8e9d,
+  laneLow: 0xe6c38a,
+  laneHigh: 0xf0d19d,
   spawn: 0xad6158,
   goal: 0x648bb4,
 } as const;
@@ -36,7 +36,8 @@ const TILE_TEXELS = 16;
 const ATLAS_COLUMNS = 4;
 const PHASES = 4;
 const VARIANTS = ATLAS_COLUMNS * PHASES;
-const CLIFF_TILE = 2 * VARIANTS;
+const DIRT_TILE = 2 * VARIANTS;
+const CLIFF_TILE = 3 * VARIANTS;
 const ATLAS_WIDTH = ATLAS_COLUMNS * TILE_TEXELS;
 const ATLAS_HEIGHT = (CLIFF_TILE / ATLAS_COLUMNS + 1) * TILE_TEXELS;
 const TERRAIN_SEED = 0x78359a4b;
@@ -77,7 +78,8 @@ function atlasTileOrigin(tile: number) {
 function terrainAtlas(): DataTexture {
   const pixels = new Uint8Array(ATLAS_WIDTH * ATLAS_HEIGHT * 4);
   for (let tile = 0; tile <= CLIFF_TILE; tile++) {
-    const moss = tile >= VARIANTS && tile < CLIFF_TILE;
+    const moss = tile >= VARIANTS && tile < DIRT_TILE;
+    const dirt = tile >= DIRT_TILE && tile < CLIFF_TILE;
     const variant = tile % VARIANTS;
     const rotation = variant % ATLAS_COLUMNS;
     const swapsAxes = rotation % 2 === 1;
@@ -93,7 +95,10 @@ function terrainAtlas(): DataTexture {
         const u = ((flipX ? last - rotatedX : rotatedX) + phase * 3) % TILE_TEXELS;
         const v = ((flipY ? last - rotatedY : rotatedY) + phase * 5) % TILE_TEXELS;
         const border = tile !== CLIFF_TILE && Math.min(x, y, last - x, last - y) < BORDER_TEXELS;
-        const shade = border ? (moss ? 216 : 235) : moss ? mossShade(u, v) : stoneShade(u, v);
+        let shade: number;
+        if (dirt) shade = 218 + tileHash(u, v);
+        else if (border) shade = moss ? 216 : 235;
+        else shade = moss ? mossShade(u, v) : stoneShade(u, v);
         const offset = ((bottom + y) * ATLAS_WIDTH + left + x) * 4;
         pixels.set(
           moss ? [shade, shade + 11, shade - 21, 255] : [shade, shade, shade, 255],
@@ -138,10 +143,18 @@ export function createTerrain(
   const group = new Group();
   const map = terrainAtlas();
   const materials = Object.fromEntries(
-    Object.entries(COLOURS).map(([name, hex]) => [
-      name,
-      new MeshLambertMaterial({ color: terrainColor(hex), map }),
-    ]),
+    Object.entries(COLOURS).map(([name, hex]) => {
+      const dirt = name === 'laneLow' || name === 'laneHigh';
+      return [
+        name,
+        new MeshLambertMaterial({
+          color: dirt ? new Color(hex) : terrainColor(hex),
+          emissive: dirt ? hex : 0,
+          emissiveIntensity: 0.3,
+          map,
+        }),
+      ];
+    }),
   ) as Record<Palette, MeshLambertMaterial>;
 
   const cliff = new MeshLambertMaterial({
@@ -209,7 +222,7 @@ export function createTerrain(
     const walls: number[] = [];
     const indices = geometry.getIndex();
     const uv = geometry.getAttribute('uv');
-    const topTile = tileHash(x, y) + (palette === 'low' ? VARIANTS : 0);
+    const topTile = tileHash(x, y) + (cell.lane ? DIRT_TILE : palette === 'low' ? VARIANTS : 0);
     if (indices === null) throw new Error('Expected indexed terrain geometry');
     for (const { start, count, materialIndex } of geometry.groups) {
       // BoxGeometry orders faces +X, -X, +Y, -Y, +Z, -Z. A ramp keeps those groups.
