@@ -1,13 +1,8 @@
 import { expect, type Page, test } from '@playwright/test';
-import sharp, { type Region } from 'sharp';
+import type { Region } from 'sharp';
 import { installAudioProbe } from './audio-probe';
-import { accelerateWaves } from './game-fixture';
-
-declare global {
-  interface Window {
-    advanceFrames(count: number): Promise<void>;
-  }
-}
+import { accelerateWaves, installFrameClock } from './game-fixture';
+import { countPixels, routeDots } from './route-pixels';
 
 async function selectBuildCell(page: Page) {
   await page.getByLabel('Crownfall 關卡').click({ position: { x: 622, y: 229 } });
@@ -20,26 +15,20 @@ async function selectBuildCell(page: Page) {
 const rightBank = { left: 784, top: 256, width: 48, height: 48 };
 const leftBank = { left: 497, top: 100, width: 48, height: 48 };
 
-async function routeDots(screenshot: Buffer, region: Region, color: 'current' | 'preview') {
-  const pixels = await sharp(screenshot).extract(region).removeAlpha().raw().toBuffer();
-  let count = 0;
-  for (let i = 0; i < pixels.length; i += 3) {
-    const red = pixels.readUInt8(i);
-    const green = pixels.readUInt8(i + 1);
-    const blue = pixels.readUInt8(i + 2);
-    const current = red < green * 0.83 && blue > green * 0.85 && green > 95;
-    const proposed = red > 150 && green > red * 0.8 && blue < green * 0.68;
-    if (color === 'current' ? current : proposed) count++;
-  }
-  return count;
+function enemyHealthPixels(screenshot: Buffer, region: Region) {
+  // Bright green health fills belong to live enemies.
+  return countPixels(
+    screenshot,
+    region,
+    (red, green, blue) => green > 195 && red > 95 && red < 145 && blue > 95 && blue < 145,
+  );
 }
 
 test('previews and builds a detour before attackers reach the castle via the other bank', async ({
   page,
 }, testInfo) => {
   test.slow();
-  await accelerateWaves(page);
-  const readAudio = await installAudioProbe(page);
+  const advanceFrames = await installFrameClock(page);
   await page.goto('./');
   await page.getByRole('button', { name: '開始遊戲' }).click();
   const lane = page.getByRole('button', { name: '路障示範格' });
@@ -65,6 +54,7 @@ test('previews and builds a detour before attackers reach the castle via the oth
   const balance = page.locator('#build-balance');
   const before = Number(await balance.textContent());
   await archer.click();
+  await advanceFrames(1);
   await expect(balance).toHaveText(String(before - 50));
   await expect(lane).toBeHidden();
   await expect(plateau).toBeHidden();
@@ -79,34 +69,45 @@ test('previews and builds a detour before attackers reach the castle via the oth
   await expect(lane).toBeHidden();
   await expect(plateau).toBeHidden();
   await archer.click();
+  await advanceFrames(1);
   await expect(balance).toHaveText('0');
   await page.getByRole('button', { name: /開波/ }).click();
-  await expect
-    .poll(async () => (await readAudio()).scheduledPaths, { timeout: 20000 })
-    .toContainEqual(expect.stringContaining('longbow-soft'));
-  await expect
-    .poll(async () => Number(await page.locator('#game-lives').textContent()), { timeout: 20000 })
-    .toBeLessThan(20);
+  // At 19 seconds surviving enemies have reached the middle of the left bank.
+  await advanceFrames(95);
+  const wave = await page.screenshot({ scale: 'css' });
+  await testInfo.attach('enemies on the committed route', { body: wave, contentType: 'image/png' });
+  expect(await enemyHealthPixels(committed, leftBank)).toBe(0);
+  expect(await enemyHealthPixels(wave, leftBank)).toBeGreaterThan(5);
+  expect(await enemyHealthPixels(wave, rightBank)).toBe(0);
+  expect(await routeDots(wave, leftBank, 'current')).toBeGreaterThan(20);
+
+  await advanceFrames(64);
+  expect(Number(await page.locator('#game-lives').textContent())).toBeLessThan(20);
+});
+
+test('previews and builds a barricade off the current route without rerouting', async ({
+  page,
+}) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: '開始遊戲' }).click();
+  // The designated left-bank site (7, 9) in the overview.
+  await page.getByLabel('Crownfall 關卡').click({ position: { x: 521, y: 124 } });
+  const ring = page.getByRole('region', { name: '建造環' });
+  const archer = ring.getByRole('button', { name: /弓箭塔/ });
+  await archer.hover();
+  await expect(page.getByText('維持目前路線', { exact: true })).toBeVisible();
+  const preview = await page.screenshot({ scale: 'css' });
+  expect(await routeDots(preview, leftBank, 'preview')).toBe(0);
+  await archer.click();
+  await expect(page.locator('#build-balance')).toHaveText('50');
+  const committed = await page.screenshot({ scale: 'css' });
+  expect(await routeDots(committed, rightBank, 'current')).toBeGreaterThan(20);
+  expect(await routeDots(committed, leftBank, 'current')).toBe(0);
 });
 
 test('a barricade built while enemies approach attacks as a normal tower', async ({ page }) => {
   test.slow();
-  // Use 200 ms frames to advance the game without exceeding its catch-up limit.
-  await page.addInitScript(() => {
-    const nextFrame = window.requestAnimationFrame.bind(window);
-    let now = 0;
-    window.requestAnimationFrame = (callback) => nextFrame(() => callback(now));
-    Object.defineProperty(window, 'advanceFrames', {
-      value: async (frames: number) => {
-        for (let i = 0; i < frames; i++) {
-          now += 200;
-          await new Promise((resolve) => nextFrame(resolve));
-        }
-      },
-    });
-  });
-  const advanceFrames = (frames: number) =>
-    page.evaluate((count) => window.advanceFrames(count), frames);
+  const advanceFrames = await installFrameClock(page);
   const readAudio = await installAudioProbe(page);
   await page.goto('./');
   await page.getByRole('button', { name: '開始遊戲' }).click();

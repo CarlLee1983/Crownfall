@@ -2,7 +2,12 @@ import { TICKS_PER_SECOND } from './clock';
 import type { Content, EnemyDefinition, TowerDefinition, TowerUpgrades, Wave } from './content';
 import { type CellIndex, cellAt, cellIndex, cellPoint, type GridPoint, type Level } from './level';
 import { type DistanceField, distanceField, nextCell } from './pathing';
-import { checkPlacement, type PlacementRejection, rangeBonusForLayers } from './placement';
+import {
+  checkPlacement,
+  isWithinTowerRange,
+  type PlacementRejection,
+  towerRange,
+} from './placement';
 import { assertRampsRiseOneWay } from './terrain';
 
 export type EnemyId = number & { readonly __brand: 'EnemyId' };
@@ -273,11 +278,6 @@ export function waveStartRejection(state: GameState): WaveStartRejection | undef
   return typeof wave === 'string' ? wave : undefined;
 }
 
-function towerRange(state: GameState, tower: Tower, rules: TowerRules, targetLayer: number) {
-  const upgraded = rules.range + (tower.level - 1) * state.towerUpgrades.rangeBonus;
-  return upgraded + rangeBonusForLayers(state, tower.layer, targetLayer);
-}
-
 function towerDamage(state: GameState, tower: Tower, rules: TowerRules) {
   return rules.damage * state.towerUpgrades.damageMultiplier ** (tower.level - 1);
 }
@@ -297,7 +297,7 @@ export function queryTower(
   return {
     kind: tower.kind,
     level: tower.level,
-    range: towerRange(state, tower, rules, targetLayer),
+    range: towerRange(state, tower, rules.range, targetLayer),
     damage: towerDamage(state, tower, rules),
     upgradeCost: costPercent === undefined ? null : (rules.cost * costPercent) / 100,
     refund:
@@ -463,8 +463,8 @@ function attack(state: GameState): StepResult {
       const point = enemyPosition(state, enemy);
       const targetCell = cellIndex(state.level.width, Math.round(point.x), Math.round(point.y));
       const targetLayer = cellAt(state.level, targetCell).layer;
-      const radius = towerRange(state, tower, definition, targetLayer);
-      if (Math.hypot(point.x - origin.x, point.y - origin.y) > radius) continue;
+      const radius = towerRange(state, tower, definition.range, targetLayer);
+      if (!isWithinTowerRange(origin, point, radius)) continue;
       const remaining =
         (state.distance[enemy.to] ?? Number.POSITIVE_INFINITY) +
         (enemy.from === enemy.to ? 0 : 1 - enemy.progress);

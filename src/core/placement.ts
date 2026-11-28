@@ -1,5 +1,5 @@
 import type { GameState, Tower } from './game';
-import type { CellIndex, Level } from './level';
+import { type CellIndex, cellAt, cellPoint, type GridPoint, type Level } from './level';
 import { type DistanceField, distanceField, nextCell } from './pathing';
 
 export type PlacementRejection =
@@ -118,6 +118,47 @@ export function rangeBonusForLayers(state: GameState, towerLayer: number, target
   return Math.max(0, towerLayer - targetLayer) * state.heightRangeBonus;
 }
 
+export function towerRange(
+  state: GameState,
+  tower: Pick<Tower, 'layer' | 'level'>,
+  baseRange: number,
+  targetLayer: number,
+): number {
+  const upgraded = baseRange + (tower.level - 1) * state.towerUpgrades.rangeBonus;
+  return upgraded + rangeBonusForLayers(state, tower.layer, targetLayer);
+}
+
+export function isWithinTowerRange(origin: GridPoint, target: GridPoint, range: number): boolean {
+  return Math.hypot(target.x - origin.x, target.y - origin.y) <= range;
+}
+
+/** 對目標格中心查詢新塔的高度優勢及射程。 */
+export function queryPlacementTarget(
+  state: GameState,
+  cell: CellIndex,
+  kind: string,
+  target: CellIndex,
+): { heightBonus: number; inRange: boolean } | undefined {
+  const definition = towerDefinition(state, kind);
+  if (definition === undefined) return undefined;
+
+  const { layer } = cellAt(state.level, cell);
+  const targetLayer = cellAt(state.level, target).layer;
+  const range = towerRange(state, { layer, level: 1 }, definition.range, targetLayer);
+  return {
+    heightBonus: rangeBonusForLayers(state, layer, targetLayer),
+    inRange: isWithinTowerRange(
+      cellPoint(state.level, cell),
+      cellPoint(state.level, target),
+      range,
+    ),
+  };
+}
+
+export function sameRoute(a: readonly CellIndex[], b: readonly CellIndex[]): boolean {
+  return a === b || (a.length === b.length && a.every((cell, i) => cell === b[i]));
+}
+
 export function currentRoute(state: GameState): readonly CellIndex[] {
   return routeFromSpawn(state.level, state.distance);
 }
@@ -131,7 +172,7 @@ function segmentKey(from: CellIndex, to: CellIndex): string {
   return `${Math.min(from, to)}:${Math.max(from, to)}`;
 }
 
-/** 場上敵人會經過、但入口到終點的目前路線未涵蓋的路段。 */
+/** 場上敵人會經過、但入口到城堡的目前路線未涵蓋的路段。 */
 export function enemyRouteSegments(
   state: GameState,
   previous?: GameState,
@@ -207,7 +248,7 @@ export function previewPlacement(
   return {
     reason,
     route: routeFromSpawn(state.level, distance),
-    rangeAtGround: range + heightBonus,
+    rangeAtGround: towerRange(state, { layer, level: 1 }, range, 0),
     heightBonus,
   };
 }

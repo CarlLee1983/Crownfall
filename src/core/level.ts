@@ -43,7 +43,7 @@ const LEGEND: Readonly<Record<string, Cell & { readonly marker?: Marker }>> = {
 
 /**
  * 從字元圖建立關卡：`.` 低地、`#` 高地、`=` 低層車道、`+` 高層車道、`^` 坡道、
- * `-` 不可建造的低層車道、`~` 裝飾草地、`P` 固定高台、`S`／`s` 低層／高層入口、`G`／`g` 低層／高層終點。
+ * `-` 不可建造的低層車道、`~` 裝飾草地、`P` 固定高台、`S`／`s` 低層／高層入口、`G`／`g` 低層／高層城堡。
  */
 export function parseLevel(rows: readonly string[]): Level {
   const width = rows[0]?.length ?? 0;

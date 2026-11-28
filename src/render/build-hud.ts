@@ -12,6 +12,7 @@ import {
   type RejectionReason,
   type Structure,
   samePlacementPreviewInputs,
+  sameRoute,
   type Tower,
 } from '../core';
 import { createBuildGuide } from './build-guide';
@@ -61,15 +62,17 @@ function towerActionButton(label: string, shortcut: string) {
 function describePreview(state: GameState, cell: CellIndex, kind: string) {
   const preview = previewPlacement(state, cell, kind);
   const before = currentRoute(state);
-  const added = preview.route.length - before.length;
-  const changesRoute = added !== 0 || preview.route.some((cell, index) => cell !== before[index]);
+  const onLane = cellAt(state.level, cell).lane;
   const route =
-    cellAt(state.level, cell).lane && preview.route.length > 0 && changesRoute
+    onLane && preview.route.length > 0 && !sameRoute(preview.route, before)
       ? preview.route
       : undefined;
   const lines: string[] = [];
   if (route !== undefined) {
+    const added = route.length - before.length;
     lines.push(added === 0 ? '改走另一條等長路線' : `路線 +${added} 格`);
+  } else if (onLane && preview.reason === undefined) {
+    lines.push('維持目前路線');
   }
   if (preview.heightBonus > 0) lines.push(`對高度層 0 的射程 +${preview.heightBonus}`);
   if (preview.reason !== undefined) lines.push(REASONS[preview.reason]);

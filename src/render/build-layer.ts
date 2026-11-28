@@ -26,6 +26,7 @@ import {
   type Level,
   type RouteSegment,
   type Structure,
+  sameRoute,
   type Tower,
 } from '../core';
 import { nextCell } from '../core/pathing';
@@ -35,7 +36,8 @@ import { sampleRoute } from './route-curve';
 import { LAYER_HEIGHT } from './terrain';
 import type { LoadedTowerModel } from './tower-model';
 
-const SOLID_ROUTE_LIFT = 0.035;
+const CURRENT_ROUTE_LIFT = 0.035;
+const PREVIEW_ROUTE_LIFT = 0.065;
 // 每格取八段，包含邊中點，讓圓弧與坡面轉折都有取樣點。
 const ROUTE_STEPS_PER_CELL = 8;
 
@@ -182,8 +184,8 @@ function appendMotionTransition(positions: number[], state: GameState, motion: E
   const append = (next: GridPoint) => {
     if (point.x === next.x && point.y === next.y) return;
     positions.push(
-      ...routePoint(level, point, SOLID_ROUTE_LIFT),
-      ...routePoint(level, next, SOLID_ROUTE_LIFT),
+      ...routePoint(level, point, CURRENT_ROUTE_LIFT),
+      ...routePoint(level, next, CURRENT_ROUTE_LIFT),
     );
     point = next;
   };
@@ -226,10 +228,10 @@ function drawBranches(
 
     const points = [start, turn, end];
     const steps = start.x === end.x || start.y === end.y ? 2 : ROUTE_STEPS_PER_CELL;
-    let point = routePoint(level, sampleRoute(points, 0.25), SOLID_ROUTE_LIFT);
+    let point = routePoint(level, sampleRoute(points, 0.25), CURRENT_ROUTE_LIFT);
     for (let i = 1; i <= steps; i++) {
       const progress = 0.25 + i / (2 * steps);
-      const next = routePoint(level, sampleRoute(points, progress), SOLID_ROUTE_LIFT);
+      const next = routePoint(level, sampleRoute(points, progress), CURRENT_ROUTE_LIFT);
       positions.push(...point, ...next);
       point = next;
     }
@@ -255,12 +257,12 @@ function drawBranches(
   for (const { from, to } of segments) {
     const start = cellPoint(level, from);
     const end = cellPoint(level, to);
-    const middle = routePoint(level, sampleRoute([start, end], 0.5), SOLID_ROUTE_LIFT);
+    const middle = routePoint(level, sampleRoute([start, end], 0.5), CURRENT_ROUTE_LIFT);
     if (retainHalf(from, to)) {
-      positions.push(...routePoint(level, start, SOLID_ROUTE_LIFT), ...middle);
+      positions.push(...routePoint(level, start, CURRENT_ROUTE_LIFT), ...middle);
     }
     if (retainHalf(to, from)) {
-      positions.push(...middle, ...routePoint(level, end, SOLID_ROUTE_LIFT));
+      positions.push(...middle, ...routePoint(level, end, CURRENT_ROUTE_LIFT));
     }
   }
   for (const motion of transitions) appendMotionTransition(positions, state, motion);
@@ -268,10 +270,6 @@ function drawBranches(
   line.geometry = new LineSegmentsGeometry();
   line.visible = positions.length > 0;
   if (line.visible) line.geometry.setPositions(positions);
-}
-
-function sameRoute(a: readonly CellIndex[], b: readonly CellIndex[]): boolean {
-  return a === b || (a.length === b.length && a.every((cell, i) => cell === b[i]));
 }
 
 function sameTurnKeys(
@@ -316,7 +314,7 @@ export function createBuildLayer(
 
   const group = new Group();
   const towers = new Group();
-  const routeLine = new Line2(
+  const currentRouteLine = new Line2(
     new LineGeometry(),
     new LineMaterial({
       color: 0x8fdfd0,
@@ -330,7 +328,7 @@ export function createBuildLayer(
     new LineSegmentsGeometry(),
     new LineMaterial({ color: 0x8fdfd0, linewidth: 3, alphaToCoverage: true }),
   );
-  const dashed = new Line2(
+  const previewRouteLine = new Line2(
     new LineGeometry(),
     new LineMaterial({
       color: 0xffe381,
@@ -351,12 +349,12 @@ export function createBuildLayer(
       depthWrite: false,
     }),
   );
-  routeLine.layers.set(OVERLAY_LAYER);
+  currentRouteLine.layers.set(OVERLAY_LAYER);
   branches.layers.set(OVERLAY_LAYER);
-  dashed.layers.set(OVERLAY_LAYER);
+  previewRouteLine.layers.set(OVERLAY_LAYER);
   range.layers.set(OVERLAY_LAYER);
-  routeLine.visible = branches.visible = dashed.visible = range.visible = false;
-  group.add(towers, routeLine, dashed, range, branches);
+  currentRouteLine.visible = branches.visible = previewRouteLine.visible = range.visible = false;
+  group.add(towers, currentRouteLine, previewRouteLine, range, branches);
 
   let lastState: GameState | undefined;
   let lastInterpolationState: GameState | undefined;
@@ -383,7 +381,7 @@ export function createBuildLayer(
     const routeChanged = levelChanged || lastState?.distance !== state.distance;
     if (routeChanged) {
       const route = currentRoute(state);
-      drawRoute(routeLine, state.level, route, SOLID_ROUTE_LIFT);
+      drawRoute(currentRouteLine, state.level, route, CURRENT_ROUTE_LIFT);
       mainEdges.clear();
       let from: CellIndex | undefined;
       for (const to of route) {
@@ -423,13 +421,13 @@ export function createBuildLayer(
     }
     const proposal = preview?.route;
     if (proposal === undefined) {
-      dashed.visible = false;
+      previewRouteLine.visible = false;
     } else if (
       levelChanged ||
       previousProposal === undefined ||
       !sameRoute(previousProposal, proposal)
     ) {
-      drawRoute(dashed, state.level, proposal, 0.065);
+      drawRoute(previewRouteLine, state.level, proposal, PREVIEW_ROUTE_LIFT);
     }
     range.visible = preview !== undefined && preview.range > 0;
     if (preview !== undefined) {

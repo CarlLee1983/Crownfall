@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
-import sharp, { type Region } from 'sharp';
 import { installAudioProbe } from './audio-probe';
+import { routeDots } from './route-pixels';
 
 test.use({ viewport: { width: 1200, height: 800 } });
 
@@ -14,19 +14,8 @@ test('builds on the right bank high platform before enemies enter its range', as
   await testInfo.attach('two banks overview', { body: overview, contentType: 'image/png' });
   const rightBank = { left: 767, top: 290, width: 40, height: 40 };
   const otherBank = { left: 448, top: 118, width: 40, height: 40 };
-  const dots = async (region: Region) => {
-    const pixels = await sharp(overview).extract(region).removeAlpha().raw().toBuffer();
-    let count = 0;
-    for (let i = 0; i < pixels.length; i += 3) {
-      const red = pixels.readUInt8(i);
-      const green = pixels.readUInt8(i + 1);
-      const blue = pixels.readUInt8(i + 2);
-      if (red < green * 0.83 && blue > green * 0.85 && green > 95) count++;
-    }
-    return count;
-  };
-  expect(await dots(rightBank)).toBeGreaterThan(20);
-  expect(await dots(otherBank)).toBe(0);
+  expect(await routeDots(overview, rightBank, 'current')).toBeGreaterThan(20);
+  expect(await routeDots(overview, otherBank, 'current')).toBe(0);
 
   await page.getByLabel('Crownfall 關卡').click({ position: { x: 712, y: 254 } });
   const ring = page.getByRole('region', { name: '建造環' });

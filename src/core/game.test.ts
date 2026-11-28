@@ -15,6 +15,7 @@ import {
   type Level,
   parseLevel,
   previewPlacement,
+  queryPlacementTarget,
   queryTower,
   samePlacementPreviewInputs,
   step,
@@ -1055,6 +1056,23 @@ describe('placing towers', () => {
     expect(previewPlacement(inMotion, cell, 'basic').reason).toBeUndefined();
     expect(previewPlacement(atNextCell, cell, 'basic').reason).toBe('enemyOnCell');
     expect(samePlacementPreviewInputs(inMotion, atNextCell)).toBe(false);
+  });
+
+  it('queries placement reach against the target cell’s height rather than ground level', () => {
+    const initial = createGame(placementContent, parseLevel(['s+++g', '.....', '..#..', '.....']));
+    const tower = 12 as CellIndex;
+    expect(queryPlacementTarget(initial, tower, 'basic', 15 as CellIndex)).toEqual({
+      heightBonus: 1.5,
+      inRange: true,
+    });
+    expect(queryPlacementTarget(initial, tower, 'basic', 0 as CellIndex)).toEqual({
+      heightBonus: 0,
+      inRange: false,
+    });
+    expect(queryPlacementTarget(initial, tower, 'basic', 2 as CellIndex)).toEqual({
+      heightBonus: 0,
+      inRange: true,
+    });
   });
 
   it('previews the high-ground bonus against layer 0 without changing the route', () => {
