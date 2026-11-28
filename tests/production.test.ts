@@ -188,8 +188,12 @@ test('horizontal pan stops at the map edge without drifting vertically', async (
   expect(await anchorPosition()).toEqual(edge);
 });
 
-test('shows the final kill before opening the victory dialog', async ({ page, baseURL }) => {
-  // Use the normal production entry and map with one enemy and one lethal shot.
+async function startOneEnemyCampaign(
+  page: Page,
+  baseURL: string | undefined,
+  contentOverrides: string,
+): Promise<void> {
+  // Exercise the normal production entry and map with deterministic combat data.
   const bundled = await build({
     build: { write: false },
     plugins: [
@@ -198,7 +202,7 @@ test('shows the final kill before opening the victory dialog', async ({ page, ba
         transform(code, id) {
           if (!id.endsWith('/src/content/content.ts')) return;
           return `${code}
-            Object.assign(content.towers.basic, { range: 20, damage: 100 });
+            ${contentOverrides}
             content.waves.splice(0, content.waves.length, {
               groups: [{ enemy: 'grunt', count: 1, interval: 1, delay: 0 }]
             });
@@ -251,6 +255,14 @@ test('shows the final kill before opening the victory dialog', async ({ page, ba
 
   const startWave = page.getByRole('button', { name: /開波/ });
   await startWave.dispatchEvent('click');
+}
+
+test('shows the final kill before opening the victory dialog', async ({ page, baseURL }) => {
+  await startOneEnemyCampaign(
+    page,
+    baseURL,
+    'Object.assign(content.towers.basic, { range: 20, damage: 100 });',
+  );
   await page.clock.runFor(64);
   const victory = page.getByRole('dialog', { name: '勝利' });
   await expect(page.locator('#wave-feedback')).toContainText('清波獎勵');
@@ -262,4 +274,31 @@ test('shows the final kill before opening the victory dialog', async ({ page, ba
   await expect(victory).toBeHidden();
   await page.clock.runFor(230);
   await expect(victory).toBeVisible();
+});
+
+test('shows defeat after the castle pulse while many shots are still queued', async ({
+  page,
+  baseURL,
+}) => {
+  await startOneEnemyCampaign(
+    page,
+    baseURL,
+    `
+      content.startingLives = 1;
+      Object.assign(content.enemies.grunt, { hp: 100, speed: 100 });
+      Object.assign(content.towers.basic, { range: 200, damage: 1, shotsPerSecond: 30 });
+    `,
+  );
+  const lives = page.locator('#game-lives');
+  for (let elapsed = 0; elapsed < 1_000; elapsed += 16) {
+    await page.clock.runFor(16);
+    if ((await lives.textContent()) === '0') break;
+  }
+  const defeat = page.getByRole('dialog', { name: '敗北' });
+  await expect(lives).toHaveText('0');
+  expect(await lives.evaluate((element) => Number(element.style.scale))).toBeGreaterThan(1);
+  await expect(defeat).toBeHidden();
+
+  await page.clock.runFor(250);
+  await expect(defeat).toBeVisible();
 });

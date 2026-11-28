@@ -141,7 +141,12 @@ function startGame(models: LoadedModels): void {
         reaction: feedback.reaction,
       });
       builds.update(previous, current, alpha, hud.update(current), enemies.routeMotions());
-      waveHud.update(current, time.wallMs, !shots.hasFlights() && !feedback.settling);
+      // A loss is caused by a leak, so only the castle pulse gates its dialog.
+      const resultReady =
+        current.phase === 'defeat'
+          ? feedback.castleFlash === 0
+          : !shots.hasFlights() && !feedback.settling;
+      waveHud.update(current, time.wallMs, resultReady);
       shots.update(time.gameMs);
       combatHud.update(feedback);
       torches.update(time.gameMs / 1000);
