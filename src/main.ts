@@ -5,6 +5,7 @@ import { content } from './content/content';
 import { torchPositions } from './content/decor';
 import { level } from './content/level';
 import { createGame } from './core';
+import { connectAudioHud } from './render/audio-hud';
 import { createBuildHud } from './render/build-hud';
 import { createBuildLayer } from './render/build-layer';
 import { createCamera } from './render/camera';
@@ -28,6 +29,7 @@ if (!(help instanceof HTMLDialogElement) || !(start instanceof HTMLButtonElement
   throw new Error('開始遊戲的 HTML 元素類型錯誤');
 }
 const audio = createMixer();
+connectAudioHud(audio.setVolumes);
 
 const loading = element('model-loading');
 const error = element('model-error');
