@@ -1,6 +1,6 @@
 import { Mesh, MeshLambertMaterial, PerspectiveCamera } from 'three';
 import { expect, it, onTestFinished, vi } from 'vitest';
-import { type Content, createGame, type EnemyId, parseLevel, step } from '../core';
+import { type Content, createGame, parseLevel, step } from '../core';
 import { cellIndex } from '../core/level';
 import { createCombatFeedback } from './combat-feedback';
 import { createEnemyLayer } from './enemies';
@@ -144,14 +144,6 @@ it('triggers one shake for several leaks in the same tick', () => {
   expect(reduced.shake.toArray()).toEqual([0, 0]);
   expect(reduced.castleFlash).toBe(multiple.castleFlash);
   expect(reduced.lifePulse).toBe(multiple.lifePulse);
-});
-
-it('flashes only the primary target of a splash shot and clears the flash after 100ms', () => {
-  const { feedback, advance } = setup({ count: 2, damage: 4 });
-  advance(100);
-  expect(feedback.update(100, false).hitFlash(1 as EnemyId)).toBeGreaterThan(0);
-  expect(feedback.update(100, false).hitFlash(2 as EnemyId)).toBe(0);
-  expect(feedback.update(200, false).hitFlash(1 as EnemyId)).toBe(0);
 });
 
 it('keeps feedback fixed at the same game time and removes it after its lifetime', () => {

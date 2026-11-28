@@ -138,7 +138,7 @@ export function createCombatFeedback(
     direction: Vector3,
     gameTime: number,
   ): void {
-    const archer = towerKind === 'basic';
+    const archer = towerKind === 'basic' || towerKind === 'splash';
     hits.delete(target.id);
     reactions.set(target.id, { start: gameTime, direction, death: bounty !== undefined, archer });
     if (bounty !== undefined) {

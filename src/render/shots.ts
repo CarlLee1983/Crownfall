@@ -4,6 +4,7 @@ import {
   Group,
   Mesh,
   MeshBasicMaterial,
+  OctahedronGeometry,
   RingGeometry,
   Vector3,
 } from 'three';
@@ -14,10 +15,10 @@ import {
   cellPoint,
   type Enemy,
   type EnemyId,
-  enemyPosition,
   type GameEvent,
   type GameState,
   groundHeight,
+  type Level,
   type ShotImpact,
 } from '../core';
 import type { EnemyLayer } from './enemies';
@@ -25,11 +26,12 @@ import { WORLD_LAYER } from './layers';
 import { LAYER_HEIGHT } from './terrain';
 
 const SHOT_DURATION_MS = 180;
-const SPLASH_DURATION_MS = 300;
-const SPLASH_COLOR = 0xf395ff;
-
-const ARROW_SPEED = 0.021;
-const ARROW_ARC = 0.25;
+const SPLASH_DURATION_MS = 202;
+const SPLASH_COLOR = 0xc169ff;
+const PROJECTILES = {
+  basic: { speed: 0.021, arc: 0.25 },
+  splash: { speed: 0.016, arc: 0.4 },
+};
 const MIN_FLIGHT_MS = 92;
 const IMPACT_GAP_MS = 38;
 const UP = new Vector3(0, 1, 0);
@@ -58,7 +60,8 @@ interface ImpactHandlers {
 
 interface Flight {
   readonly shot: FiredShot;
-  readonly model: Group | undefined;
+  readonly projectile: { readonly model: Group; readonly arc: number } | undefined;
+  readonly level: Level;
   readonly origin: Vector3;
   readonly endpoint: Vector3;
   readonly impactPositions: Map<EnemyId, Vector3>;
@@ -73,21 +76,27 @@ export function createShotLayer(
 ) {
   const group = new Group();
   const endpoint = new Vector3();
-  const ringGeometry = new RingGeometry(0.93, 1, 48).rotateX(-Math.PI / 2);
+  const ringGeometry = new RingGeometry(0.88, 1, 36).rotateX(-Math.PI / 2);
   type Shot = {
     readonly start: number;
     readonly target: EnemyId | undefined;
     readonly line: Line2;
-    readonly ring: Mesh<RingGeometry, MeshBasicMaterial> | undefined;
   };
   const active = new Set<Shot>();
   const flights = new Set<Flight>();
+  const splashes = new Set<{
+    readonly ring: Mesh<RingGeometry, MeshBasicMaterial>;
+    readonly radius: number;
+    readonly start: number;
+  }>();
   const pending = new Map<EnemyId, { hp: number; remaining: number }>();
   const lastImpact = new Map<EnemyId, number>();
   const shaftGeometry = new BoxGeometry(0.055, 0.36, 0.055);
   const tipGeometry = new ConeGeometry(0.07, 0.15, 4);
   const tailGeometry = new BoxGeometry(0.12, 0.095, 0.026);
   const arrowMaterial = new MeshBasicMaterial({ color: 0xffe5a1 });
+  const orbGeometry = new OctahedronGeometry(0.135);
+  const orbMaterial = new MeshBasicMaterial({ color: SPLASH_COLOR });
 
   function arrow(origin: Vector3): Group {
     const model = new Group();
@@ -102,6 +111,32 @@ export function createShotLayer(
     model.position.copy(origin);
     group.add(model);
     return model;
+  }
+
+  function orb(origin: Vector3): Group {
+    const model = new Group();
+    const glow = new Mesh(orbGeometry, orbMaterial);
+    const spark = new Mesh(orbGeometry, arrowMaterial);
+    spark.position.y = -0.19;
+    spark.scale.setScalar(0.55);
+    for (const part of [glow, spark]) part.layers.set(WORLD_LAYER);
+    model.add(glow, spark);
+    model.position.copy(origin);
+    group.add(model);
+    return model;
+  }
+
+  function splash(level: Level, endpoint: Vector3, radius: number, start: number): void {
+    const ring = new Mesh(
+      ringGeometry,
+      new MeshBasicMaterial({ color: SPLASH_COLOR, transparent: true, depthWrite: false }),
+    );
+    const { x, z } = endpoint;
+    const ground = groundHeight(level, { x, y: z }) * LAYER_HEIGHT;
+    ring.layers.set(WORLD_LAYER);
+    ring.position.set(x, ground + 0.07, z);
+    group.add(ring);
+    splashes.add({ ring, radius, start });
   }
 
   function notify(shot: FiredShot): void {
@@ -126,10 +161,6 @@ export function createShotLayer(
     group.remove(shot.line);
     shot.line.geometry.dispose();
     shot.line.material.dispose();
-    if (shot.ring !== undefined) {
-      group.remove(shot.ring);
-      shot.ring.material.dispose();
-    }
     active.delete(shot);
   }
 
@@ -152,7 +183,10 @@ export function createShotLayer(
         from.y,
       );
       const archer = tower.kind === 'basic' && event.splashRadius === undefined;
-      const delay = archer || event.impacts.some(({ target }) => pending.has(target.id));
+      const mage = event.splashRadius !== undefined;
+      const projectile = mage ? PROJECTILES.splash : archer ? PROJECTILES.basic : undefined;
+      const delay =
+        projectile !== undefined || event.impacts.some(({ target }) => pending.has(target.id));
       if (delay) {
         deferred.add(event);
         const impactPositions = new Map<EnemyId, Vector3>();
@@ -169,20 +203,26 @@ export function createShotLayer(
         const aim = enemies.impactPosition(state, event.target, new Vector3());
         flights.add({
           shot: event,
-          model: archer ? arrow(origin) : undefined,
+          projectile:
+            projectile === undefined
+              ? undefined
+              : { model: mage ? orb(origin) : arrow(origin), arc: projectile.arc },
+          level: state.level,
           origin,
           endpoint: aim,
           impactPositions,
           start: frameTime,
-          duration: archer ? Math.max(MIN_FLIGHT_MS, origin.distanceTo(aim) / ARROW_SPEED) : 0,
+          duration:
+            projectile === undefined
+              ? 0
+              : Math.max(MIN_FLIGHT_MS, origin.distanceTo(aim) / projectile.speed),
         });
       } else {
         notify(event);
       }
-      if (archer) continue;
+      if (projectile !== undefined) continue;
 
       const target = enemies.impactPosition(state, event.target, endpoint);
-      const color = event.splashRadius === undefined ? 0xffedb0 : SPLASH_COLOR;
       const line = new Line2(
         new LineGeometry().setPositions([
           origin.x,
@@ -192,28 +232,15 @@ export function createShotLayer(
           target.y,
           target.z,
         ]),
-        new LineMaterial({ color, linewidth: 3, transparent: true, depthWrite: false }),
+        new LineMaterial({ color: 0xffedb0, linewidth: 3, transparent: true, depthWrite: false }),
       );
       line.layers.set(WORLD_LAYER);
       group.add(line);
 
-      let ring: Mesh<RingGeometry, MeshBasicMaterial> | undefined;
-      if (event.splashRadius !== undefined && event.splashRadius > 0) {
-        ring = new Mesh(
-          ringGeometry,
-          new MeshBasicMaterial({ color, transparent: true, depthTest: false, depthWrite: false }),
-        );
-        const impact = enemyPosition(state, event.target);
-        const ground = groundHeight(state.level, impact) * LAYER_HEIGHT;
-        ring.layers.set(WORLD_LAYER);
-        ring.position.set(impact.x, ground + 0.065, impact.y);
-        ring.scale.set(event.splashRadius, 1, event.splashRadius);
-        group.add(ring);
-      }
       const killed = event.impacts.some(
         ({ target, bounty }) => target.id === event.target.id && bounty !== undefined,
       );
-      active.add({ start: frameTime, target: killed ? undefined : event.target.id, line, ring });
+      active.add({ start: frameTime, target: killed ? undefined : event.target.id, line });
     }
     return events.filter(
       (event) =>
@@ -224,7 +251,7 @@ export function createShotLayer(
   function advanceFlights(frameTime: number, alpha: number): void {
     const blocked = new Set<EnemyId>();
     for (const flight of flights) {
-      const { shot, origin, endpoint, duration, model, start } = flight;
+      const { shot, origin, endpoint, duration, projectile, start } = flight;
       enemies.aimPosition(shot.target.id, alpha, endpoint);
       const elapsed = frameTime - start;
       const ready =
@@ -251,16 +278,20 @@ export function createShotLayer(
           handlers.onDelayedImpact?.(impact, shot.towerKind, position, direction, frameTime);
         }
         notify(shot);
-        if (model !== undefined) group.remove(model);
+        if (shot.splashRadius !== undefined && shot.splashRadius > 0) {
+          splash(flight.level, endpoint, shot.splashRadius, frameTime);
+        }
+        if (projectile !== undefined) group.remove(projectile.model);
         flights.delete(flight);
         continue;
       }
       for (const { target } of shot.impacts) blocked.add(target.id);
-      if (model === undefined) continue;
+      if (projectile === undefined) continue;
+      const { model, arc } = projectile;
       const progress = Math.min(0.96, Math.max(0, elapsed / duration));
       model.position.copy(origin).lerp(endpoint, progress);
-      model.position.y += 4 * ARROW_ARC * progress * (1 - progress);
-      tangent.y += 4 * ARROW_ARC * (1 - 2 * progress);
+      model.position.y += 4 * arc * progress * (1 - progress);
+      tangent.y += 4 * arc * (1 - 2 * progress);
       if (tangent.lengthSq() > 0) model.quaternion.setFromUnitVectors(UP, tangent.normalize());
     }
     for (const [id, at] of lastImpact) {
@@ -291,12 +322,21 @@ export function createShotLayer(
           geometry.computeBoundingSphere();
         }
       }
-      if (shot.ring !== undefined) {
-        shot.ring.material.opacity = Math.max(0, 1 - elapsed / SPLASH_DURATION_MS);
-      }
-      if (elapsed < (shot.ring === undefined ? SHOT_DURATION_MS : SPLASH_DURATION_MS)) continue;
+      if (!withinLifetime) remove(shot);
+    }
 
-      remove(shot);
+    for (const effect of splashes) {
+      const { ring, radius, start } = effect;
+      const progress = (frameTime - start) / SPLASH_DURATION_MS;
+      if (progress >= 1) {
+        group.remove(ring);
+        ring.material.dispose();
+        splashes.delete(effect);
+        continue;
+      }
+      const size = radius * (0.28 + 0.72 * progress);
+      ring.scale.set(size, 1, size);
+      ring.material.opacity = 0.36 * (1 - progress);
     }
   }
 
@@ -308,6 +348,8 @@ export function createShotLayer(
     displayHp: (id: EnemyId) => pending.get(id)?.hp,
     reset: () => {
       active.forEach(remove);
+      for (const { ring } of splashes) ring.material.dispose();
+      splashes.clear();
       group.clear();
       flights.clear();
       pending.clear();
