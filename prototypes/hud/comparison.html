@@ -1,0 +1,27 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><title>Crownfall · 介面比較原型</title>
+<style>
+*{box-sizing:border-box}body{margin:0;height:100vh;background:#17191e url(world.jpg) center/cover;color:var(--ink);font:17px/1.55 system-ui}body{--ink:#fff0cc;--panel:#28221d;--edge:#aa8859;--accent:#e8bf79}
+body.B{--ink:#271d18;--panel:#dbcca7;--edge:#684837;--accent:#673026;font-family:"Songti TC",serif}body.C{--ink:#e9fff9;--panel:#122528;--edge:#668b87;--accent:#a7eadb;font-family:ui-monospace,system-ui}
+.box,button{background:var(--panel);border:1px solid var(--edge);color:var(--ink);box-shadow:0 3px 10px #0007}
+.A .box{border:4px double var(--edge);background:linear-gradient(135deg,#383027,#201c19)}.B .box{border-left:8px solid #733d30;background:repeating-linear-gradient(0deg,#dacba7,#dacba7 3px,#deceac 4px)}.C .box{border-width:1px 1px 3px;background:#102226f5}
+button{font:inherit;font-weight:650;padding:6px 14px;min-height:44px;cursor:pointer}button:hover,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+header,aside,article,section,footer{position:fixed}header,aside{padding:12px 18px}header{top:18px;left:20px}aside{bottom:22px;right:20px}strong{font-variant-numeric:tabular-nums;color:var(--accent)} aside b{display:block;margin-bottom:8px}
+.B header{top:22%;left:16px}.B aside{bottom:auto;top:calc(22% + 58px);left:16px;right:auto;width:177px}.B aside button{display:block;width:100%;margin-top:5px}
+.C header{left:auto;right:18px}.C aside{top:18px;bottom:auto;left:18px;right:auto}.C aside b{display:inline;margin-right:14px}
+article,section{left:50%;top:46%;transform:translate(-50%,-50%)}article{padding:22px 32px;max-width:520px}article h1{margin:0;color:var(--accent);font-size:34px}article p{white-space:pre-line}.B article{left:63%;transform:translate(-50%,-50%) rotate(-1deg)}.C article{border-left:5px solid var(--accent)}section{text-align:center}section p{margin:0 auto 10px;width:max-content;padding:4px 12px}section button{margin:3px}.A section button:nth-of-type(2){transform:translateY(-15px)}.C section button{border-bottom:3px solid var(--accent)}
+footer{bottom:8px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:9px;background:#f5f3ee;color:#17191e;border-radius:8px;padding:4px 8px;font:14px system-ui}footer button,select{font:inherit;color:#17191e;background:white;border:1px solid #aaa;min-height:32px;box-shadow:none}body[data-scene="現況"]{background-image:url(current.jpg)}body[data-scene="現況"] main{display:none}
+</style>
+<main><header class="box"></header><aside class="box"><b id="wave"></b><button id="start">開波</button> <button id="pause">暫停</button> <button id="speed">1×</button></aside><div id="stage"></div></main>
+<footer><button aria-label="上一款" id="prev">←</button><span id="label"></span><button aria-label="下一款" id="next">→</button><select aria-label="預覽場景" id="scene"></select></footer>
+<script>
+const names=['A 王城鐵框','B 守城手札','C 符文哨站'], scenes=['操作說明','備戰','建造環','升級與賣出環','勝利','失敗','現況'];let i=Math.max(0,'ABC'.indexOf(new URLSearchParams(location.search).get('variant')||'A')),money=100,tower='弓箭塔',round=1;
+scene.replaceChildren(...scenes.map(s=>new Option(s,s)));
+function show(s){scene.value=s;draw()}
+function draw(){const s=scene.value,v='ABC'[i];document.body.className=v;document.body.dataset.scene=s;label.textContent=names[i];const u=new URL(location);u.searchParams.set('variant',v);history.replaceState(null,'',u);document.querySelector('header').innerHTML=['♥','♜','◇'][i]+' 生命 <strong>20</strong>　'+['◆','◎','⬡'][i]+' 金錢 <strong>'+money+'</strong>';wave.textContent='第 '+round+' 波';stage.replaceChildren();
+const panel=(tag,title,description)=>{let p=document.createElement(tag);stage.append(p);p.innerHTML=tag==='article'?'<h1>'+title+'</h1><p>'+description+'</p>':'<p class="box">'+title+'</p>';if(tag==='article')p.className='box';return p};
+const action=(p,name,fn)=>{let b=document.createElement('button');b.textContent=name;b.onclick=fn;p.append(b)};
+if(s==='操作說明'||s==='勝利'||s==='失敗'){const p=panel('article',s==='操作說明'?'Crownfall':s,s==='操作說明'?'點空地選塔，點塔升級或賣出。\n準備完成後點「開波」，守住通往城堡的路。':s==='勝利'?'城堡守住了最後一波。':'城堡生命已耗盡。');if(s==='勝利')action(p,'繼續（無盡模式）',()=>{round=11;show('備戰')});action(p,s==='操作說明'?'開始遊戲':'重新開始',()=>{money=100;round=1;show('備戰')})}
+if(s==='建造環'){const p=panel('section','選擇塔種');['弓箭塔','弩砲塔','法師塔'].forEach((t,j)=>action(p,['➶','✛','✦'][j]+' '+t+' '+[20,35,40][j],()=>{tower=t;money=Math.max(0,money-[20,35,40][j]);show('升級與賣出環')}))}
+if(s==='升級與賣出環'){const p=panel('section',tower);action(p,'↑ 升級　15',()=>{money=Math.max(0,money-15);show('備戰')});action(p,'− 賣出　10',()=>{money+=10;show('備戰')})}}
+function cycle(d){i=(i+d+3)%3;draw()}prev.onclick=()=>cycle(-1);next.onclick=()=>cycle(1);scene.onchange=draw;onkeydown=e=>{if(e.target!==scene&&['ArrowLeft','ArrowRight'].includes(e.key))cycle(e.key==='ArrowLeft'?-1:1)};document.body.onclick=e=>{if(e.target===document.body&&scene.value==='備戰')show('建造環')};start.onclick=()=>{round++;show('備戰')};pause.onclick=()=>pause.textContent=pause.textContent==='暫停'?'繼續':'暫停';speed.onclick=()=>speed.textContent=speed.textContent==='1×'?'2×':'1×';draw()
+</script></html>
