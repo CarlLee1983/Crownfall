@@ -5,6 +5,7 @@ import {
   Matrix4,
   Mesh,
   MeshStandardMaterial,
+  type Object3D,
   SkinnedMesh,
   Vector3,
 } from 'three';
@@ -65,7 +66,7 @@ export function createEnemyModel(
   const action = mixer.clipAction(walk).play();
   let previousMs: number | undefined;
   let collapse: AnimationAction | undefined;
-  let pieces: Map<string, Mesh[]> | undefined;
+  let pieces: { bone: Object3D; meshes: Mesh[]; authoredPosition: Vector3 }[] | undefined;
   const vertex = new Vector3();
   const joint = new Vector3();
   const inverseParent = new Matrix4();
@@ -83,6 +84,8 @@ export function createEnemyModel(
           collapse = mixer.clipAction(death).play();
           collapse.paused = true;
         }
+        // The mixer skips unchanged tracks. Restore the authored pose before sampling again.
+        for (const { bone, authoredPosition } of pieces ?? []) bone.position.copy(authoredPosition);
         // Use presentation time so skipped frames and paused draws sample the same pose.
         collapse.time = Math.min(death.duration, (deathAgeMs * DEATH_PLAYBACK_RATE) / 1000);
         mixer.update(0);
@@ -111,27 +114,32 @@ export function createEnemyModel(
           assigned.push(object);
           byBone.set(name, assigned);
         });
-        pieces = byBone;
+        pieces = PIECE_ROOTS.flatMap((name) => {
+          const bone = model.getObjectByName(name);
+          const meshes = byBone.get(name);
+          return bone === undefined || meshes === undefined
+            ? []
+            : [{ bone, meshes, authoredPosition: bone.position.clone() }];
+        });
       }
 
       model.updateWorldMatrix(true, false);
       model.updateMatrixWorld(true);
       let hipsLift = 0;
       // Measure each piece before moving any joints. The child pieces can land separately.
-      for (const name of PIECE_ROOTS) {
-        const bone = model.getObjectByName(name);
-        const part = pieces.get(name);
-        if (bone?.parent == null || part === undefined) continue;
+      for (const { bone, meshes, authoredPosition } of pieces) {
+        if (bone.parent === null) continue;
+        authoredPosition.copy(bone.position);
         let clearance = Infinity;
-        for (const mesh of part) {
+        for (const mesh of meshes) {
           for (let index = 0; index < mesh.geometry.getAttribute('position').count; index++) {
             mesh.getVertexPosition(index, vertex).applyMatrix4(mesh.matrixWorld);
             clearance = Math.min(clearance, vertex.y - heightAt(vertex.x, vertex.z));
           }
         }
         const lift = Math.max(0, -clearance);
-        const offset = name === 'hips' ? lift : lift - hipsLift;
-        if (name === 'hips') hipsLift = lift;
+        const offset = bone.name === 'hips' ? lift : lift - hipsLift;
+        if (bone.name === 'hips') hipsLift = lift;
         if (offset === 0) continue;
         // Read the unadjusted parent transform so every offset remains in world Y.
         joint.copy(bone.position).applyMatrix4(bone.parent.matrixWorld);
