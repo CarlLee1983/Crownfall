@@ -366,7 +366,11 @@ it.each([
   const model = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
   model.name = 'unit';
   const layer = createEnemyLayer(new PerspectiveCamera(), {
-    [kind]: { scene: model, walk: new AnimationClip('Walking_A', 1, []) },
+    [kind]: {
+      scene: model,
+      walk: new AnimationClip('Walking_A', 1, []),
+      death: new AnimationClip('Death_C_Skeletons', 2, []),
+    },
   });
   const first = start(['S=G']);
   const enemy = first.enemies[0];
@@ -386,7 +390,11 @@ it('flashes only the hit skeleton, then restores its glow', () => {
   const model = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
   model.name = 'skeleton';
   const layer = createEnemyLayer(new PerspectiveCamera(), {
-    grunt: { scene: model, walk: new AnimationClip('Walking_A', 1, []) },
+    grunt: {
+      scene: model,
+      walk: new AnimationClip('Walking_A', 1, []),
+      death: new AnimationClip('Death_C_Skeletons', 2, []),
+    },
   });
   const first = start(['S=G']);
   const enemy = first.enemies[0];
@@ -420,7 +428,13 @@ it('flashes only the hit skeleton, then restores its glow', () => {
 it('keeps the skeleton on the ramp and follows the displayed arc at a turn', () => {
   const model = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
   model.name = 'skeleton';
-  const models = { grunt: { scene: model, walk: new AnimationClip('Walking_A', 1, []) } };
+  const models = {
+    grunt: {
+      scene: model,
+      walk: new AnimationClip('Walking_A', 1, []),
+      death: new AnimationClip('Death_C_Skeletons', 2, []),
+    },
+  };
 
   const slope = createEnemyLayer(new PerspectiveCamera(), models);
   const approach = start(['S^g']);
@@ -469,8 +483,11 @@ it('paces the skeleton walk with enemy speed and uses paused game time', () => {
   const walk = new AnimationClip('Walking_A', 2, [
     new NumberKeyframeTrack('skeleton.position[x]', [0, 2], [0, 2]),
   ]);
+  const death = new AnimationClip('Death_C_Skeletons', 2, []);
   const poseAtSpeed = (speed: number) => {
-    const layer = createEnemyLayer(new PerspectiveCamera(), { grunt: { scene: model, walk } });
+    const layer = createEnemyLayer(new PerspectiveCamera(), {
+      grunt: { scene: model, walk, death },
+    });
     const spawn = start(['S=G']);
     const grunt = spawn.enemyRules.grunt;
     if (grunt === undefined) throw new Error('Missing skeleton speed');
@@ -499,9 +516,10 @@ async function loadEnemyAsset(file: string) {
     loadTexture: async () => new Texture(),
   }));
   const { scene, animations } = await loader.parseAsync(new Uint8Array(binary).buffer, '');
-  const walk = animations[0];
-  if (walk === undefined) throw new Error(`${file} is missing its walk animation`);
-  return { scene, walk };
+  const walk = animations.find(({ name }) => name === 'Walking_A');
+  const death = animations.find(({ name }) => name === 'Death_C_Skeletons');
+  if (walk === undefined || death === undefined) throw new Error(`${file} is missing an animation`);
+  return { scene, walk, death };
 }
 
 it.each([
@@ -551,7 +569,7 @@ it.each([
 });
 
 it('keeps the enlarged lich’s walking soles on the ramp as its equipment extends over a cell', async () => {
-  const { scene, walk } = await loadEnemyAsset('enemy-lich');
+  const { scene, walk, death } = await loadEnemyAsset('enemy-lich');
   const level = parseLevel(['S^g']);
   const initial = createGame(campaign, level);
   const enemy = {
@@ -574,7 +592,7 @@ it('keeps the enlarged lich’s walking soles on the ramp as its equipment exten
     enemies: [{ ...enemy, progress: 0.01 }],
   };
 
-  const layer = createEnemyLayer(new PerspectiveCamera(), { boss: { scene, walk } });
+  const layer = createEnemyLayer(new PerspectiveCamera(), { boss: { scene, walk, death } });
   const periodMs =
     (walk.duration * campaign.enemies.grunt.speed * 1000) / campaign.enemies.boss.speed;
   const point = new Vector3();

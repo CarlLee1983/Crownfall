@@ -1,4 +1,4 @@
-import { Mesh, MeshLambertMaterial, PerspectiveCamera } from 'three';
+import { PerspectiveCamera } from 'three';
 import { expect, it, onTestFinished, vi } from 'vitest';
 import { type Content, createGame, parseLevel, step } from '../core';
 import { cellIndex } from '../core/level';
@@ -85,49 +85,6 @@ it('does not show a bounty for a zero-reward kill', () => {
   expect(feedback.update(100, false).bounties).toEqual([]);
 });
 
-it('keeps all six death fragments on the world layer', () => {
-  const { feedback, advance } = setup();
-  advance(100);
-  feedback.update(220, false);
-  expect(feedback.group.children.map((fragment) => fragment.layers.mask)).toEqual(Array(6).fill(1));
-});
-
-it.each([
-  ['grunt', 0xffd060],
-  ['runner', 0x60ff90],
-  ['tank', 0x60a0ff],
-  ['boss', 0xff60e0],
-])('lights the %s body and its death fragments with the same glow color', (enemyKind, color) => {
-  const initial = fixture({ enemyKind, immediate: true });
-  const state = step(initial, [{ type: 'startWave', tick: 0 }]).state;
-  const enemies = createEnemyLayer(new PerspectiveCamera());
-  enemies.update(state, state, 1);
-  const [body] = enemies.group.children[0]?.children ?? [];
-  if (!(body instanceof Mesh) || !(body.material instanceof MeshLambertMaterial)) {
-    throw new Error('Missing enemy body');
-  }
-  expect(body.material.emissive.getHex()).toBe(color);
-  expect(body.material.emissiveIntensity).toBeGreaterThan(0);
-
-  const { feedback } = setup({ enemyKind, immediate: true });
-  expect(feedback.group.children).toHaveLength(6);
-  for (const fragment of feedback.group.children) {
-    if (!(fragment instanceof Mesh) || !(fragment.material instanceof MeshLambertMaterial)) {
-      throw new Error('Missing death fragment');
-    }
-    expect(fragment.material.color.getHex()).toBe(color);
-    expect(fragment.material.emissive.getHex()).toBe(color);
-  }
-});
-
-it('caps the number of visible fragments after many simultaneous kills', () => {
-  const { feedback, advance } = setup({ count: 20 });
-  advance(100);
-  const frame = feedback.update(100, false);
-  expect(frame.bounties).toHaveLength(20);
-  expect(feedback.group.children).toHaveLength(48);
-});
-
 it('triggers one shake for several leaks in the same tick', () => {
   const single = setup({ placeTower: false });
   const simultaneous = setup({ placeTower: false, count: 3 });
@@ -150,12 +107,9 @@ it('keeps feedback fixed at the same game time and removes it after its lifetime
   const { feedback, advance } = setup();
   advance(100);
   const before = feedback.update(220, false);
-  const position = feedback.group.children[0]?.position.clone();
   const paused = feedback.update(220, false);
   expect(paused.bounties).toEqual(before.bounties);
-  expect(feedback.group.children[0]?.position).toEqual(position);
   expect(feedback.update(820, false).bounties).toEqual([]);
-  expect(feedback.group.children).toHaveLength(0);
 });
 
 function setupLoop(initial: ReturnType<typeof fixture>) {
