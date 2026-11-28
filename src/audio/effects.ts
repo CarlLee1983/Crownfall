@@ -34,11 +34,11 @@ const EFFECT_URLS: Record<SoundId, readonly string[]> = {
 };
 const DUCK_GAIN = 10 ** (-12 / 20);
 const RELEASE_TIME_CONSTANT = 0.1;
-const LEAK_RECOVERY_SECONDS = 0.4;
 const VOICE_LIMIT = 4;
 
 interface EffectBank {
-  readonly buffers: readonly AudioBuffer[];
+  buffers?: readonly AudioBuffer[];
+  readonly pending: EffectCommand[];
   readonly playing: Set<AudioBufferSourceNode>;
   next: number;
 }
@@ -54,22 +54,17 @@ export function connectEffects(
   buses: { effects: GainNode; ui: GainNode; ducking: GainNode },
 ) {
   const banks = new Map<string, EffectBank>();
-  const pending: EffectCommand[] = [];
   let loading: Promise<unknown> | undefined;
-  let ready = false;
   let duckUntil = 0;
-  let nextLeakDuck = 0;
+  let nextLimitedDuck = 0;
 
-  function play(commands: readonly EffectCommand[]): void {
-    if (!ready || context.state !== 'running') {
-      if (loading !== undefined) pending.push(...commands);
-      return;
-    }
-    for (const command of commands) {
-      const bank = banks.get(command.sound);
-      const buffer = bank?.buffers[bank.next];
-      if (bank === undefined || buffer === undefined) continue;
-      bank.next = (bank.next + 1) % bank.buffers.length;
+  function flush(bank: EffectBank): void {
+    const buffers = bank.buffers;
+    if (buffers === undefined || context.state !== 'running') return;
+    for (const command of bank.pending.splice(0)) {
+      const buffer = buffers[bank.next];
+      if (buffer === undefined) continue;
+      bank.next = (bank.next + 1) % buffers.length;
       if (bank.playing.size === VOICE_LIMIT) {
         const oldest = bank.playing.values().next().value;
         if (oldest !== undefined) {
@@ -97,10 +92,9 @@ export function connectEffects(
       bank.playing.add(source);
       if (!command.duck) continue;
       const endsAt = now + buffer.duration / rate;
-      if (command.sound === 'leak-horn-1') {
-        // Keep the first leak's duck window so a stream of leaks can release between alerts.
-        if (now < nextLeakDuck) continue;
-        nextLeakDuck = Math.max(duckUntil, endsAt) + LEAK_RECOVERY_SECONDS;
+      if (command.duckRecoverySeconds !== undefined) {
+        if (now < nextLimitedDuck) continue;
+        nextLimitedDuck = Math.max(duckUntil, endsAt) + command.duckRecoverySeconds;
       }
       duckUntil = Math.max(duckUntil, endsAt);
       buses.ducking.gain.cancelScheduledValues(now);
@@ -113,29 +107,42 @@ export function connectEffects(
     async unlock(running: Promise<void>): Promise<void> {
       loading ??= Promise.all(
         Object.entries(EFFECT_URLS).map(async ([sound, urls]) => {
+          const bank: EffectBank = { pending: [], playing: new Set(), next: 0 };
+          banks.set(sound, bank);
           try {
-            const buffers = await Promise.all(urls.map((url) => loadEffect(context, url)));
-            banks.set(sound, { buffers, playing: new Set(), next: 0 });
+            bank.buffers = await Promise.all(urls.map((url) => loadEffect(context, url)));
           } catch (error) {
+            banks.delete(sound);
             console.warn(`無法載入音效 ${sound}。`, error);
           }
+          flush(bank);
         }),
       );
-      await Promise.all([running, loading]);
-      ready = true;
-      play(pending.splice(0));
+      await Promise.all([
+        running.then(() => {
+          for (const bank of banks.values()) flush(bank);
+        }),
+        loading,
+      ]);
     },
-    play,
+    play(commands: readonly EffectCommand[]): void {
+      for (const command of commands) {
+        const bank = banks.get(command.sound);
+        if (bank === undefined) continue;
+        bank.pending.push(command);
+        flush(bank);
+      }
+    },
     reset(): void {
-      pending.length = 0;
       for (const bank of banks.values()) {
+        bank.pending.length = 0;
         for (const source of bank.playing) source.stop();
         bank.playing.clear();
         bank.next = 0;
       }
       const now = context.currentTime;
       duckUntil = 0;
-      nextLeakDuck = 0;
+      nextLimitedDuck = 0;
       buses.ducking.gain.cancelScheduledValues(now);
       buses.ducking.gain.setValueAtTime(1, now);
     },

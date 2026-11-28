@@ -1,10 +1,14 @@
 import { expect, type Page, test } from '@playwright/test';
 import manifest from '../docs/art/asset-manifest.json' with { type: 'json' };
+import { installAudioProbe } from './audio-probe';
 
 // An open tile in the initial 1280×720 view.
 const openTile = { x: 654, y: 395 };
 // Upper section of the archer tower built on that tile.
 const archerUpperBody = { x: 654, y: 334 };
+// The unbuildable entrance tile in the same view.
+const spawnTile = { x: 654, y: 542 };
+const tileBesideSpawn = { x: 703, y: 500 };
 const archerAsset = /\/assets\/tower-archer-[\w-]+\.glb$/;
 const skeletonAsset = /\/assets\/enemy-skeleton-[\w-]+\.glb$/;
 
@@ -201,90 +205,7 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
     if (path.endsWith('.opus')) requestedAudio.push(path);
   });
 
-  await page.addInitScript(() => {
-    const contexts: AudioContext[] = [];
-    const scheduled: AudioBuffer[] = [];
-    const decoded: { path: string; duration: number }[] = [];
-    // Identify the asset whose original response bytes reach the native decoder.
-    const responsePaths = new WeakMap<ArrayBuffer, string>();
-    const arrayBuffer = Response.prototype.arrayBuffer;
-    Response.prototype.arrayBuffer = async function () {
-      const bytes = await arrayBuffer.call(this);
-      if (this.url !== '') responsePaths.set(bytes, new URL(this.url).pathname);
-      return bytes;
-    };
-    const gainValues: number[][] = [];
-    const fadeDurations: number[] = [];
-    const NativeAudioContext = window.AudioContext;
-    window.AudioContext = class extends NativeAudioContext {
-      constructor(options?: AudioContextOptions) {
-        super(options);
-        contexts.push(this);
-      }
-
-      override async decodeAudioData(
-        ...args: Parameters<AudioContext['decodeAudioData']>
-      ): Promise<AudioBuffer> {
-        const buffer = await super.decodeAudioData(...args);
-        const path = responsePaths.get(args[0]);
-        if (path !== undefined) decoded.push({ path, duration: buffer.duration });
-        return buffer;
-      }
-
-      override createGain(): GainNode {
-        const node = super.createGain();
-        const values: number[] = [];
-        let setAt = Number.NaN;
-        gainValues.push(values);
-        const set = node.gain.setValueAtTime.bind(node.gain);
-        const ramp = node.gain.linearRampToValueAtTime.bind(node.gain);
-        node.gain.setValueAtTime = (value, at) => {
-          setAt = at;
-          values.push(value);
-          return set(value, at);
-        };
-        node.gain.linearRampToValueAtTime = (value, at) => {
-          fadeDurations.push(at - setAt);
-          return ramp(value, at);
-        };
-        return node;
-      }
-
-      override createBufferSource(): AudioBufferSourceNode {
-        const source = super.createBufferSource();
-        const start = source.start.bind(source);
-        source.start = (...args) => {
-          start(...args);
-          if (source.buffer !== null) scheduled.push(source.buffer);
-        };
-        return source;
-      }
-    };
-    Object.defineProperty(window, 'audioProbe', {
-      value: () => ({
-        contexts: contexts.map((context) => context.state),
-        scheduled: scheduled.map((buffer) => buffer.duration),
-        decoded,
-        gainValues,
-        fadeDurations,
-      }),
-    });
-  });
-
-  const readAudio = () =>
-    page.evaluate(() => {
-      const probe = window as Window & {
-        audioProbe?(): {
-          contexts: AudioContextState[];
-          scheduled: number[];
-          decoded: { path: string; duration: number }[];
-          gainValues: number[][];
-          fadeDurations: number[];
-        };
-      };
-      if (probe.audioProbe === undefined) throw new Error('Audio probe did not initialize');
-      return probe.audioProbe();
-    });
+  const readAudio = await installAudioProbe(page);
 
   const scheduledHorn = async () =>
     (await readAudio()).scheduled.filter((seconds) => Math.abs(seconds - 4.5) < 0.05);
@@ -305,6 +226,9 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
   expect(await readAudio()).toEqual({
     contexts: [],
     scheduled: [],
+    scheduledPaths: [],
+    currentTime: 0,
+    stops: [],
     decoded: [],
     gainValues: [],
     fadeDurations: [],
@@ -323,6 +247,22 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
     await expect
       .poll(async () => (await readAudio()).scheduled)
       .toContainEqual(expect.closeTo(81.0, 0));
+    const errorsPlayed = async () =>
+      (await readAudio()).scheduledPaths.filter((path) => path.includes('ui-error-03')).length;
+    const canvas = page.getByLabel('Crownfall 關卡');
+    await canvas.click({ position: spawnTile });
+    await expect(page.locator('#build-feedback')).toHaveText('入口、終點與坡道不能建塔');
+    await expect.poll(errorsPlayed, { timeout: 2000 }).toBe(1);
+
+    await canvas.click({ position: tileBesideSpawn });
+    await page
+      .getByRole('region', { name: '建造環' })
+      .getByRole('button', { name: /弓箭塔/ })
+      .click();
+    await expect
+      .poll(async () => (await readAudio()).scheduledPaths)
+      .toEqual(expect.arrayContaining([expect.stringContaining('place-plank')]));
+
     await page.getByRole('button', { name: '暫停' }).click();
     expect((await readAudio()).gainValues).toContainEqual([0.5]);
     await page.getByRole('button', { name: '繼續', exact: true }).click();
@@ -331,10 +271,22 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
     const openWave = page.getByRole('button', { name: /開波/ });
     await openWave.click();
     await expect(openWave).toBeDisabled();
+    const button = await openWave.boundingBox();
+    if (button === null) throw new Error('The wave button is missing');
+    await page.mouse.click(button.x + button.width / 2, button.y + button.height / 2);
+    await expect(page.locator('#wave-feedback')).toHaveText('請等這一波結束');
+    await expect.poll(errorsPlayed).toBe(2);
+    await page.keyboard.press('n');
+    await expect.poll(errorsPlayed).toBe(3);
     await expect
       .poll(async () => (await readAudio()).scheduled)
       .toContainEqual(expect.closeTo(92.9, 0));
     expect((await readAudio()).fadeDurations).toEqual([expect.closeTo(2), expect.closeTo(2)]);
+    await page.getByRole('button', { name: /切換倍速/ }).click();
+    await expect(page.getByRole('button', { name: /切換倍速/ })).toHaveText('2×');
+    await expect
+      .poll(async () => (await readAudio()).scheduledPaths)
+      .toEqual(expect.arrayContaining([expect.stringContaining('archer-hit-soft')]));
     expect(await scheduledHorn()).toEqual([]);
   } finally {
     releaseHorn();
@@ -353,4 +305,124 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
       expect.closeTo(95.0, 0),
     ]),
   );
+});
+
+test('starts the outgoing music fade while the next track downloads', async ({ page }) => {
+  const readAudio = await installAudioProbe(page);
+  let releaseWave = () => {};
+  const waveDownload = new Promise<void>((resolve) => {
+    releaseWave = resolve;
+  });
+  await page.route(/\/assets\/ancient-evil-awakens-[\w-]+\.opus$/, async (route) => {
+    await waveDownload;
+    await route.continue();
+  });
+
+  await page.goto('./');
+  try {
+    await page.getByRole('button', { name: '開始遊戲' }).click();
+    await expect
+      .poll(async () => (await readAudio()).scheduledPaths)
+      .toContainEqual(expect.stringContaining('catacombs'));
+    await page.getByRole('button', { name: '暫停' }).click();
+    await page.getByRole('button', { name: /開波/ }).click();
+
+    await expect.poll(async () => (await readAudio()).fadeDurations).toEqual([expect.closeTo(2)]);
+    const { stops, scheduledPaths } = await readAudio();
+    expect(scheduledPaths).not.toContainEqual(expect.stringContaining('ancient-evil-awakens'));
+    expect(stops).toHaveLength(1);
+    const outgoing = stops[0];
+    if (outgoing === undefined) throw new Error('Missing outgoing music stop');
+    expect(outgoing.path).toContain('catacombs');
+    expect(outgoing.at - outgoing.requestedAt).toBeCloseTo(2);
+    await expect
+      .poll(async () => (await readAudio()).currentTime - outgoing.requestedAt, {
+        intervals: [20, 30, 50],
+      })
+      .toBeGreaterThan(0.3);
+  } finally {
+    releaseWave();
+  }
+
+  await expect
+    .poll(async () => (await readAudio()).scheduledPaths)
+    .toContainEqual(expect.stringContaining('ancient-evil-awakens'));
+  const { fadeDurations } = await readAudio();
+  expect(fadeDurations).toHaveLength(2);
+  expect(fadeDurations[1]).toBeGreaterThan(0);
+  expect(fadeDurations[1]).toBeLessThan(1.7);
+});
+
+test('fades on failed defeat music and drops pending effects on restart', async ({ page }) => {
+  const readAudio = await installAudioProbe(page);
+  await page.addInitScript(() => {
+    const request = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (callback) => request((time) => callback(time * 30));
+  });
+
+  let releaseHorn = () => {};
+  const hornDownload = new Promise<void>((resolve) => {
+    releaseHorn = resolve;
+  });
+  let releaseWave = () => {};
+  const waveDownload = new Promise<void>((resolve) => {
+    releaseWave = resolve;
+  });
+  await page.route(/\/assets\/war-horns-[\w-]+\.opus$/, async (route) => {
+    await hornDownload;
+    await route.continue();
+  });
+  await page.route(/\/assets\/ancient-evil-awakens-[\w-]+\.opus$/, async (route) => {
+    await waveDownload;
+    await route.continue();
+  });
+  await page.route(/\/assets\/the-sad-battle-[\w-]+\.opus$/, (route) => route.abort());
+
+  const hornCount = async () =>
+    (await readAudio()).scheduledPaths.filter((path) => path.includes('war-horns')).length;
+
+  try {
+    await page.goto('./');
+    const startGame = page.getByRole('button', { name: '開始遊戲' });
+    await startGame.click();
+    const openWave = page.getByRole('button', { name: /開波/ });
+    await expect
+      .poll(async () => (await readAudio()).scheduledPaths)
+      .toContainEqual(expect.stringContaining('catacombs'));
+    await openWave.click();
+    await expect(openWave).toBeDisabled();
+    await expect(openWave).toBeEnabled({ timeout: 12000 });
+
+    releaseWave();
+    await expect
+      .poll(async () => (await readAudio()).decoded.map(({ path }) => path))
+      .toContainEqual(expect.stringContaining('ancient-evil-awakens'));
+    expect((await readAudio()).scheduledPaths).not.toContainEqual(
+      expect.stringContaining('ancient-evil-awakens'),
+    );
+
+    await openWave.click();
+    await expect
+      .poll(async () => (await readAudio()).scheduledPaths)
+      .toContainEqual(expect.stringContaining('ancient-evil-awakens'));
+    await expect(page.getByRole('dialog', { name: '敗北' })).toBeVisible({ timeout: 12000 });
+    const outgoing = (await readAudio()).stops.find(({ path }) =>
+      path.includes('ancient-evil-awakens'),
+    );
+    if (outgoing === undefined) throw new Error('Wave music did not fade on defeat');
+    expect(outgoing.at - outgoing.requestedAt).toBeCloseTo(2);
+
+    await page.getByRole('button', { name: '重新開始' }).click();
+    await startGame.click();
+    releaseHorn();
+    await expect
+      .poll(async () => (await readAudio()).decoded.map(({ path }) => path))
+      .toContainEqual(expect.stringContaining('war-horns'));
+    expect(await hornCount()).toBe(0);
+    await openWave.click();
+    await expect.poll(hornCount).toBe(1);
+  } finally {
+    releaseWave();
+    releaseHorn();
+  }
 });

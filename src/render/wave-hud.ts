@@ -32,6 +32,7 @@ interface WaveActions {
   continueEndless(): void;
   setSpeed(speed: number): void;
   restart(): void;
+  setResultOpen(open: boolean): void;
 }
 
 function previewText(state: GameState): string {
@@ -102,10 +103,14 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
     notices.set(text, { count: prior === undefined ? 1 : prior.count + 1, until: now + NOTICE_MS });
   };
 
-  start.addEventListener('click', actions.startWave);
+  element('start-wave-target').addEventListener('click', actions.startWave);
   pause.addEventListener('click', togglePause);
   speedControl.addEventListener('click', cycleSpeed);
   continueButton.addEventListener('click', actions.continueEndless);
+  const closeResult = (): void => {
+    result.close();
+    actions.setResultOpen(false);
+  };
   result.addEventListener('cancel', (event) => event.preventDefault());
   result.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -115,7 +120,7 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
     feedback.textContent = '';
     actions.restart();
     syncSpeed();
-    result.close();
+    closeResult();
     help.showModal();
   });
 
@@ -201,11 +206,12 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
           displayedWave,
         );
         result.append(surveyLink);
+        actions.setResultOpen(true);
         result.showModal();
         return;
       }
 
-      if (result.open) result.close();
+      if (result.open) closeResult();
       updateText(preview, previewText(state));
 
       const { level } = state;

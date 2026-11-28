@@ -1,5 +1,5 @@
 import { DirectionalLight, FogExp2, HemisphereLight, Scene, Vector3, WebGLRenderer } from 'three';
-import { directInitialSound, directSound } from './audio/director';
+import { directCommandSound, directInitialSound, directSound } from './audio/director';
 import { createMixer } from './audio/mixer';
 import { content } from './content/content';
 import { torchPositions } from './content/decor';
@@ -29,7 +29,7 @@ if (!(help instanceof HTMLDialogElement) || !(start instanceof HTMLButtonElement
   throw new Error('開始遊戲的 HTML 元素類型錯誤');
 }
 const audio = createMixer();
-connectAudioHud(audio.setVolumes);
+const audioHud = connectAudioHud(audio.setVolumes);
 
 const loading = element('model-loading');
 const error = element('model-error');
@@ -120,6 +120,7 @@ function startGame(models: LoadedModels): void {
       loop.setSpeed(speed);
       audio.setPaused(speed === 0);
     },
+    setResultOpen: audioHud.setResultOpen,
     restart: () => {
       hud.reset();
       shots.reset();
@@ -134,11 +135,15 @@ function startGame(models: LoadedModels): void {
   });
   const loop = startLoop({
     initial,
-    onEvents: (events, previous, current, time, accepted) => {
+    onEvents: (events, previous, current, time, commands) => {
+      for (const { command, events: commandEvents } of commands) {
+        const cue = directCommandSound(command, commandEvents);
+        if (cue !== undefined) audio.play([cue]);
+      }
       hud.onEvents(events);
       waveHud.onEvents(events, time.wallMs);
       const hits = shots.onEvents(events, current, time.gameMs);
-      audio.play(directSound(events, previous, current, hits, accepted));
+      audio.play(directSound(events, previous, current, hits));
       combat.onEvents(events, previous, time.gameMs);
       enemies.observe(current);
     },

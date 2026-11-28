@@ -24,6 +24,8 @@ export type EffectCommand = {
   readonly bus: 'effects' | 'ui';
   readonly pitchSemitones: number;
   readonly duck: boolean;
+  /** Let the music recover between repeated alerts even when their sounds overlap. */
+  readonly duckRecoverySeconds?: number;
 };
 
 export type SoundCommand = EffectCommand | MusicCommand;
@@ -65,48 +67,50 @@ function deathSound(kind: string): EffectCommand | undefined {
   }
 }
 
+export function directCommandSound(
+  command: Command,
+  events: readonly GameEvent[],
+): EffectCommand | undefined {
+  // Each core command either applies successfully or emits a rejection event.
+  if (events.length > 0) return uiEffect('ui-error-03');
+  switch (command.type) {
+    case 'startWave':
+      return effect('war-horns', 0, true);
+    case 'placeTower':
+      return uiEffect('place-plank');
+    case 'upgradeTower':
+      return uiEffect('upgrade-stone');
+    case 'sellTower':
+      return uiEffect('sell-wood');
+  }
+}
+
+const towerSounds: Readonly<
+  Record<string, { readonly fire?: SoundId; readonly impact: SoundId } | undefined>
+> = {
+  basic: { fire: 'longbow-soft', impact: 'archer-hit-soft' },
+  sniper: { fire: 'crossbow-1', impact: 'ballista-hit-plate' },
+  splash: { impact: 'spell-fire-2' },
+};
+
 export function directSound(
   events: readonly GameEvent[],
   previous: GameState,
   current: GameState,
   hits: readonly HitPresentation[] = [],
-  accepted: readonly Command[] = [],
 ): readonly SoundCommand[] {
   const commands: SoundCommand[] = [];
-
-  // A successful startWave increments the wave number even if the wave ends in the same tick.
-  if (current.waveNumber > previous.waveNumber) commands.push(effect('war-horns', 0, true));
-
-  for (const command of accepted) {
-    switch (command.type) {
-      case 'placeTower':
-        commands.push(uiEffect('place-plank'));
-        break;
-      case 'upgradeTower':
-        commands.push(uiEffect('upgrade-stone'));
-        break;
-      case 'sellTower':
-        commands.push(uiEffect('sell-wood'));
-        break;
-    }
-  }
-
   const wonThisTick = events.some(({ type }) => type === 'victory');
   for (const event of events) {
     switch (event.type) {
       case 'shot': {
         const tower = current.towers.find(({ cell }) => cell === event.towerCell);
-        if (tower?.kind === 'basic') commands.push(effect('longbow-soft'));
-        if (tower?.kind === 'sniper') commands.push(effect('crossbow-1'));
+        const fire = tower === undefined ? undefined : towerSounds[tower.kind]?.fire;
+        if (fire !== undefined) commands.push(effect(fire));
         break;
       }
-      case 'rejected':
-      case 'waveRejected':
-      case 'continueRejected':
-        commands.push(uiEffect('ui-error-03'));
-        break;
       case 'leaked':
-        commands.push(effect('leak-horn-1', 0, true));
+        commands.push({ ...effect('leak-horn-1', 0, true), duckRecoverySeconds: 0.4 });
         break;
       case 'waveCleared':
         if (!wonThisTick) commands.push(effect('jingle-steel-10'));
@@ -118,17 +122,8 @@ export function directSound(
   }
 
   for (const hit of hits) {
-    switch (hit.towerKind) {
-      case 'basic':
-        commands.push(effect('archer-hit-soft'));
-        break;
-      case 'sniper':
-        commands.push(effect('ballista-hit-plate'));
-        break;
-      case 'splash':
-        commands.push(effect('spell-fire-2'));
-        break;
-    }
+    const impact = towerSounds[hit.towerKind]?.impact;
+    if (impact !== undefined) commands.push(effect(impact));
     if (hit.lethal) {
       const death = deathSound(hit.target.kind);
       if (death !== undefined) commands.push(death);

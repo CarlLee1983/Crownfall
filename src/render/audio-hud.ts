@@ -1,8 +1,11 @@
 import { type AudioSettings, readAudioSettings, writeAudioSettings } from '../audio/settings';
 import { element } from './hud-dom';
 
-export function connectAudioHud(setVolumes: (settings: AudioSettings) => void): void {
+export function connectAudioHud(setVolumes: (settings: AudioSettings) => void) {
   const controls = element('game-audio');
+  const help = element('game-help');
+  const result = element('game-result');
+  const levelPanel = element('audio-levels');
   const mute = element('mute-audio');
   const music = element('music-volume');
   const effects = element('effects-volume');
@@ -35,4 +38,12 @@ export function connectAudioHud(setVolumes: (settings: AudioSettings) => void): 
   controls.addEventListener('click', (event) => event.stopPropagation());
   // Keep game shortcuts from overriding native button and slider keys.
   controls.addEventListener('keydown', (event) => event.stopPropagation());
+
+  return {
+    setResultOpen(open: boolean): void {
+      if (levelPanel.matches(':popover-open')) levelPanel.hidePopover();
+      if (open) result.append(controls);
+      else help.before(controls);
+    },
+  };
 }

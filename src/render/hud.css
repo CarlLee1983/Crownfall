@@ -112,7 +112,13 @@ body {
   pointer-events: auto;
 }
 
-.tower-action:last-child {
+.tower-upgrade {
+  display: grid;
+  min-width: 0;
+  pointer-events: auto;
+}
+
+.tower-upgrade + .tower-action {
   grid-column: 3;
 }
 
@@ -411,6 +417,12 @@ body {
   color: #a6adb2;
   background: #20272e;
   cursor: default;
+}
+
+/* The wrappers report rejected clicks while the buttons remain natively disabled. */
+#start-wave:disabled,
+.tower-action:disabled {
+  pointer-events: none;
 }
 
 #game-controls kbd {

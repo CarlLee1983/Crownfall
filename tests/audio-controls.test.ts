@@ -112,3 +112,40 @@ test('adjusts both audio levels from the HUD and keeps game controls accessible'
   await expect(music).toHaveValue('59');
   await expect(effects).toHaveValue(String(effectsLevel));
 });
+
+test('keeps keyboard and pointer volume controls available in the defeat dialog', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const request = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (callback) => request((time) => callback(time * 30));
+  });
+
+  await page.goto('./');
+  await page.getByRole('button', { name: '開始遊戲' }).click();
+  const openWave = page.getByRole('button', { name: /開波/ });
+  await openWave.click();
+  await expect(openWave).toBeDisabled();
+  await openWave.click({ timeout: 12000 });
+
+  const result = page.getByRole('dialog', { name: '敗北' });
+  await expect(result).toBeVisible({ timeout: 12000 });
+  const mute = result.getByRole('button', { name: '靜音', exact: true });
+  await mute.click();
+  await expect(mute).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => page.evaluate(() => window.readAudioGains().master)).toBe(0);
+
+  await result.getByRole('button', { name: '音量設定' }).press('Space');
+  const music = result.getByRole('slider', { name: '音樂音量' });
+  await music.press('ArrowLeft');
+  await expect(music).toHaveValue('59');
+  await music.press('Escape');
+  await expect(music).toBeHidden();
+
+  await result.getByRole('button', { name: '重新開始' }).click();
+  await page.getByRole('button', { name: '開始遊戲' }).click();
+  await expect(page.getByRole('button', { name: '靜音', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+});

@@ -93,7 +93,10 @@ export function createBuildHud(
   towerDetails.id = 'tower-details';
   const upgrade = towerActionButton('升級', 'U');
   const sell = towerActionButton('賣出', 'S');
-  towerPanel.append(towerDetails, upgrade.button, sell.button);
+  const upgradeTarget = document.createElement('span');
+  upgradeTarget.className = 'tower-upgrade';
+  upgradeTarget.append(upgrade.button);
+  towerPanel.append(towerDetails, upgradeTarget, sell.button);
   ring.append(towerPanel);
   let state = initial;
   let chosen: CellIndex | undefined;
@@ -128,7 +131,7 @@ export function createBuildHud(
   const manage = (action: TowerAction): void => {
     if (managing && chosen !== undefined) actions.manageTower(chosen, action);
   };
-  upgrade.button.addEventListener('click', () => manage('upgradeTower'));
+  upgradeTarget.addEventListener('click', () => manage('upgradeTower'));
   sell.button.addEventListener('click', () => manage('sellTower'));
 
   const refreshTower = (tower: NonNullable<ReturnType<typeof queryTower>>): void => {
@@ -259,7 +262,7 @@ export function createBuildHud(
       if (first === undefined) return;
       const { reason } = previewPlacement(state, cell, first.kind);
       if (reason === 'unbuildableCell' || reason === 'occupiedCell') {
-        showReason(cell, reason);
+        actions.placeTower(cell, first.kind);
         return;
       }
     }

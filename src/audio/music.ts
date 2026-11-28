@@ -20,9 +20,9 @@ interface TrackBuffer {
 }
 
 interface Voice {
-  readonly track: MusicTrack;
   readonly source: AudioBufferSourceNode;
   readonly gain: GainNode;
+  readonly startedAt: number;
   readonly fullGainAt: number;
 }
 
@@ -51,30 +51,22 @@ export function connectMusic(context: AudioContext, output: AudioNode) {
   const voices = new Set<Voice>();
   let requestedTrack: MusicTrack | undefined;
   let current: Voice | undefined;
+  let fadeEnd = 0;
 
   function syncTrack(): void {
-    if (context.state !== 'running' || requestedTrack === current?.track) return;
-    const track = requestedTrack === undefined ? undefined : tracks.get(requestedTrack);
-    if (requestedTrack === undefined || track === undefined) return;
+    if (context.state !== 'running' || requestedTrack === undefined || current !== undefined)
+      return;
+    const track = tracks.get(requestedTrack);
+    if (track === undefined) return;
 
     const now = context.currentTime;
-    const fadeEnd = now + transitionSeconds;
-    if (current !== undefined) {
-      const { gain, source, fullGainAt } = current;
-      const level = Math.min(1, 1 - (fullGainAt - now) / transitionSeconds);
-      gain.gain.cancelScheduledValues(now);
-      gain.gain.setValueAtTime(level, now);
-      gain.gain.linearRampToValueAtTime(0, fadeEnd);
-      source.stop(fadeEnd);
-    }
-
     const source = context.createBufferSource();
     const gain = context.createGain();
-    const fadeIn = current !== undefined;
+    const fadeIn = now < fadeEnd;
     const voice: Voice = {
-      track: requestedTrack,
       source,
       gain,
+      startedAt: now,
       fullGainAt: fadeIn ? fadeEnd : now,
     };
     source.buffer = track.buffer;
@@ -119,12 +111,25 @@ export function connectMusic(context: AudioContext, output: AudioNode) {
       await Promise.all([running.then(syncTrack), ...pending]);
     },
     select(track: MusicTrack): void {
+      if (track === requestedTrack) return;
       requestedTrack = track;
+      if (current !== undefined) {
+        const { gain, source, startedAt, fullGainAt } = current;
+        const now = context.currentTime;
+        const level = now >= fullGainAt ? 1 : (now - startedAt) / (fullGainAt - startedAt);
+        fadeEnd = now + transitionSeconds;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(level, now);
+        gain.gain.linearRampToValueAtTime(0, fadeEnd);
+        source.stop(fadeEnd);
+        current = undefined;
+      }
       syncTrack();
     },
     stop(): void {
       requestedTrack = undefined;
       current = undefined;
+      fadeEnd = 0;
       for (const { source } of voices) source.stop();
       voices.clear();
     },
