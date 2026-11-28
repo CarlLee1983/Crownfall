@@ -54,7 +54,7 @@ bun run test:smoke
 
 ## 音訊前處理
 
-安裝 curl 和含 libopus 的 FFmpeg 後，執行 `bun run audio` 會下載原始素材、裁切與正規化響度，並把通過峰值檢查的 Ogg Opus 檔寫到 `src/audio/clips/`。
+安裝 curl、unzip 和含 libopus 的 FFmpeg 後，執行 `bun run audio` 會下載原始素材、裁切與正規化響度，並把通過峰值檢查的 Ogg Opus 檔寫到 `src/audio/clips/`。
 
 ## 授權
 

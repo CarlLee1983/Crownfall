@@ -1,16 +1,26 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { musicClips } from './music-clips';
+
+export interface Clip {
+  readonly name: string;
+  readonly download: string;
+  readonly edit?: string;
+  readonly archiveMember?: string;
+  readonly minimumSourceSeconds?: number;
+}
 
 // War Horns by Eldritch Grim (CC0), https://opengameart.org/node/153572
-const clips = [
+const clips: readonly Clip[] = [
   {
     name: 'war-horns',
     download: 'https://opengameart.org/sites/default/files/war_horns.wav',
     edit: 'atrim=start=0.2:end=4.7,asetpts=PTS-STARTPTS,afade=t=out:st=3.8:d=0.7',
   },
+  ...musicClips,
 ];
 
 const targetLufs = -21;
@@ -48,12 +58,16 @@ function measure(input: string, edit = ''): { lufs: number; truePeak: number } {
   return { lufs, truePeak };
 }
 
-function buildClip({ name, download, edit }: (typeof clips)[number]): void {
-  const workspace = mkdtempSync(join(tmpdir(), 'crownfall-audio-'));
+function buildClip(
+  { name, download, edit, archiveMember, minimumSourceSeconds }: Clip,
+  workspace: string,
+  downloads: Map<string, string>,
+): void {
   const output = join(outputDir, `${name}.opus`);
   mkdirSync(dirname(output), { recursive: true });
-  try {
-    const source = join(workspace, 'source.wav');
+  let source = downloads.get(download);
+  if (source === undefined) {
+    source = join(workspace, `download-${name}`);
     run('curl', [
       '--fail',
       '--silent',
@@ -65,35 +79,59 @@ function buildClip({ name, download, edit }: (typeof clips)[number]): void {
       source,
       download,
     ]);
-
-    const { lufs, truePeak } = measure(source, edit);
-    const gain = Math.min(targetLufs - lufs, peakHeadroom - truePeak);
-    const prepared = join(workspace, `${name}.opus`);
-    ffmpeg(source, [
-      '-af',
-      `${edit},volume=${gain}dB`,
-      '-ar',
-      '48000',
-      '-c:a',
-      'libopus',
-      '-b:a',
-      '96k',
-      '-map_metadata',
-      '-1',
-      '-fflags',
-      '+bitexact',
-      prepared,
-    ]);
-
-    const decoded = measure(prepared);
-    if (decoded.truePeak > maximumTruePeak) {
-      throw new Error(`${name} exceeded ${maximumTruePeak} dBTP after encoding`);
-    }
-    copyFileSync(prepared, output);
-    console.log(`${name}: ${decoded.lufs} LUFS, ${decoded.truePeak} dBTP`);
-  } finally {
-    rmSync(workspace, { recursive: true, force: true });
+    downloads.set(download, source);
   }
+  if (archiveMember !== undefined) {
+    const extracted = spawnSync('unzip', ['-p', source, archiveMember], { maxBuffer: 16_777_216 });
+    if (extracted.error !== undefined) throw extracted.error;
+    if (extracted.status !== 0) throw new Error(extracted.stderr.toString());
+    source = join(workspace, archiveMember);
+    writeFileSync(source, extracted.stdout);
+  }
+
+  const { lufs, truePeak } = measure(source, edit);
+  const gain = Math.min(targetLufs - lufs, peakHeadroom - truePeak);
+  const prepared = join(workspace, `${name}.opus`);
+  ffmpeg(source, [
+    '-af',
+    `${edit ? `${edit},` : ''}volume=${gain}dB`,
+    '-ar',
+    '48000',
+    '-c:a',
+    'libopus',
+    '-b:a',
+    '96k',
+    '-map_metadata',
+    '-1',
+    '-fflags',
+    '+bitexact',
+    prepared,
+  ]);
+
+  const decoded = measure(prepared);
+  if (decoded.truePeak > maximumTruePeak) {
+    throw new Error(`${name} exceeded ${maximumTruePeak} dBTP after encoding`);
+  }
+  if (minimumSourceSeconds !== undefined) {
+    const durationProbe = spawnSync(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', source],
+      { encoding: 'utf8' },
+    );
+    if (durationProbe.error !== undefined) throw durationProbe.error;
+    if (durationProbe.status !== 0) throw new Error(durationProbe.stderr);
+    if (!(Number(durationProbe.stdout.trim()) >= minimumSourceSeconds)) {
+      throw new Error(`${name} source is shorter than ${minimumSourceSeconds} seconds`);
+    }
+  }
+  copyFileSync(prepared, output);
+  console.log(`${name}: ${decoded.lufs} LUFS, ${decoded.truePeak} dBTP`);
 }
 
-for (const clip of clips) buildClip(clip);
+const workspace = mkdtempSync(join(tmpdir(), 'crownfall-audio-'));
+const downloads = new Map<string, string>();
+try {
+  for (const clip of clips) buildClip(clip, workspace, downloads);
+} finally {
+  rmSync(workspace, { recursive: true, force: true });
+}

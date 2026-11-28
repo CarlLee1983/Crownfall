@@ -1,5 +1,6 @@
 import warHornsUrl from './clips/war-horns.opus?url';
-import type { SoundCommand } from './director';
+import type { EffectCommand, SoundCommand } from './director';
+import { connectMusic } from './music';
 
 const DUCK_GAIN = 10 ** (-12 / 20);
 
@@ -22,13 +23,14 @@ function connectMixer(context: AudioContext) {
   ui.gain.value = 0.7;
   ui.connect(master);
 
+  const nowPlaying = connectMusic(context, music);
   let hornLoad: Promise<AudioBuffer> | undefined;
   let horn: AudioBuffer | undefined;
-  const pending: SoundCommand[] = [];
+  const pending: EffectCommand[] = [];
   const playing = new Set<AudioBufferSourceNode>();
   let duckUntil = 0;
 
-  function play(commands: readonly SoundCommand[]): void {
+  function playEffects(commands: readonly EffectCommand[]): void {
     if (horn === undefined || context.state !== 'running') {
       if (hornLoad !== undefined) pending.push(...commands);
       return;
@@ -64,12 +66,22 @@ function connectMixer(context: AudioContext) {
         pending.length = 0;
         throw error;
       });
-      const [, buffer] = await Promise.all([running, hornLoad]);
-      horn = buffer;
-      play(pending.splice(0));
+      const hornReady = Promise.all([running, hornLoad]).then(([, buffer]) => {
+        horn = buffer;
+        playEffects(pending.splice(0));
+      });
+      await Promise.all([hornReady, nowPlaying.unlock(running)]);
     },
-    play,
+    play(commands: readonly SoundCommand[]): void {
+      for (const command of commands) {
+        if (command.kind === 'effect') playEffects([command]);
+        else if (command.kind === 'music') nowPlaying.select(command.track);
+        else nowPlaying.stop();
+      }
+    },
+    setPaused: nowPlaying.setPaused,
     reset(): void {
+      nowPlaying.stop();
       pending.length = 0;
       for (const source of playing) source.stop();
       playing.clear();
@@ -96,6 +108,9 @@ export function createMixer() {
     },
     play(commands: readonly SoundCommand[]): void {
       if (commands.length > 0) mixer?.play(commands);
+    },
+    setPaused(paused: boolean): void {
+      mixer?.setPaused(paused);
     },
     reset(): void {
       mixer?.reset();

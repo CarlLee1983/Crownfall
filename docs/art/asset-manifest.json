@@ -369,6 +369,82 @@
         "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
         "prompt_or_source_record": "war_horns.wav, processed by scripts/build-audio.ts"
       }
+    },
+    {
+      "id": "catacombs",
+      "role": "備戰音樂",
+      "path": "src/audio/clips/catacombs.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/jrpg-pack-3-evil",
+        "creator": "Juhani Junkala",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "Evil2 - Catacombs.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "ancient-evil-awakens",
+      "role": "波次音樂",
+      "path": "src/audio/clips/ancient-evil-awakens.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/jrpg-pack-3-evil",
+        "creator": "Juhani Junkala",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "Evil1 - Ancient Evil Awakens.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "apocalypse",
+      "role": "巫妖波次音樂",
+      "path": "src/audio/clips/apocalypse.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/jrpg-pack-3-evil",
+        "creator": "Juhani Junkala",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "Evil3 - Apocalypse.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "the-sad-battle",
+      "role": "敗北曲",
+      "path": "src/audio/clips/the-sad-battle.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/the-sad-battle",
+        "creator": "Eldritch Grim",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "the_sad_battle.wav, processed by scripts/build-audio.ts"
+      }
     }
   ]
 }
