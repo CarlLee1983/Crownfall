@@ -60,11 +60,12 @@ it.each([
     expect(directSound(result.events, active, result.state)).toEqual([
       {
         kind: 'effect',
-        sound: 'leak-horn-1',
+        sound: 'leak-bell',
         bus: 'effects',
         pitchSemitones: 0,
         duck: true,
         duckRecoverySeconds: 0.4,
+        skipWhileSounding: true,
       },
       { kind: 'effect', bus: 'effects', pitchSemitones: 0, ...jingle },
       music,

@@ -6,11 +6,10 @@
 | --- | --- | --- |
 | [War Horns](https://opengameart.org/node/153572) | `war_horns.wav` | 發行頁 |
 | [Medieval Sound Effects – Weapon Textures](https://opengameart.org/content/medieval-sound-effects-weapon-textures) 的 `medieval_sfx_textures_1_of_2.7z` | `English Longbow Shoot.wav`、`Crossbow Shoot.wav` | 發行頁及[原作者條文存檔](https://web.archive.org/web/20220331020630/https://www.stillnorthmedia.com/libraries) |
-| [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds) | `impactSoft_medium_002.ogg`、`impactPlate_heavy_001.ogg`、`impactPlank_medium_002.ogg`、`impactMining_004.ogg`、`impactWood_medium_003.ogg` | 壓縮檔內的 `License.txt` |
+| [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds) | `impactSoft_medium_002.ogg`、`impactPlate_heavy_001.ogg`、`impactPlank_medium_002.ogg`、`impactMining_004.ogg`、`impactWood_medium_003.ogg`、`impactBell_heavy_000.ogg` | 壓縮檔內的 `License.txt` |
 | [150 Combat Sound Effects](https://opengameart.org/content/150-combat-sound-effects) 的 `150gameeffectsounds.zip` | `04_magic_spells/Fire Spell Impact 2_s06.wav` | 壓縮檔內的 `LICENSES.txt` 將 `s06` 對應到 lentikula 的 [Basic Spell Impacts](https://lentikula.itch.io/freecc0-basic-spell-impacts-sfx) |
 | [Deep Bone Crack/Break SFX](https://opengameart.org/content/deep-bone-crackbreak-sfx) 的 `deep_breaks.zip` | `Deep Break 3.wav` | 發行頁 |
 | [RPG Sound Pack](https://opengameart.org/content/rpg-sound-pack) 的 `rpg_sound_pack.zip` | `RPG Sound Pack/NPC/shade/shade1.wav` | 發行頁 |
-| [Their Coming](https://opengameart.org/content/their-coming-generic-horn-sound) | `theircoming.ogg` | 發行頁 |
 | [Kenney Music Jingles](https://kenney.nl/assets/music-jingles) | `jingles_STEEL10.ogg`、`jingles_STEEL02.ogg` | 壓縮檔內的 `License.txt` |
 | [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds) | `error_003.ogg` | 壓縮檔內的 `License.txt` |
 | [JRPG Pack 3 [Evil]](https://opengameart.org/content/jrpg-pack-3-evil) 的 `JRPG Music Pack #3 [Evil] by Juhani Junkala.zip` | `Evil2 - Catacombs.ogg`、`Evil1 - Ancient Evil Awakens.ogg`、`Evil3 - Apocalypse.ogg` | 壓縮檔內的 `INFO.txt` |

@@ -10,7 +10,7 @@ export type SoundId =
   | 'spell-fire-2'
   | 'bone-break-3'
   | 'lich-shade-1'
-  | 'leak-horn-1'
+  | 'leak-bell'
   | 'jingle-steel-10'
   | 'jingle-steel-02'
   | 'place-plank'
@@ -27,6 +27,8 @@ export type EffectCommand = {
   /** Let the music recover between repeated alerts even when their sounds overlap. */
   readonly duckRecoverySeconds?: number;
   readonly discardWhenLate?: true;
+  /** Drop the cue while the same sound still rings, so a run of alerts never restarts it. */
+  readonly skipWhileSounding?: true;
 };
 
 export type SoundCommand = EffectCommand | MusicCommand;
@@ -113,7 +115,11 @@ export function directSound(
         break;
       }
       case 'leaked':
-        commands.push({ ...effect('leak-horn-1', 0, true), duckRecoverySeconds: 0.4 });
+        commands.push({
+          ...effect('leak-bell', 0, true),
+          duckRecoverySeconds: 0.4,
+          skipWhileSounding: true,
+        });
         break;
       case 'waveCleared':
         if (!wonThisTick) commands.push(effect('jingle-steel-10'));
