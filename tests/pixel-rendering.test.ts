@@ -4,7 +4,7 @@ for (const dpr of [1, 2]) {
   test.describe(`DPR ${dpr}`, () => {
     test.use({ deviceScaleFactor: dpr, viewport: { width: 1280, height: 721 } });
 
-    test('renders the cool, dark world on a 3 CSS pixel grid', async ({ page }) => {
+    test('renders the cool, dark world on a 2 CSS pixel grid', async ({ page }) => {
       await page.goto('./');
       await page.getByRole('button', { name: '開始遊戲' }).click();
 
@@ -45,7 +45,7 @@ for (const dpr of [1, 2]) {
           const medianLuminance = luminance[Math.floor(luminance.length / 2)] ?? 0;
           return { colors: colors.size, nonUniformPixels, width, height, medianLuminance };
         },
-        { png: [...screenshot], blockSize: 3 * dpr },
+        { png: [...screenshot], blockSize: 2 * dpr },
       );
 
       expect(sample.width).toBe(60 * dpr);
