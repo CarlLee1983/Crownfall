@@ -14,7 +14,7 @@ import {
 } from 'three';
 import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
 
-const PIXEL_SIZE = 3;
+const PIXEL_SIZE = 2;
 
 export function createPixelRenderer(renderer: WebGLRenderer, scene: Scene, camera: Camera) {
   const world = new WebGLRenderTarget(1, 1, {
