@@ -38,13 +38,14 @@ help.addEventListener('cancel', (event) => {
 });
 audioHud.setDialog(help);
 help.showModal();
+const loadingFocus = document.activeElement;
 
 loadModels().then(
   (models) => {
     startGame(models);
     loading.hidden = true;
     start.disabled = false;
-    start.focus();
+    if (document.activeElement === loadingFocus) start.focus();
   },
   () => {
     loading.hidden = true;

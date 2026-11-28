@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 export async function installAudioProbe(page: Page) {
   await page.addInitScript(() => {
     const contexts: AudioContext[] = [];
-    const scheduled: AudioBuffer[] = [];
+    const scheduled: { buffer: AudioBuffer; at: number }[] = [];
     const stops: { path: string; at: number; requestedAt: number }[] = [];
     const bufferPaths = new WeakMap<AudioBuffer, string>();
     const decoded: { path: string; duration: number }[] = [];
@@ -60,7 +60,8 @@ export async function installAudioProbe(page: Page) {
         const start = source.start.bind(source);
         source.start = (...args) => {
           start(...args);
-          if (source.buffer !== null) scheduled.push(source.buffer);
+          if (source.buffer !== null)
+            scheduled.push({ buffer: source.buffer, at: args[0] ?? this.currentTime });
         };
         const stop = source.stop.bind(source);
         source.stop = (...args) => {
@@ -76,8 +77,9 @@ export async function installAudioProbe(page: Page) {
     Object.defineProperty(window, 'audioProbe', {
       value: () => ({
         contexts: contexts.map((context) => context.state),
-        scheduled: scheduled.map((buffer) => buffer.duration),
-        scheduledPaths: scheduled.map((buffer) => bufferPaths.get(buffer) ?? ''),
+        scheduled: scheduled.map(({ buffer }) => buffer.duration),
+        scheduledPaths: scheduled.map(({ buffer }) => bufferPaths.get(buffer) ?? ''),
+        scheduledTimes: scheduled.map(({ at }) => at),
         currentTime: contexts[0]?.currentTime ?? 0,
         stops,
         decoded,
@@ -94,6 +96,7 @@ export async function installAudioProbe(page: Page) {
           contexts: AudioContextState[];
           scheduled: number[];
           scheduledPaths: string[];
+          scheduledTimes: number[];
           currentTime: number;
           stops: { path: string; at: number; requestedAt: number }[];
           decoded: { path: string; duration: number }[];

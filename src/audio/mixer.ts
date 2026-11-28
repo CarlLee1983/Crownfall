@@ -47,7 +47,7 @@ function connectMixer(context: AudioContext, initialVolumes: AudioSettings) {
     setPaused: nowPlaying.setPaused,
     setVolumes,
     reset(): void {
-      nowPlaying.stop();
+      nowPlaying.reset();
       sound.reset();
     },
   };

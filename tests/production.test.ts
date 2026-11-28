@@ -82,12 +82,17 @@ test('builds a tower and renders an enemy in the production game', async ({ page
 
   await page.goto('./');
   const startGame = page.getByRole('button', { name: '開始遊戲' });
+  const musicSlider = page.getByRole('slider', { name: '音樂音量' });
   try {
     expect((await skeletonResponse).ok()).toBe(true);
     await expect(startGame).toBeDisabled();
     await expect(page.getByText('正在載入 3D 模型…')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(startGame).toBeVisible();
+    await page.getByRole('button', { name: '音量設定' }).click();
+    await musicSlider.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(musicSlider).toHaveValue('59');
   } finally {
     releaseDownload();
   }
@@ -95,6 +100,10 @@ test('builds a tower and renders an enemy in the production game', async ({ page
   await expect(page.locator('script[type="module"][src]')).toHaveAttribute('src', /^\.\/assets\//);
   await expect(page.locator('link[rel="stylesheet"]')).toHaveAttribute('href', /^\.\/assets\//);
   await expect(startGame).toBeEnabled();
+  await expect(musicSlider).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(musicSlider).toHaveValue('58');
+  await page.getByRole('button', { name: '音量設定' }).click();
   await startGame.click();
 
   const version = process.env.APP_VERSION ?? 'dev';
@@ -227,6 +236,7 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
     contexts: [],
     scheduled: [],
     scheduledPaths: [],
+    scheduledTimes: [],
     currentTime: 0,
     stops: [],
     decoded: [],
@@ -455,10 +465,8 @@ test('retries defeat music and drops pending effects on restart', async ({ page 
   }
 });
 
-for (const download of ['succeeds', 'fails']) {
-  test(`preserves interface sound order when the first download ${download} late`, async ({
-    page,
-  }) => {
+for (const download of ['succeeds', 'fails', 'stalls']) {
+  test(`sequences interface cues when the error download ${download}`, async ({ page }) => {
     const readAudio = await installAudioProbe(page);
     let releaseError = () => {};
     const errorDownload = new Promise<void>((resolve) => {
@@ -469,8 +477,12 @@ for (const download of ['succeeds', 'fails']) {
       if (download === 'fails') await route.abort();
       else await route.continue();
     });
-    const uiSounds = async () =>
-      (await readAudio()).scheduledPaths.filter((path) => /ui-error-03|place-plank/.test(path));
+    const uiSounds = async () => {
+      const { scheduledPaths, scheduledTimes } = await readAudio();
+      return scheduledPaths.flatMap((path, index) =>
+        /ui-error-03|place-plank/.test(path) ? [{ path, at: scheduledTimes[index] }] : [],
+      );
+    };
 
     try {
       await page.goto('./');
@@ -478,26 +490,48 @@ for (const download of ['succeeds', 'fails']) {
       await expect
         .poll(async () => (await readAudio()).decoded.map(({ path }) => path))
         .toContainEqual(expect.stringContaining('place-plank'));
-      const canvas = page.getByLabel('Crownfall 關卡');
-      await canvas.click({ position: spawnTile });
-      await expect(page.locator('#build-feedback')).toHaveText('入口、城堡與坡道不能建塔');
-      await canvas.click({ position: openTile });
-      await page
+      await page.getByRole('button', { name: '暫停' }).click();
+      await page.getByRole('button', { name: /開波/ }).click();
+      await expect(page.getByRole('button', { name: /開波/ })).toBeDisabled();
+      await page.getByLabel('Crownfall 關卡').click({ position: openTile });
+      const build = page
         .getByRole('region', { name: '建造環' })
-        .getByRole('button', { name: /弓箭塔/ })
-        .click();
+        .getByRole('button', { name: /弓箭塔/ });
+
+      // Submit both HUD actions in the same frame to produce a real audio backlog.
+      await build.evaluate((button) => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+        (button as HTMLButtonElement).click();
+      });
       await expect(page.locator('#build-balance')).toHaveText('50');
-      expect(await uiSounds()).toEqual([]);
+
+      if (download === 'stalls') {
+        // The confirmation must sound while the earlier fetch is still held.
+        await expect.poll(uiSounds, { timeout: 1000 }).toHaveLength(1);
+      } else {
+        expect(await uiSounds()).toEqual([]);
+      }
     } finally {
       releaseError();
     }
+
+    const expected = download === 'succeeds' ? ['ui-error-03', 'place-plank'] : ['place-plank'];
     await expect
-      .poll(uiSounds)
-      .toEqual(
-        download === 'fails'
-          ? [expect.stringContaining('place-plank')]
-          : [expect.stringContaining('ui-error-03'), expect.stringContaining('place-plank')],
-      );
+      .poll(async () => (await uiSounds()).map(({ path }) => path))
+      .toEqual(expected.map((sound) => expect.stringContaining(sound)));
+    if (download === 'succeeds') {
+      const [error, placement] = await uiSounds();
+      if (error?.at === undefined || placement?.at === undefined) {
+        throw new Error('Missing playback timestamps for queued interface cues');
+      }
+      expect(placement.at - error.at).toBeGreaterThanOrEqual(0.04);
+      expect(placement.at - error.at).toBeLessThanOrEqual(0.12);
+    } else if (download === 'stalls') {
+      await expect
+        .poll(async () => (await readAudio()).decoded.map(({ path }) => path))
+        .toContainEqual(expect.stringContaining('ui-error-03'));
+      expect(await uiSounds()).toHaveLength(1);
+    }
   });
 }
 
@@ -541,4 +575,44 @@ test('drops combat impacts that miss their playback time', async ({ page }) => {
   expect(await impacts()).toEqual([]);
   await page.getByRole('button', { name: '繼續', exact: true }).click();
   await expect.poll(impacts).not.toEqual([]);
+});
+
+test('starts preparation music after restart renews an exhausted retry budget', async ({
+  page,
+}) => {
+  test.slow();
+  const readAudio = await installAudioProbe(page);
+  await page.addInitScript(() => {
+    const request = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (callback) => request((time) => callback(time * 30));
+  });
+
+  let requests = 0;
+  await page.route(/\/assets\/catacombs-[\w-]+\.opus$/, async (route) => {
+    requests++;
+    if (requests <= 2) await route.fulfill({ status: 503 });
+    else await route.continue();
+  });
+
+  await page.goto('./');
+  await page.getByRole('button', { name: '開始遊戲' }).click();
+  await expect.poll(() => requests).toBe(2);
+  const openWave = page.getByRole('button', { name: /開波/ });
+  await openWave.click();
+  await expect(openWave).toBeDisabled();
+  await expect(openWave).toBeEnabled({ timeout: 25000 });
+  await openWave.click();
+  const result = page.getByRole('dialog', { name: '敗北' });
+  await expect(result).toBeVisible({ timeout: 25000 });
+  expect(requests).toBe(2);
+  expect((await readAudio()).scheduledPaths).not.toContainEqual(
+    expect.stringContaining('catacombs'),
+  );
+
+  await result.getByRole('button', { name: '重新開始' }).click();
+  await expect(page.getByRole('dialog', { name: '操作說明' })).toBeVisible();
+  await expect.poll(() => requests).toBe(3);
+  await expect
+    .poll(async () => (await readAudio()).scheduledPaths)
+    .toContainEqual(expect.stringContaining('catacombs'));
 });

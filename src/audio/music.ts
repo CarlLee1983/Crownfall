@@ -102,11 +102,21 @@ export function connectMusic(context: AudioContext, output: AudioNode) {
     attempts.set(track, attempt);
     const loading = load(track, url).catch((error: unknown) => {
       loads.delete(track);
-      if (track === requestedTrack && attempt < maxLoadAttempts) return ensureLoad(track, url);
+      if (track === requestedTrack && (attempts.get(track) ?? 0) < maxLoadAttempts) {
+        return ensureLoad(track, url);
+      }
       console.warn(`無法載入音樂 ${track}。`, error);
     });
     loads.set(track, loading);
     return loading;
+  }
+
+  function stop(): void {
+    requestedTrack = undefined;
+    current = undefined;
+    fadeEnd = 0;
+    for (const { source } of voices) source.stop();
+    voices.clear();
   }
 
   return {
@@ -132,12 +142,10 @@ export function connectMusic(context: AudioContext, output: AudioNode) {
       const url = trackUrls.find(([candidate]) => candidate === track)?.[1];
       if (url !== undefined) void ensureLoad(track, url);
     },
-    stop(): void {
-      requestedTrack = undefined;
-      current = undefined;
-      fadeEnd = 0;
-      for (const { source } of voices) source.stop();
-      voices.clear();
+    stop,
+    reset(): void {
+      stop();
+      attempts.clear();
     },
     setPaused(paused: boolean): void {
       pauseGain.gain.setValueAtTime(paused ? 0.5 : 1, context.currentTime);

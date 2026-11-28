@@ -35,9 +35,13 @@ const EFFECT_URLS: Record<SoundId, readonly string[]> = {
 const DUCK_GAIN = 10 ** (-12 / 20);
 const RELEASE_TIME_CONSTANT = 0.1;
 const VOICE_LIMIT = 4;
+const UI_WAIT_MS = 250;
+const UI_CUE_SPACING_SECONDS = 0.06;
+const UI_MAX_START_DELAY_SECONDS = 0.12;
 
 interface EffectBank {
   buffers?: readonly AudioBuffer[];
+  loadedAt?: number;
   readonly pending: EffectCommand[];
   readonly playing: Set<AudioBufferSourceNode>;
   next: number;
@@ -54,12 +58,18 @@ export function connectEffects(
   buses: { effects: GainNode; ui: GainNode; ducking: GainNode },
 ) {
   const banks = new Map<string, EffectBank>();
-  const pendingUi: EffectCommand[] = [];
+  const pendingUi: { command: EffectCommand; waitUntil: number }[] = [];
+  let uiTimer: ReturnType<typeof setTimeout> | undefined;
+  let nextUiStart = 0;
   let loading: Promise<unknown> | undefined;
   let duckUntil = 0;
   let nextLimitedDuck = 0;
 
-  function playVoice(bank: EffectBank, command: EffectCommand): void {
+  function playVoice(
+    bank: EffectBank,
+    command: EffectCommand,
+    startAt = context.currentTime,
+  ): void {
     const buffers = bank.buffers;
     if (buffers === undefined) return;
     const buffer = buffers[bank.next];
@@ -88,7 +98,7 @@ export function connectEffects(
       gain.disconnect();
     };
 
-    source.start(now);
+    source.start(startAt);
     bank.playing.add(source);
     if (!command.duck) return;
     const endsAt = now + buffer.duration / rate;
@@ -108,15 +118,29 @@ export function connectEffects(
   }
 
   function flushUi(): void {
+    clearTimeout(uiTimer);
+    uiTimer = undefined;
     if (context.state !== 'running') return;
+
     while (pendingUi.length > 0) {
-      const command = pendingUi[0];
-      if (command === undefined) return;
-      const bank = banks.get(command.sound);
-      // Missing banks failed to load. A bank that is still loading holds the order.
-      if (bank !== undefined && bank.buffers === undefined) return;
+      const cue = pendingUi[0];
+      if (cue === undefined) return;
+      const bank = banks.get(cue.command.sound);
+      const remaining = cue.waitUntil - performance.now();
+      if (bank !== undefined && bank.loadedAt === undefined && remaining > 0) {
+        uiTimer = setTimeout(flushUi, remaining);
+        return;
+      }
+
       pendingUi.shift();
-      if (bank !== undefined) playVoice(bank, command);
+      if (bank?.loadedAt === undefined || bank.loadedAt > cue.waitUntil) continue;
+
+      const now = context.currentTime;
+      const startAt = Math.max(now, nextUiStart);
+      // Give catch-up cues separate onsets without building a long playback backlog.
+      if (startAt > now + UI_MAX_START_DELAY_SECONDS) continue;
+      playVoice(bank, cue.command, startAt);
+      nextUiStart = startAt + UI_CUE_SPACING_SECONDS;
     }
   }
 
@@ -128,6 +152,7 @@ export function connectEffects(
           banks.set(sound, bank);
           try {
             bank.buffers = await Promise.all(urls.map((url) => loadEffect(context, url)));
+            bank.loadedAt = performance.now();
           } catch (error) {
             banks.delete(sound);
             console.warn(`無法載入音效 ${sound}。`, error);
@@ -149,7 +174,7 @@ export function connectEffects(
         const bank = banks.get(command.sound);
         if (bank === undefined) continue;
         if (command.bus === 'ui') {
-          pendingUi.push(command);
+          pendingUi.push({ command, waitUntil: performance.now() + UI_WAIT_MS });
           flushUi();
         } else if (bank.buffers !== undefined && context.state === 'running') {
           playVoice(bank, command);
@@ -159,7 +184,10 @@ export function connectEffects(
       }
     },
     reset(): void {
+      clearTimeout(uiTimer);
+      uiTimer = undefined;
       pendingUi.length = 0;
+      nextUiStart = 0;
       for (const bank of banks.values()) {
         bank.pending.length = 0;
         for (const source of bank.playing) source.stop();
