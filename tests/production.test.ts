@@ -347,9 +347,9 @@ for (const delay of [0.3, 2.1]) {
       const outgoing = stops[0];
       if (outgoing === undefined) throw new Error('Missing outgoing music stop');
       expect(outgoing.path).toContain('catacombs');
-      expect(outgoing.at - outgoing.requestedAt).toBeCloseTo(2);
+      expect(outgoing.at - outgoing.fadeStartedAt).toBeCloseTo(2);
       await expect
-        .poll(async () => (await readAudio()).currentTime - outgoing.requestedAt, {
+        .poll(async () => (await readAudio()).currentTime - outgoing.fadeStartedAt, {
           intervals: [20, 30, 50],
         })
         .toBeGreaterThan(delay);
@@ -442,7 +442,7 @@ test('retries defeat music and drops pending effects on restart', async ({ page 
       path.includes('ancient-evil-awakens'),
     );
     if (outgoing === undefined) throw new Error('Wave music did not fade on defeat');
-    expect(outgoing.at - outgoing.requestedAt).toBeCloseTo(2);
+    expect(outgoing.at - outgoing.fadeStartedAt).toBeCloseTo(2);
     await expect.poll(() => defeatRequests).toBe(2);
     releaseDefeat();
     await expect

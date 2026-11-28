@@ -4,7 +4,7 @@ export async function installAudioProbe(page: Page) {
   await page.addInitScript(() => {
     const contexts: AudioContext[] = [];
     const scheduled: { buffer: AudioBuffer; at: number }[] = [];
-    const stops: { path: string; at: number; requestedAt: number }[] = [];
+    const stops: { path: string; at: number; fadeStartedAt: number }[] = [];
     const bufferPaths = new WeakMap<AudioBuffer, string>();
     const decoded: { path: string; duration: number }[] = [];
     // Identify the asset whose original response bytes reach the native decoder.
@@ -17,6 +17,7 @@ export async function installAudioProbe(page: Page) {
     };
     const gainValues: number[][] = [];
     const fadeDurations: number[] = [];
+    let fadeStartedAt = Number.NaN;
     const NativeAudioContext = window.AudioContext;
     window.AudioContext = class extends NativeAudioContext {
       constructor(options?: AudioContextOptions) {
@@ -50,6 +51,7 @@ export async function installAudioProbe(page: Page) {
         };
         node.gain.linearRampToValueAtTime = (value, at) => {
           fadeDurations.push(at - setAt);
+          if (value === 0) fadeStartedAt = setAt;
           return ramp(value, at);
         };
         return node;
@@ -68,7 +70,7 @@ export async function installAudioProbe(page: Page) {
           stop(...args);
           const path = source.buffer === null ? undefined : bufferPaths.get(source.buffer);
           if (path !== undefined) {
-            stops.push({ path, at: args[0] ?? this.currentTime, requestedAt: this.currentTime });
+            stops.push({ path, at: args[0] ?? this.currentTime, fadeStartedAt });
           }
         };
         return source;
@@ -98,7 +100,7 @@ export async function installAudioProbe(page: Page) {
           scheduledPaths: string[];
           scheduledTimes: number[];
           currentTime: number;
-          stops: { path: string; at: number; requestedAt: number }[];
+          stops: { path: string; at: number; fadeStartedAt: number }[];
           decoded: { path: string; duration: number }[];
           gainValues: number[][];
           fadeDurations: number[];
