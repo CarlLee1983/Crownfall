@@ -116,6 +116,7 @@ test('adjusts both audio levels from the HUD and keeps game controls accessible'
 test('keeps keyboard and pointer volume controls available in the defeat dialog', async ({
   page,
 }) => {
+  test.slow();
   await page.addInitScript(() => {
     const request = window.requestAnimationFrame.bind(window);
     window.requestAnimationFrame = (callback) => request((time) => callback(time * 30));
@@ -143,9 +144,17 @@ test('keeps keyboard and pointer volume controls available in the defeat dialog'
   await expect(music).toBeHidden();
 
   await result.getByRole('button', { name: '重新開始' }).click();
-  await page.getByRole('button', { name: '開始遊戲' }).click();
+  const help = page.getByRole('dialog', { name: '操作說明' });
+  const helpMute = help.getByRole('button', { name: '靜音', exact: true });
+  await expect(helpMute).toHaveAttribute('aria-pressed', 'true');
+  await helpMute.press('Space');
+  await expect.poll(() => page.evaluate(() => window.readAudioGains().master)).toBe(1);
+  await help.getByRole('button', { name: '音量設定' }).click();
+  await expect(help.getByRole('slider', { name: '音樂音量' })).toHaveValue('59');
+  await help.getByRole('slider', { name: '音樂音量' }).press('Escape');
+  await help.getByRole('button', { name: '開始遊戲' }).click();
   await expect(page.getByRole('button', { name: '靜音', exact: true })).toHaveAttribute(
     'aria-pressed',
-    'true',
+    'false',
   );
 });

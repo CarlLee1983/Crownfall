@@ -39,11 +39,16 @@ export function connectAudioHud(setVolumes: (settings: AudioSettings) => void) {
   // Keep game shortcuts from overriding native button and slider keys.
   controls.addEventListener('keydown', (event) => event.stopPropagation());
 
-  return {
-    setResultOpen(open: boolean): void {
-      if (levelPanel.matches(':popover-open')) levelPanel.hidePopover();
-      if (open) result.append(controls);
-      else help.before(controls);
-    },
-  };
+  function setDialog(dialog: HTMLDialogElement | null): void {
+    if (levelPanel.matches(':popover-open')) levelPanel.hidePopover();
+    if (dialog === null) help.before(controls);
+    else dialog.append(controls);
+  }
+
+  for (const dialog of [help, result]) {
+    dialog.addEventListener('close', () => {
+      if (dialog.contains(controls)) setDialog(null);
+    });
+  }
+  return { setDialog };
 }

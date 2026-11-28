@@ -32,7 +32,7 @@ interface WaveActions {
   continueEndless(): void;
   setSpeed(speed: number): void;
   restart(): void;
-  setResultOpen(open: boolean): void;
+  setAudioDialog(dialog: HTMLDialogElement): void;
 }
 
 function previewText(state: GameState): string {
@@ -107,10 +107,6 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
   pause.addEventListener('click', togglePause);
   speedControl.addEventListener('click', cycleSpeed);
   continueButton.addEventListener('click', actions.continueEndless);
-  const closeResult = (): void => {
-    result.close();
-    actions.setResultOpen(false);
-  };
   result.addEventListener('cancel', (event) => event.preventDefault());
   result.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -120,7 +116,8 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
     feedback.textContent = '';
     actions.restart();
     syncSpeed();
-    closeResult();
+    result.close();
+    actions.setAudioDialog(help);
     help.showModal();
   });
 
@@ -206,12 +203,12 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
           displayedWave,
         );
         result.append(surveyLink);
-        actions.setResultOpen(true);
+        actions.setAudioDialog(result);
         result.showModal();
         return;
       }
 
-      if (result.open) closeResult();
+      if (result.open) result.close();
       updateText(preview, previewText(state));
 
       const { level } = state;

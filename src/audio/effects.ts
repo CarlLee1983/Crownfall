@@ -54,52 +54,69 @@ export function connectEffects(
   buses: { effects: GainNode; ui: GainNode; ducking: GainNode },
 ) {
   const banks = new Map<string, EffectBank>();
+  const pendingUi: EffectCommand[] = [];
   let loading: Promise<unknown> | undefined;
   let duckUntil = 0;
   let nextLimitedDuck = 0;
 
-  function flush(bank: EffectBank): void {
+  function playVoice(bank: EffectBank, command: EffectCommand): void {
     const buffers = bank.buffers;
-    if (buffers === undefined || context.state !== 'running') return;
-    for (const command of bank.pending.splice(0)) {
-      const buffer = buffers[bank.next];
-      if (buffer === undefined) continue;
-      bank.next = (bank.next + 1) % buffers.length;
-      if (bank.playing.size === VOICE_LIMIT) {
-        const oldest = bank.playing.values().next().value;
-        if (oldest !== undefined) {
-          bank.playing.delete(oldest);
-          oldest.stop();
-        }
+    if (buffers === undefined) return;
+    const buffer = buffers[bank.next];
+    if (buffer === undefined) return;
+    bank.next = (bank.next + 1) % buffers.length;
+    if (bank.playing.size === VOICE_LIMIT) {
+      const oldest = bank.playing.values().next().value;
+      if (oldest !== undefined) {
+        bank.playing.delete(oldest);
+        oldest.stop();
       }
+    }
 
-      const now = context.currentTime;
-      const source = context.createBufferSource();
-      const gain = context.createGain();
-      const pitch = command.pitchSemitones + (2 * Math.random() - 1);
-      const rate = 2 ** (pitch / 12);
-      gain.gain.value = 10 ** ((4 * Math.random() - 2) / 20);
-      source.buffer = buffer;
-      source.playbackRate.value = rate;
-      source.connect(gain).connect(buses[command.bus]);
-      source.onended = () => {
-        bank.playing.delete(source);
-        source.disconnect();
-        gain.disconnect();
-      };
+    const now = context.currentTime;
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    const pitch = command.pitchSemitones + (2 * Math.random() - 1);
+    const rate = 2 ** (pitch / 12);
+    gain.gain.value = 10 ** ((4 * Math.random() - 2) / 20);
+    source.buffer = buffer;
+    source.playbackRate.value = rate;
+    source.connect(gain).connect(buses[command.bus]);
+    source.onended = () => {
+      bank.playing.delete(source);
+      source.disconnect();
+      gain.disconnect();
+    };
 
-      source.start(now);
-      bank.playing.add(source);
-      if (!command.duck) continue;
-      const endsAt = now + buffer.duration / rate;
-      if (command.duckRecoverySeconds !== undefined) {
-        if (now < nextLimitedDuck) continue;
-        nextLimitedDuck = Math.max(duckUntil, endsAt) + command.duckRecoverySeconds;
-      }
-      duckUntil = Math.max(duckUntil, endsAt);
-      buses.ducking.gain.cancelScheduledValues(now);
-      buses.ducking.gain.setTargetAtTime(DUCK_GAIN, now, 0.015);
-      buses.ducking.gain.setTargetAtTime(1, duckUntil, RELEASE_TIME_CONSTANT);
+    source.start(now);
+    bank.playing.add(source);
+    if (!command.duck) return;
+    const endsAt = now + buffer.duration / rate;
+    if (command.duckRecoverySeconds !== undefined) {
+      if (now < nextLimitedDuck) return;
+      nextLimitedDuck = Math.max(duckUntil, endsAt) + command.duckRecoverySeconds;
+    }
+    duckUntil = Math.max(duckUntil, endsAt);
+    buses.ducking.gain.cancelScheduledValues(now);
+    buses.ducking.gain.setTargetAtTime(DUCK_GAIN, now, 0.015);
+    buses.ducking.gain.setTargetAtTime(1, duckUntil, RELEASE_TIME_CONSTANT);
+  }
+
+  function flush(bank: EffectBank): void {
+    if (bank.buffers === undefined || context.state !== 'running') return;
+    for (const command of bank.pending.splice(0)) playVoice(bank, command);
+  }
+
+  function flushUi(): void {
+    if (context.state !== 'running') return;
+    while (pendingUi.length > 0) {
+      const command = pendingUi[0];
+      if (command === undefined) return;
+      const bank = banks.get(command.sound);
+      // Missing banks failed to load. A bank that is still loading holds the order.
+      if (bank !== undefined && bank.buffers === undefined) return;
+      pendingUi.shift();
+      if (bank !== undefined) playVoice(bank, command);
     }
   }
 
@@ -116,11 +133,13 @@ export function connectEffects(
             console.warn(`無法載入音效 ${sound}。`, error);
           }
           flush(bank);
+          flushUi();
         }),
       );
       await Promise.all([
         running.then(() => {
           for (const bank of banks.values()) flush(bank);
+          flushUi();
         }),
         loading,
       ]);
@@ -129,11 +148,18 @@ export function connectEffects(
       for (const command of commands) {
         const bank = banks.get(command.sound);
         if (bank === undefined) continue;
-        bank.pending.push(command);
-        flush(bank);
+        if (command.bus === 'ui') {
+          pendingUi.push(command);
+          flushUi();
+        } else if (bank.buffers !== undefined && context.state === 'running') {
+          playVoice(bank, command);
+        } else if (!command.discardWhenLate) {
+          bank.pending.push(command);
+        }
       }
     },
     reset(): void {
+      pendingUi.length = 0;
       for (const bank of banks.values()) {
         bank.pending.length = 0;
         for (const source of bank.playing) source.stop();

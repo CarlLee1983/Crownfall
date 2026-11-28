@@ -251,7 +251,7 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
       (await readAudio()).scheduledPaths.filter((path) => path.includes('ui-error-03')).length;
     const canvas = page.getByLabel('Crownfall 關卡');
     await canvas.click({ position: spawnTile });
-    await expect(page.locator('#build-feedback')).toHaveText('入口、終點與坡道不能建塔');
+    await expect(page.locator('#build-feedback')).toHaveText('入口、城堡與坡道不能建塔');
     await expect.poll(errorsPlayed, { timeout: 2000 }).toBe(1);
 
     await canvas.click({ position: tileBesideSpawn });
@@ -307,53 +307,61 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
   );
 });
 
-test('starts the outgoing music fade while the next track downloads', async ({ page }) => {
-  const readAudio = await installAudioProbe(page);
-  let releaseWave = () => {};
-  const waveDownload = new Promise<void>((resolve) => {
-    releaseWave = resolve;
-  });
-  await page.route(/\/assets\/ancient-evil-awakens-[\w-]+\.opus$/, async (route) => {
-    await waveDownload;
-    await route.continue();
-  });
+for (const delay of [0.3, 2.1]) {
+  test(`fades out immediately and restarts music smoothly when decoding after ${delay}s`, async ({
+    page,
+  }) => {
+    const readAudio = await installAudioProbe(page);
+    let releaseWave = () => {};
+    const waveDownload = new Promise<void>((resolve) => {
+      releaseWave = resolve;
+    });
+    await page.route(/\/assets\/ancient-evil-awakens-[\w-]+\.opus$/, async (route) => {
+      await waveDownload;
+      await route.continue();
+    });
 
-  await page.goto('./');
-  try {
-    await page.getByRole('button', { name: '開始遊戲' }).click();
+    await page.goto('./');
+    try {
+      await page.getByRole('button', { name: '開始遊戲' }).click();
+      await expect
+        .poll(async () => (await readAudio()).scheduledPaths)
+        .toContainEqual(expect.stringContaining('catacombs'));
+      await page.getByRole('button', { name: '暫停' }).click();
+      await page.getByRole('button', { name: /開波/ }).click();
+
+      await expect.poll(async () => (await readAudio()).fadeDurations).toEqual([expect.closeTo(2)]);
+      const { stops, scheduledPaths } = await readAudio();
+      expect(scheduledPaths).not.toContainEqual(expect.stringContaining('ancient-evil-awakens'));
+      expect(stops).toHaveLength(1);
+      const outgoing = stops[0];
+      if (outgoing === undefined) throw new Error('Missing outgoing music stop');
+      expect(outgoing.path).toContain('catacombs');
+      expect(outgoing.at - outgoing.requestedAt).toBeCloseTo(2);
+      await expect
+        .poll(async () => (await readAudio()).currentTime - outgoing.requestedAt, {
+          intervals: [20, 30, 50],
+        })
+        .toBeGreaterThan(delay);
+    } finally {
+      releaseWave();
+    }
+
     await expect
       .poll(async () => (await readAudio()).scheduledPaths)
-      .toContainEqual(expect.stringContaining('catacombs'));
-    await page.getByRole('button', { name: '暫停' }).click();
-    await page.getByRole('button', { name: /開波/ }).click();
+      .toContainEqual(expect.stringContaining('ancient-evil-awakens'));
+    const { fadeDurations } = await readAudio();
+    expect(fadeDurations).toHaveLength(2);
+    if (delay > 2) {
+      expect(fadeDurations[1]).toBeCloseTo(0.08);
+    } else {
+      expect(fadeDurations[1]).toBeGreaterThan(0);
+      expect(fadeDurations[1]).toBeLessThan(1.7);
+    }
+  });
+}
 
-    await expect.poll(async () => (await readAudio()).fadeDurations).toEqual([expect.closeTo(2)]);
-    const { stops, scheduledPaths } = await readAudio();
-    expect(scheduledPaths).not.toContainEqual(expect.stringContaining('ancient-evil-awakens'));
-    expect(stops).toHaveLength(1);
-    const outgoing = stops[0];
-    if (outgoing === undefined) throw new Error('Missing outgoing music stop');
-    expect(outgoing.path).toContain('catacombs');
-    expect(outgoing.at - outgoing.requestedAt).toBeCloseTo(2);
-    await expect
-      .poll(async () => (await readAudio()).currentTime - outgoing.requestedAt, {
-        intervals: [20, 30, 50],
-      })
-      .toBeGreaterThan(0.3);
-  } finally {
-    releaseWave();
-  }
-
-  await expect
-    .poll(async () => (await readAudio()).scheduledPaths)
-    .toContainEqual(expect.stringContaining('ancient-evil-awakens'));
-  const { fadeDurations } = await readAudio();
-  expect(fadeDurations).toHaveLength(2);
-  expect(fadeDurations[1]).toBeGreaterThan(0);
-  expect(fadeDurations[1]).toBeLessThan(1.7);
-});
-
-test('fades on failed defeat music and drops pending effects on restart', async ({ page }) => {
+test('retries defeat music and drops pending effects on restart', async ({ page }) => {
   test.slow();
   const readAudio = await installAudioProbe(page);
   await page.addInitScript(() => {
@@ -377,7 +385,20 @@ test('fades on failed defeat music and drops pending effects on restart', async 
     await waveDownload;
     await route.continue();
   });
-  await page.route(/\/assets\/the-sad-battle-[\w-]+\.opus$/, (route) => route.abort());
+  let defeatRequests = 0;
+  let releaseDefeat = () => {};
+  const defeatRetry = new Promise<void>((resolve) => {
+    releaseDefeat = resolve;
+  });
+  await page.route(/\/assets\/the-sad-battle-[\w-]+\.opus$/, async (route) => {
+    defeatRequests++;
+    if (defeatRequests === 1) {
+      await route.fulfill({ status: 503 });
+    } else {
+      await defeatRetry;
+      await route.continue();
+    }
+  });
 
   const hornCount = async () =>
     (await readAudio()).scheduledPaths.filter((path) => path.includes('war-horns')).length;
@@ -412,6 +433,11 @@ test('fades on failed defeat music and drops pending effects on restart', async 
     );
     if (outgoing === undefined) throw new Error('Wave music did not fade on defeat');
     expect(outgoing.at - outgoing.requestedAt).toBeCloseTo(2);
+    await expect.poll(() => defeatRequests).toBe(2);
+    releaseDefeat();
+    await expect
+      .poll(async () => (await readAudio()).scheduledPaths)
+      .toContainEqual(expect.stringContaining('the-sad-battle'));
 
     await page.getByRole('button', { name: '重新開始' }).click();
     await startGame.click();
@@ -425,5 +451,94 @@ test('fades on failed defeat music and drops pending effects on restart', async 
   } finally {
     releaseWave();
     releaseHorn();
+    releaseDefeat();
   }
+});
+
+for (const download of ['succeeds', 'fails']) {
+  test(`preserves interface sound order when the first download ${download} late`, async ({
+    page,
+  }) => {
+    const readAudio = await installAudioProbe(page);
+    let releaseError = () => {};
+    const errorDownload = new Promise<void>((resolve) => {
+      releaseError = resolve;
+    });
+    await page.route(/\/assets\/ui-error-03-[\w-]+\.opus$/, async (route) => {
+      await errorDownload;
+      if (download === 'fails') await route.abort();
+      else await route.continue();
+    });
+    const uiSounds = async () =>
+      (await readAudio()).scheduledPaths.filter((path) => /ui-error-03|place-plank/.test(path));
+
+    try {
+      await page.goto('./');
+      await page.getByRole('button', { name: '開始遊戲' }).click();
+      await expect
+        .poll(async () => (await readAudio()).decoded.map(({ path }) => path))
+        .toContainEqual(expect.stringContaining('place-plank'));
+      const canvas = page.getByLabel('Crownfall 關卡');
+      await canvas.click({ position: spawnTile });
+      await expect(page.locator('#build-feedback')).toHaveText('入口、城堡與坡道不能建塔');
+      await canvas.click({ position: openTile });
+      await page
+        .getByRole('region', { name: '建造環' })
+        .getByRole('button', { name: /弓箭塔/ })
+        .click();
+      await expect(page.locator('#build-balance')).toHaveText('50');
+      expect(await uiSounds()).toEqual([]);
+    } finally {
+      releaseError();
+    }
+    await expect
+      .poll(uiSounds)
+      .toEqual(
+        download === 'fails'
+          ? [expect.stringContaining('place-plank')]
+          : [expect.stringContaining('ui-error-03'), expect.stringContaining('place-plank')],
+      );
+  });
+}
+
+test('drops combat impacts that miss their playback time', async ({ page }) => {
+  const readAudio = await installAudioProbe(page);
+  let releaseImpact = () => {};
+  const impactDownload = new Promise<void>((resolve) => {
+    releaseImpact = resolve;
+  });
+  await page.route(/\/assets\/archer-hit-soft-[\w-]+\.opus$/, async (route) => {
+    await impactDownload;
+    await route.continue();
+  });
+  const impacts = async () =>
+    (await readAudio()).scheduledPaths.filter((path) => path.includes('archer-hit-soft'));
+
+  try {
+    await page.goto('./');
+    await page.getByRole('button', { name: '開始遊戲' }).click();
+    const canvas = page.getByLabel('Crownfall 關卡');
+    for (const position of [tileBesideSpawn, { x: 600, y: 588 }]) {
+      await canvas.click({ position });
+      await page
+        .getByRole('region', { name: '建造環' })
+        .getByRole('button', { name: /弓箭塔/ })
+        .click();
+    }
+    await expect(page.locator('#build-balance')).toHaveText('0');
+    await page.getByRole('button', { name: /開波/ }).click();
+    await expect
+      .poll(async () => (await readAudio()).scheduledPaths)
+      .toContainEqual(expect.stringContaining('bone-break-3'));
+    await page.getByRole('button', { name: '暫停' }).click();
+    expect(await impacts()).toEqual([]);
+  } finally {
+    releaseImpact();
+  }
+  await expect
+    .poll(async () => (await readAudio()).decoded.map(({ path }) => path))
+    .toContainEqual(expect.stringContaining('archer-hit-soft'));
+  expect(await impacts()).toEqual([]);
+  await page.getByRole('button', { name: '繼續', exact: true }).click();
+  await expect.poll(impacts).not.toEqual([]);
 });

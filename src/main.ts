@@ -36,6 +36,7 @@ const error = element('model-error');
 help.addEventListener('cancel', (event) => {
   if (start.disabled) event.preventDefault();
 });
+audioHud.setDialog(help);
 help.showModal();
 
 loadModels().then(
@@ -120,7 +121,7 @@ function startGame(models: LoadedModels): void {
       loop.setSpeed(speed);
       audio.setPaused(speed === 0);
     },
-    setResultOpen: audioHud.setResultOpen,
+    setAudioDialog: audioHud.setDialog,
     restart: () => {
       hud.reset();
       shots.reset();

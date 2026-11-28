@@ -26,6 +26,7 @@ export type EffectCommand = {
   readonly duck: boolean;
   /** Let the music recover between repeated alerts even when their sounds overlap. */
   readonly duckRecoverySeconds?: number;
+  readonly discardWhenLate?: true;
 };
 
 export type SoundCommand = EffectCommand | MusicCommand;
@@ -54,16 +55,20 @@ function uiEffect(sound: SoundId): EffectCommand {
   return { kind: 'effect', sound, bus: 'ui', pitchSemitones: 0, duck: false };
 }
 
+function combatEffect(sound: SoundId, pitchSemitones = 0): EffectCommand {
+  return { ...effect(sound, pitchSemitones), discardWhenLate: true };
+}
+
 function deathSound(kind: string): EffectCommand | undefined {
   switch (kind) {
     case 'grunt':
-      return effect('bone-break-3');
+      return combatEffect('bone-break-3');
     case 'runner':
-      return effect('bone-break-3', 2);
+      return combatEffect('bone-break-3', 2);
     case 'tank':
-      return effect('bone-break-3', -4);
+      return combatEffect('bone-break-3', -4);
     case 'boss':
-      return effect('lich-shade-1');
+      return combatEffect('lich-shade-1');
   }
 }
 
@@ -106,7 +111,7 @@ export function directSound(
       case 'shot': {
         const tower = current.towers.find(({ cell }) => cell === event.towerCell);
         const fire = tower === undefined ? undefined : towerSounds[tower.kind]?.fire;
-        if (fire !== undefined) commands.push(effect(fire));
+        if (fire !== undefined) commands.push(combatEffect(fire));
         break;
       }
       case 'leaked':
@@ -123,7 +128,7 @@ export function directSound(
 
   for (const hit of hits) {
     const impact = towerSounds[hit.towerKind]?.impact;
-    if (impact !== undefined) commands.push(effect(impact));
+    if (impact !== undefined) commands.push(combatEffect(impact));
     if (hit.lethal) {
       const death = deathSound(hit.target.kind);
       if (death !== undefined) commands.push(death);

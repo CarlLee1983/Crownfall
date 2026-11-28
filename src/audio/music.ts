@@ -12,6 +12,8 @@ const trackUrls = [
 ] as const satisfies readonly (readonly [MusicTrack, string])[];
 
 const transitionSeconds = 2;
+const lateFadeSeconds = 0.08;
+const maxLoadAttempts = 2;
 const loopOverlapSeconds = 0.25;
 
 interface TrackBuffer {
@@ -49,6 +51,7 @@ export function connectMusic(context: AudioContext, output: AudioNode) {
   const tracks = new Map<MusicTrack, TrackBuffer>();
   const loads = new Map<MusicTrack, Promise<void>>();
   const voices = new Set<Voice>();
+  const attempts = new Map<MusicTrack, number>();
   let requestedTrack: MusicTrack | undefined;
   let current: Voice | undefined;
   let fadeEnd = 0;
@@ -62,13 +65,9 @@ export function connectMusic(context: AudioContext, output: AudioNode) {
     const now = context.currentTime;
     const source = context.createBufferSource();
     const gain = context.createGain();
-    const fadeIn = now < fadeEnd;
-    const voice: Voice = {
-      source,
-      gain,
-      startedAt: now,
-      fullGainAt: fadeIn ? fadeEnd : now,
-    };
+    const fullGainAt = now < fadeEnd ? fadeEnd : fadeEnd > 0 ? now + lateFadeSeconds : now;
+    const fadeIn = fullGainAt > now;
+    const voice: Voice = { source, gain, startedAt: now, fullGainAt };
     source.buffer = track.buffer;
     if (track.loopEnd !== undefined) {
       source.loop = true;
@@ -76,7 +75,7 @@ export function connectMusic(context: AudioContext, output: AudioNode) {
     }
     source.connect(gain).connect(pauseGain);
     gain.gain.setValueAtTime(fadeIn ? 0 : 1, now);
-    if (fadeIn) gain.gain.linearRampToValueAtTime(1, fadeEnd);
+    if (fadeIn) gain.gain.linearRampToValueAtTime(1, fullGainAt);
     source.onended = () => {
       voices.delete(voice);
       source.disconnect();
@@ -95,19 +94,24 @@ export function connectMusic(context: AudioContext, output: AudioNode) {
     syncTrack();
   }
 
+  async function ensureLoad(track: MusicTrack, url: string): Promise<void> {
+    const existing = loads.get(track);
+    if (existing !== undefined) return existing;
+    const attempt = (attempts.get(track) ?? 0) + 1;
+    if (attempt > maxLoadAttempts) return;
+    attempts.set(track, attempt);
+    const loading = load(track, url).catch((error: unknown) => {
+      loads.delete(track);
+      if (track === requestedTrack && attempt < maxLoadAttempts) return ensureLoad(track, url);
+      console.warn(`無法載入音樂 ${track}。`, error);
+    });
+    loads.set(track, loading);
+    return loading;
+  }
+
   return {
     async unlock(running: Promise<void>): Promise<void> {
-      const pending = trackUrls.map(([track, url]) => {
-        const existing = loads.get(track);
-        if (existing !== undefined) return existing;
-        const loading = load(track, url).catch((error: unknown) => {
-          loads.delete(track);
-          throw error;
-        });
-        loads.set(track, loading);
-        return loading;
-      });
-
+      const pending = trackUrls.map(([track, url]) => ensureLoad(track, url));
       await Promise.all([running.then(syncTrack), ...pending]);
     },
     select(track: MusicTrack): void {
@@ -125,6 +129,8 @@ export function connectMusic(context: AudioContext, output: AudioNode) {
         current = undefined;
       }
       syncTrack();
+      const url = trackUrls.find(([candidate]) => candidate === track)?.[1];
+      if (url !== undefined) void ensureLoad(track, url);
     },
     stop(): void {
       requestedTrack = undefined;

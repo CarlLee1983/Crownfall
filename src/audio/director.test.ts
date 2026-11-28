@@ -100,7 +100,14 @@ const [grunt, runner] = combatOpened.state.enemies;
 if (grunt === undefined || runner === undefined) throw new Error('No wave targets');
 
 function effect(sound: string, pitchSemitones = 0) {
-  return { kind: 'effect', sound, bus: 'effects', pitchSemitones, duck: false };
+  return {
+    kind: 'effect',
+    sound,
+    bus: 'effects',
+    pitchSemitones,
+    duck: false,
+    discardWhenLate: true,
+  };
 }
 
 it('plays only the archer and ballista firing sounds when the three towers shoot', () => {

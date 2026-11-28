@@ -19,10 +19,10 @@ import { LAYER_HEIGHT } from './terrain';
 
 const REASONS: Record<RejectionReason, string> = {
   insufficientFunds: '金錢不足',
-  disconnectedRoute: '會讓入口到終點斷線',
+  disconnectedRoute: '會讓入口到城堡斷線',
   trappedEnemy: '會困住場上的敵人',
   enemyOnCell: '敵人正在這格或下一步要走這格',
-  unbuildableCell: '入口、終點與坡道不能建塔',
+  unbuildableCell: '入口、城堡與坡道不能建塔',
   occupiedCell: '這格已經有塔',
   unknownTower: '找不到這種塔',
   wrongTick: '操作時機已過',
