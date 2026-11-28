@@ -150,5 +150,5 @@ export function createTerrain(
     }
   };
 
-  return { group, setCastleFlash };
+  return { group, landmarks: [entrance, castle.group], setCastleFlash };
 }

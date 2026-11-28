@@ -41,14 +41,14 @@ interface Look {
   readonly round?: true;
   readonly cornerCut?: number;
   readonly modelScale?: number;
+  readonly modelBarLift?: number;
 }
 
 const LOOKS: ReadonlyMap<string, Look> = new Map([
-  ['grunt', { size: 0.5, glowColor: 0xe0ac4f }],
-  ['runner', { size: 0.4, glowColor: 0xb5ec69 }],
-  ['tank', { size: 0.8, glowColor: 0xffad73, cornerCut: 0.1 }],
-  // The equipped walk has a native diameter of 2.71; scale it to the one-cell proxy.
-  ['boss', { size: 1, glowColor: 0xf37b55, round: true, modelScale: 0.37 }],
+  ['grunt', { size: 0.5, glowColor: 0xffd060, modelBarLift: 0.16 }],
+  ['runner', { size: 0.4, glowColor: 0x60ff90, modelBarLift: 0.55 }],
+  ['tank', { size: 0.8, glowColor: 0x60a0ff, cornerCut: 0.1 }],
+  ['boss', { size: 1, glowColor: 0xff60e0, round: true, modelScale: 0.5 }],
 ]);
 const DEFAULT_LOOK: Look = { size: 0.5, glowColor: 0xbbbbbb };
 const GLOW_INTENSITY = 0.55;
@@ -404,9 +404,14 @@ export function createEnemyLayer(
       const bodyTop =
         half *
         (Math.abs(cameraUpInBody.x) + Math.abs(cameraUpInBody.y) + Math.abs(cameraUpInBody.z));
+      // The smaller proxies are shorter than the equipped models they carry.
+      const modelBarLift = view.visual === undefined ? 0 : (look.modelBarLift ?? 0);
       view.bar.position
         .copy(view.body.position)
-        .addScaledVector(cameraUp, bodyTop * perspectiveScale + BAR_GAP + BAR_HEIGHT / 2);
+        .addScaledVector(
+          cameraUp,
+          bodyTop * perspectiveScale + modelBarLift + BAR_GAP + BAR_HEIGHT / 2,
+        );
 
       const { maxHp } = enemy;
       const hp = reaction?.hp ?? presentation?.hp(enemy.id) ?? enemy.hp;

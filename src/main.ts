@@ -67,7 +67,7 @@ function startGame(models: LoadedModels): void {
 
   const terrain = createTerrain(level, models.scenery);
   const torches = createTorches(level, torchPositions, models.scenery.torch);
-  const cameraView = createCamera(level);
+  const cameraView = createCamera(level, terrain.landmarks);
   const { camera, resize } = cameraView;
   connectCameraControls(canvas, cameraView);
   const enemies = createEnemyLayer(camera, models.enemies);

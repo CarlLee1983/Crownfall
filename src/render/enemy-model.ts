@@ -3,8 +3,8 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import type { LoadedEnemyModel } from './enemy-model-assets';
 import { WORLD_LAYER } from './layers';
 
-const MODEL_SCALE = 0.26;
-const GLOW_INTENSITY = 0.22;
+const MODEL_SCALE = 0.39;
+const GLOW_INTENSITY = 0.3;
 const WHITE = new Color(0xffffff);
 
 export function createEnemyModel(

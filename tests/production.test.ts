@@ -5,15 +5,15 @@ import { installAudioProbe } from './audio-probe';
 import { accelerateWaves, openTile } from './game-fixture';
 
 // Upper section of the archer tower built on that tile.
-const archerUpperBody = { x: 654, y: 334 };
+const archerUpperBody = { x: 655, y: 376 };
 // The unbuildable entrance tile in the same view.
-const spawnTile = { x: 654, y: 542 };
-const tileBesideSpawn = { x: 703, y: 500 };
+const spawnTile = { x: 655, y: 586 };
+const tileBesideSpawn = { x: 709, y: 541 };
 const archerAsset = /\/assets\/tower-archer-[\w-]+\.glb$/;
 const skeletonAsset = /\/assets\/enemy-skeleton-[\w-]+\.glb$/;
 
 // The entrance and first stretch of lane at the configured viewport.
-const entrance = { x: 579, y: 460, width: 91, height: 92 };
+const entrance = { x: 580, y: 505, width: 100, height: 96 };
 
 async function entranceBrightness(page: Page): Promise<number[]> {
   const screenshot = await page.screenshot({ clip: entrance, scale: 'css' });
@@ -563,7 +563,7 @@ test('drops combat impacts that miss their playback time', async ({ page }) => {
     await page.goto('./');
     await page.getByRole('button', { name: '開始遊戲' }).click();
     const canvas = page.getByLabel('Crownfall 關卡');
-    for (const position of [tileBesideSpawn, { x: 600, y: 588 }]) {
+    for (const position of [tileBesideSpawn, { x: 596, y: 636 }]) {
       await canvas.click({ position });
       await page
         .getByRole('region', { name: '建造環' })

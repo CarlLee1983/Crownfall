@@ -357,6 +357,31 @@ it('keeps the incoming branch edge when a reroute and subsequent ticks run befor
   ]);
 });
 
+it.each([
+  ['grunt', 0xffd060, 0.39],
+  ['runner', 0x60ff90, 0.39],
+  ['tank', 0x60a0ff, 0.39],
+  ['boss', 0xff60e0, 0.5],
+])('renders the %s at its enlarged scale with its own glow', (kind, glow, scale) => {
+  const model = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+  model.name = 'unit';
+  const layer = createEnemyLayer(new PerspectiveCamera(), {
+    [kind]: { scene: model, walk: new AnimationClip('Walking_A', 1, []) },
+  });
+  const first = start(['S=G']);
+  const enemy = first.enemies[0];
+  if (enemy === undefined) throw new Error('No enemy spawned');
+  const state = { ...first, enemies: [{ ...enemy, kind }] };
+  layer.update(state, state, 1);
+
+  const visible = layer.group.getObjectByName('unit');
+  if (!(visible instanceof Mesh) || !(visible.material instanceof MeshStandardMaterial)) {
+    throw new Error('No visible enemy material');
+  }
+  expect(visible.getWorldScale(new Vector3()).toArray()).toEqual([scale, scale, scale]);
+  expect(visible.material.emissive.getHex()).toBe(glow);
+});
+
 it('flashes only the hit skeleton, then restores its glow', () => {
   const model = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
   model.name = 'skeleton';
@@ -467,20 +492,66 @@ it('paces the skeleton walk with enemy speed and uses paused game time', () => {
   expect(poseAtSpeed(3.2)).toBeCloseTo(0.2);
 });
 
-async function loadLich() {
-  const binary = await readFile(new URL('./models/enemy-lich.glb', import.meta.url));
+async function loadEnemyAsset(file: string) {
+  const binary = await readFile(new URL(`./models/${file}.glb`, import.meta.url));
   const loader = new GLTFLoader().register(() => ({
     name: 'Test texture decoder',
     loadTexture: async () => new Texture(),
   }));
   const { scene, animations } = await loader.parseAsync(new Uint8Array(binary).buffer, '');
   const walk = animations[0];
-  if (walk === undefined) throw new Error('No lich walk animation');
+  if (walk === undefined) throw new Error(`${file} is missing its walk animation`);
   return { scene, walk };
 }
 
-it('fits the equipped lich to one cell and keeps its walking soles on the ramp', async () => {
-  const { scene, walk } = await loadLich();
+it.each([
+  ['grunt', 'enemy-skeleton'],
+  ['runner', 'enemy-ghoul'],
+])('keeps the %s health bar above the enlarged model', async (kind, file) => {
+  const { camera, resize } = createCamera(level);
+  resize(1280 / 800);
+  const layer = createEnemyLayer(camera, { [kind]: await loadEnemyAsset(file) });
+  const initial = createGame(campaign, level);
+  const state = {
+    ...initial,
+    enemies: [
+      {
+        id: initial.nextEnemyId,
+        kind,
+        hp: 1,
+        maxHp: 1,
+        from: cellIndex(level.width, 3, 2),
+        to: cellIndex(level.width, 3, 1),
+        progress: 0.5,
+      },
+    ],
+  };
+  layer.update(state, state, 1);
+  layer.group.updateMatrixWorld(true);
+  const [enemy] = layer.group.children;
+  const [body, bar] = enemy?.children ?? [];
+  const [background] = bar?.children ?? [];
+  if (body === undefined || !(background instanceof Mesh)) {
+    throw new Error('No unit or health bar');
+  }
+  let modelTop = -Infinity;
+  const vertex = new Vector3();
+  body.traverse((mesh) => {
+    if (!(mesh instanceof Mesh) || !(mesh.material instanceof MeshStandardMaterial)) return;
+    const positions = mesh.geometry.getAttribute('position');
+    for (let index = 0; index < positions.count; index++) {
+      mesh.getVertexPosition(index, vertex).applyMatrix4(mesh.matrixWorld).project(camera);
+      modelTop = Math.max(modelTop, vertex.y);
+    }
+  });
+  expect(modelTop).toBeGreaterThan(-1);
+  expect(
+    Math.min(...worldVertices(background).map((point) => point.project(camera).y)),
+  ).toBeGreaterThan(modelTop);
+});
+
+it('keeps the enlarged lich’s walking soles on the ramp as its equipment extends over a cell', async () => {
+  const { scene, walk } = await loadEnemyAsset('enemy-lich');
   const level = parseLevel(['S^g']);
   const initial = createGame(campaign, level);
   const enemy = {
@@ -525,13 +596,15 @@ it('fits the equipped lich to one cell and keeps its walking soles on the ramp',
       }
     });
     expect(clearance).toBeGreaterThanOrEqual(-0.005);
-    expect(clearance).toBeLessThan(0.025);
+    expect(clearance).toBeLessThan(0.035);
   }
-  expect(2 * radius).toBeCloseTo(1, 1);
+  expect(2 * radius).toBeCloseTo(1.35, 1);
 });
 
 it('keeps the walking lich on the terrain through both ends of the campaign ramp', async () => {
-  const layer = createEnemyLayer(new PerspectiveCamera(), { boss: await loadLich() });
+  const layer = createEnemyLayer(new PerspectiveCamera(), {
+    boss: await loadEnemyAsset('enemy-lich'),
+  });
   const initial = createGame(campaign, level);
   const to = nextCell(level, initial.distance, level.spawn);
   if (to === undefined) throw new Error('Campaign entrance has no route');
