@@ -1,6 +1,6 @@
 import sharp, { type Region } from 'sharp';
 
-export const mossPatch = { left: 668, top: 288, width: 10, height: 10 };
+export const mossPatch = { left: 630, top: 310, width: 10, height: 10 };
 
 export async function meanLuma(screenshot: Buffer, patch: Region): Promise<number> {
   const pixels = await sharp(screenshot).extract(patch).removeAlpha().raw().toBuffer();

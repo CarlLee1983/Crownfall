@@ -37,7 +37,13 @@ export function checkPlacement(state: GameState, cell: CellIndex, kind: string):
   if (gameOver(state)) return { reason: 'gameOver', distance: state.distance };
   const { level, towers } = state;
   const terrain = level.cells[cell];
-  if (terrain === undefined || terrain.ramp || cell === level.spawn || cell === level.goal) {
+  if (
+    terrain === undefined ||
+    terrain.buildable === false ||
+    terrain.ramp ||
+    cell === level.spawn ||
+    cell === level.goal
+  ) {
     return { reason: 'unbuildableCell', distance: state.distance };
   }
   if (towers.some((tower) => tower.cell === cell)) {

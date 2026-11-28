@@ -210,7 +210,7 @@ test('the board click that dismisses volume settings leaves the build selection 
   const music = page.getByRole('slider', { name: '音樂音量' });
   const buildRing = page.getByRole('region', { name: '建造環' });
   const board = page.getByLabel('Crownfall 關卡');
-  const buildable = { position: openTile };
+  const buildable = { position: { x: 622, y: 229 } };
 
   await volume.click();
   await expect(music).toBeVisible();
@@ -227,7 +227,7 @@ test('the board click that dismisses volume settings leaves the build selection 
 
   const lane = page.getByRole('button', { name: '路障示範格' });
   const archer = buildRing.getByRole('button', { name: /弓箭塔/ });
-  const detour = page.getByText('路線 +2 格', { exact: true });
+  const detour = page.getByText('改走另一條等長路線', { exact: true });
   await volume.click();
   await lane.click();
   await expect(music).toBeHidden();

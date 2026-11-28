@@ -77,7 +77,7 @@ function cliffPlacements(level: Level) {
     [1, 0],
   ] as const;
   for (const [index, cell] of level.cells.entries()) {
-    if (cell.layer === 0 || cell.ramp) continue;
+    if (cell.layer === 0 || cell.ramp || cell.platform) continue;
     const { x, y } = cellPoint(level, index as CellIndex);
     for (const [dx, dz] of edges) {
       const nextX = x + dx;
@@ -123,10 +123,12 @@ export function createOutskirts(level: Level, models: OutskirtsModels, backdrop:
   const near = ['gravemarker', 'rubble'] as const;
   const scaleByModel = { gravestone: 0.21, brokenWall: 0.082, gravemarker: 0.12, rubble: 0.041 };
 
+  // Keep a similar prop budget as the perimeter of the battlefield grows.
+  const density = Math.min(1, 24 / (level.width + level.height));
   for (let z = -WIDTH; z < level.height + WIDTH; z++) {
     for (let x = -WIDTH; x < level.width + WIDTH; x++) {
       const distance = Math.max(-x, -z, x - level.width + 1, z - level.height + 1);
-      if (distance <= 0 || random() >= 0.5 - distance * 0.1) continue;
+      if (distance <= 0 || random() >= density * (0.5 - distance * 0.1)) continue;
       const isNear = x >= level.width || z >= level.height;
       const choices = isNear ? near : far;
       const kind = choices[Math.floor(random() * choices.length)] ?? 'rubble';

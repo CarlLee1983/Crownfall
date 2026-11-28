@@ -1,13 +1,16 @@
-import { Box3, InstancedMesh, Matrix4, Ray, Raycaster, Vector3 } from 'three';
+import { Box3, Color, InstancedMesh, Matrix4, Ray, Raycaster, Vector3 } from 'three';
 import { expect, it } from 'vitest';
 import { content } from '../content/content';
 import { level } from '../content/level';
+import { level as rampLevel } from '../content/ramp-level.fixture';
 import { applyCommands, createGame, pickCell } from '../core';
 import { cellIndex } from '../core/level';
 import { createBattlefield } from './battlefield';
+import { createCamera } from './camera';
 import { headlessModelLoader } from './headless-models.fixture';
 import { WORLD_LAYER } from './layers';
 import { loadModels } from './models';
+import { createOutskirts } from './outskirts';
 import { LAYER_HEIGHT } from './terrain';
 
 it('keeps all cemetery props outside picking and tower placement on every restart', async () => {
@@ -56,9 +59,9 @@ it('keeps all cemetery props outside picking and tower placement on every restar
   expect(first.length).toBeGreaterThan(0);
   expect(cemetery()).toEqual(first);
 
-  const cell = cellIndex(level.width, 10, 12);
+  const cell = cellIndex(level.width, 16, 12);
   expect(
-    pickCell(level, { origin: { x: 10, y: 5, z: 12 }, direction: { x: 0, y: -1, z: 0 } }),
+    pickCell(level, { origin: { x: 16, y: 5, z: 12 }, direction: { x: 0, y: -1, z: 0 } }),
   ).toBe(cell);
   const { state } = applyCommands(createGame(content, level), [
     { type: 'placeTower', tick: 0, cell, kind: 'basic' },
@@ -78,8 +81,9 @@ function instanceBounds(batch: InstancedMesh): Box3[] {
 }
 
 it('sets parapets on the far edges of cliffs and leaves the ramp and near edges open', async () => {
-  const { scene } = createBattlefield(await loadModels(headlessModelLoader()));
-  const parapets = scene.getObjectByName('parapets');
+  const { outskirts } = await loadModels(headlessModelLoader());
+  const decor = createOutskirts(rampLevel, outskirts, new Color(0x10180f));
+  const parapets = decor.getObjectByName('parapets');
   expect(parapets).toBeInstanceOf(InstancedMesh);
   if (!(parapets instanceof InstancedMesh)) throw new Error('Missing parapets');
 
@@ -112,10 +116,12 @@ it('sets parapets on the far edges of cliffs and leaves the ramp and near edges 
 });
 
 it('keeps cliff-foot rubble at low tile boundaries and decor clear of tower and enemy centers', async () => {
-  const { scene, cameraView } = createBattlefield(await loadModels(headlessModelLoader()));
+  const { outskirts } = await loadModels(headlessModelLoader());
+  const decor = createOutskirts(rampLevel, outskirts, new Color(0x10180f));
+  const cameraView = createCamera(rampLevel);
   cameraView.resize(1280 / 800);
-  const rubble = scene.getObjectByName('rubble');
-  const parapets = scene.getObjectByName('parapets');
+  const rubble = decor.getObjectByName('rubble');
+  const parapets = decor.getObjectByName('parapets');
   if (!(rubble instanceof InstancedMesh) || !(parapets instanceof InstancedMesh)) {
     throw new Error('Missing cliff decor');
   }
@@ -150,11 +156,11 @@ it('keeps cliff-foot rubble at low tile boundaries and decor clear of tower and 
   const toward = new Vector3();
   const hit = new Vector3();
   const edges = [...instanceBounds(parapets), ...feet];
-  for (const [index, { layer }] of level.cells.entries()) {
+  for (const [index, { layer }] of rampLevel.cells.entries()) {
     const point = new Vector3(
-      index % level.width,
+      index % rampLevel.width,
       layer * LAYER_HEIGHT,
-      Math.floor(index / level.width),
+      Math.floor(index / rampLevel.width),
     );
     const ray = new Ray(eye, toward.subVectors(point, eye).normalize());
     for (const box of edges) {

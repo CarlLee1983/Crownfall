@@ -23,7 +23,7 @@ const REASONS: Record<RejectionReason, string> = {
   disconnectedRoute: '會讓入口到城堡斷線',
   trappedEnemy: '會困住場上的敵人',
   enemyOnCell: '敵人正在這格或下一步要走這格',
-  unbuildableCell: '入口、城堡與坡道不能建塔',
+  unbuildableCell: '這格不能建塔',
   occupiedCell: '這格已經有塔',
   unknownTower: '找不到這種塔',
   wrongTick: '操作時機已過',
@@ -60,10 +60,17 @@ function towerActionButton(label: string, shortcut: string) {
 
 function describePreview(state: GameState, cell: CellIndex, kind: string) {
   const preview = previewPlacement(state, cell, kind);
+  const before = currentRoute(state);
+  const added = preview.route.length - before.length;
+  const changesRoute = added !== 0 || preview.route.some((cell, index) => cell !== before[index]);
   const route =
-    cellAt(state.level, cell).lane && preview.route.length > 0 ? preview.route : undefined;
+    cellAt(state.level, cell).lane && preview.route.length > 0 && changesRoute
+      ? preview.route
+      : undefined;
   const lines: string[] = [];
-  if (route !== undefined) lines.push(`路線 +${route.length - currentRoute(state).length} 格`);
+  if (route !== undefined) {
+    lines.push(added === 0 ? '改走另一條等長路線' : `路線 +${added} 格`);
+  }
   if (preview.heightBonus > 0) lines.push(`對高度層 0 的射程 +${preview.heightBonus}`);
   if (preview.reason !== undefined) lines.push(REASONS[preview.reason]);
   return {
@@ -213,13 +220,16 @@ export function createBuildHud(
     const below = point.y - gap;
     const width = ring.offsetWidth;
     const left = x - width / 2;
-    const fitsBelow = below + height <= window.innerHeight - EDGE_MARGIN;
-    const clearsGuide =
-      fitsBelow &&
-      guide?.overlaps(new DOMRect(left, above, width, height)) &&
-      !guide.overlaps(new DOMRect(left, below, width, height));
-    const placeBelow = above < EDGE_MARGIN || clearsGuide === true;
-    const top = placeBelow ? below : above;
+    const belowOptions = managing ? [below] : [below, point.y + gap];
+    const clearBelow = guide?.overlaps(new DOMRect(left, above, width, height))
+      ? belowOptions.find(
+          (y) =>
+            y + height <= window.innerHeight - EDGE_MARGIN &&
+            !guide.overlaps(new DOMRect(left, y, width, height)),
+        )
+      : undefined;
+    const placeBelow = above < EDGE_MARGIN || clearBelow !== undefined;
+    const top = placeBelow ? (clearBelow ?? below) : above;
     ring.classList.toggle('below-cell', placeBelow);
     ring.style.left = `${x}px`;
     ring.style.top = `${Math.max(EDGE_MARGIN, Math.min(top, window.innerHeight - height - EDGE_MARGIN))}px`;

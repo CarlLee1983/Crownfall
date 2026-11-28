@@ -316,11 +316,20 @@ export function createBuildLayer(
 
   const group = new Group();
   const towers = new Group();
-  const solid = new Line2(
+  const routeLine = new Line2(
     new LineGeometry(),
-    new LineMaterial({ color: 0x1e6e78, linewidth: 4, alphaToCoverage: true }),
+    new LineMaterial({
+      color: 0x8fdfd0,
+      linewidth: 3,
+      dashed: true,
+      dashSize: 0.15,
+      gapSize: 0.25,
+    }),
   );
-  const branches = new LineSegments2(new LineSegmentsGeometry(), solid.material);
+  const branches = new LineSegments2(
+    new LineSegmentsGeometry(),
+    new LineMaterial({ color: 0x8fdfd0, linewidth: 3, alphaToCoverage: true }),
+  );
   const dashed = new Line2(
     new LineGeometry(),
     new LineMaterial({
@@ -342,12 +351,12 @@ export function createBuildLayer(
       depthWrite: false,
     }),
   );
-  solid.layers.set(OVERLAY_LAYER);
+  routeLine.layers.set(OVERLAY_LAYER);
   branches.layers.set(OVERLAY_LAYER);
   dashed.layers.set(OVERLAY_LAYER);
   range.layers.set(OVERLAY_LAYER);
-  solid.visible = branches.visible = dashed.visible = range.visible = false;
-  group.add(towers, solid, dashed, range, branches);
+  routeLine.visible = branches.visible = dashed.visible = range.visible = false;
+  group.add(towers, routeLine, dashed, range, branches);
 
   let lastState: GameState | undefined;
   let lastInterpolationState: GameState | undefined;
@@ -374,7 +383,7 @@ export function createBuildLayer(
     const routeChanged = levelChanged || lastState?.distance !== state.distance;
     if (routeChanged) {
       const route = currentRoute(state);
-      drawRoute(solid, state.level, route, SOLID_ROUTE_LIFT);
+      drawRoute(routeLine, state.level, route, SOLID_ROUTE_LIFT);
       mainEdges.clear();
       let from: CellIndex | undefined;
       for (const to of route) {

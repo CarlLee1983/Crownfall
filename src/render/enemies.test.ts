@@ -10,7 +10,7 @@ import {
 } from 'three';
 import { expect, it } from 'vitest';
 import { content as campaign } from '../content/content';
-import { level } from '../content/level';
+import { level } from '../content/ramp-level.fixture';
 import {
   applyCommands,
   type Content,
@@ -609,7 +609,7 @@ it('keeps the enlarged lich’s walking soles on the ramp as its equipment exten
   expect(2 * radius).toBeCloseTo(1.35, 1);
 });
 
-it('keeps the walking lich on the terrain through both ends of the campaign ramp', async () => {
+it('keeps the walking lich on the terrain through both ends of the ramp', async () => {
   const { boss } = await loadEnemyModels(headlessModelLoader());
   const layer = createEnemyLayer(new PerspectiveCamera(), { boss });
   const initial = createGame(campaign, level);

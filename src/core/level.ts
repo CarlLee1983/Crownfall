@@ -4,6 +4,8 @@ export interface Cell {
   readonly layer: number;
   readonly lane: boolean;
   readonly ramp: boolean;
+  readonly buildable?: false;
+  readonly platform?: true;
 }
 
 export interface Level {
@@ -19,10 +21,15 @@ export interface GridPoint {
   readonly y: number;
 }
 
+/** 半寬以格為單位。平台的地形與點選共用同一個尺寸。 */
+export const PLATFORM_HALF_WIDTH = 1.45;
+
 type Marker = 'spawn' | 'goal';
 
 const LEGEND: Readonly<Record<string, Cell & { readonly marker?: Marker }>> = {
   '.': { layer: 0, lane: false, ramp: false },
+  '~': { layer: 0, lane: false, ramp: false, buildable: false },
+  P: { layer: 1, lane: false, ramp: false, platform: true },
   '#': { layer: 1, lane: false, ramp: false },
   '=': { layer: 0, lane: true, ramp: false },
   '+': { layer: 1, lane: true, ramp: false },
@@ -35,7 +42,7 @@ const LEGEND: Readonly<Record<string, Cell & { readonly marker?: Marker }>> = {
 
 /**
  * 從字元圖建立關卡：`.` 低地、`#` 高地、`=` 低層車道、`+` 高層車道、`^` 坡道、
- * `S`／`s` 低層／高層入口、`G`／`g` 低層／高層終點。
+ * `~` 裝飾草地、`P` 固定高台、`S`／`s` 低層／高層入口、`G`／`g` 低層／高層終點。
  */
 export function parseLevel(rows: readonly string[]): Level {
   const width = rows[0]?.length ?? 0;

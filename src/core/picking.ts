@@ -1,4 +1,4 @@
-import { type CellIndex, cellPoint, type Level } from './level';
+import { type CellIndex, cellPoint, type Level, PLATFORM_HALF_WIDTH } from './level';
 import { rampDirection } from './terrain';
 
 interface TerrainPoint {
@@ -77,8 +77,9 @@ export function pickCell(
       closestOnlyTouchesCoplanarEdge = false;
       picked = index;
     }
-    const alongX = cellInterval(origin.x - x, direction.x);
-    const alongZ = cellInterval(origin.z - z, direction.z);
+    const halfWidth = cell.platform ? PLATFORM_HALF_WIDTH : 0.5;
+    const alongX = cellInterval(origin.x - x, direction.x, halfWidth);
+    const alongZ = cellInterval(origin.z - z, direction.z, halfWidth);
     if (alongX === undefined || alongZ === undefined) continue;
     const enter = Math.max(alongX[0], alongZ[0]);
     const exit = Math.min(alongX[1], alongZ[1]);
