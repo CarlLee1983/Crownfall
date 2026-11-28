@@ -23,14 +23,14 @@ export interface LoadedModels {
   };
 }
 
-export async function loadModels(): Promise<LoadedModels> {
+export async function loadModels(source?: Pick<GLTFLoader, 'loadAsync'>): Promise<LoadedModels> {
   let resourceFailed = false;
   const manager = new LoadingManager();
   // GLTFLoader can resolve the scene even when a texture fails to decode.
   manager.onError = () => {
     resourceFailed = true;
   };
-  const loader = new GLTFLoader(manager);
+  const loader = source ?? new GLTFLoader(manager);
   const [enemies, archer, ballista, mage, entrance, castle, torch] = await Promise.all([
     loadEnemyModels(loader),
     loader.loadAsync(archerUrl),
