@@ -15,8 +15,9 @@ import { WORLD_LAYER } from './layers';
 const HIT_FLASH_MS = 100;
 const HIT_FLASH_GAP_MS = 50;
 const HIT_FLASH_STRENGTH = 0.5;
-const LEAK_FLASH_MS = 300;
-const LEAK_SHAKE_MS = 190;
+const LEAK_FLASH_MS = 220;
+const LEAK_FLASH_STRENGTH = 0.45;
+const LEAK_SHAKE_STRENGTH = 0.025;
 const FRAGMENT_MS = 480;
 const FRAGMENTS_PER_KILL = 6;
 const MAX_FRAGMENTS = 48;
@@ -199,10 +200,11 @@ export function createCombatFeedback(
     const sinceLeak = gameTime - leakStart;
     const leak = Math.max(0, 1 - sinceLeak / LEAK_FLASH_MS);
     const shake = new Vector2();
-    if (!reducedMotion && sinceLeak < LEAK_SHAKE_MS) {
-      const strength = (1 - sinceLeak / LEAK_SHAKE_MS) * 0.095;
-      shake.set(Math.cos(sinceLeak * 0.082) * strength, Math.sin(sinceLeak * 0.107) * strength);
+    if (!reducedMotion && leak > 0) {
+      const strength = leak * LEAK_SHAKE_STRENGTH;
+      shake.set(Math.cos(sinceLeak * 0.079) * strength, Math.sin(sinceLeak * 0.11) * strength);
     }
+    const castleFlash = leak * LEAK_FLASH_STRENGTH;
     removeExpiredFragments(gameTime);
     for (const { mesh, origin, heading, archer, speed, start } of fragments) {
       const progress = (gameTime - start) / (archer ? ARROW_SHARD_MS : FRAGMENT_MS);
@@ -243,8 +245,8 @@ export function createCombatFeedback(
         const scale = reaction.death ? Math.max(0.05, 1 - (age / DEATH_MS) ** 2) : 1;
         return { recoil, scale, ...(reaction.death ? { hp: 0 } : {}) };
       },
-      castleFlash: leak,
-      lifePulse: leak * 0.38,
+      castleFlash,
+      lifePulse: castleFlash * 0.38,
       shake,
       bounties: [...bounties].flatMap((bounty) => {
         const { id, text, position, horizontalOffset, start, duration } = bounty;
