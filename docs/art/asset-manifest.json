@@ -583,9 +583,9 @@
       }
     },
     {
-      "id": "leak-horn-1",
-      "role": "漏怪號角",
-      "path": "src/audio/clips/leak-horn-1.opus",
+      "id": "leak-bell",
+      "role": "漏怪警鐘",
+      "path": "src/audio/clips/leak-bell.opus",
       "status": "implemented",
       "technical": {
         "format": "Ogg Opus",
@@ -594,11 +594,11 @@
       },
       "source": {
         "kind": "licensed-pack",
-        "url_or_tool": "https://opengameart.org/content/their-coming-generic-horn-sound",
-        "creator": "StumpyStrust",
+        "url_or_tool": "https://kenney.nl/assets/impact-sounds",
+        "creator": "Kenney",
         "license": "CC0-1.0",
         "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-        "prompt_or_source_record": "theircoming.ogg, processed by scripts/build-audio.ts"
+        "prompt_or_source_record": "impactBell_heavy_000.ogg, processed by scripts/build-audio.ts"
       }
     },
     {

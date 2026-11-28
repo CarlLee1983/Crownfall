@@ -4,7 +4,7 @@ import boneBreakUrl from './clips/bone-break-3.opus?url&no-inline';
 import crossbowUrl from './clips/crossbow-1.opus?url&no-inline';
 import victoryUrl from './clips/jingle-steel-02.opus?url&no-inline';
 import waveClearedUrl from './clips/jingle-steel-10.opus?url&no-inline';
-import leakHornUrl from './clips/leak-horn-1.opus?url&no-inline';
+import leakBellUrl from './clips/leak-bell.opus?url&no-inline';
 import lichShadeUrl from './clips/lich-shade-1.opus?url&no-inline';
 import longbowUrl from './clips/longbow-soft.opus?url&no-inline';
 import placePlankUrl from './clips/place-plank.opus?url&no-inline';
@@ -22,7 +22,7 @@ const EFFECT_URLS: Record<SoundId, readonly string[]> = {
   'crossbow-1': [crossbowUrl],
   'jingle-steel-02': [victoryUrl],
   'jingle-steel-10': [waveClearedUrl],
-  'leak-horn-1': [leakHornUrl],
+  'leak-bell': [leakBellUrl],
   'lich-shade-1': [lichShadeUrl],
   'longbow-soft': [longbowUrl],
   'place-plank': [placePlankUrl],
@@ -73,6 +73,7 @@ export function connectEffects(
     if (buffers === undefined) return;
     const buffer = buffers[bank.next];
     if (buffer === undefined) return;
+    if (command.skipWhileSounding && bank.playing.size > 0) return;
     bank.next = (bank.next + 1) % buffers.length;
     if (bank.playing.size === VOICE_LIMIT) {
       const oldest = bank.playing.values().next().value;
