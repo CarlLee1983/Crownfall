@@ -92,6 +92,7 @@ export function createBuildHud(
   const detail = element('build-preview');
   const feedback = element('build-feedback');
   const balance = element('build-balance');
+  const hudPanels = [element('game-controls'), element('game-status')];
   const raycaster = new Raycaster();
   const pointer = new Vector2();
   const projectCell = cellProjection(camera);
@@ -220,10 +221,21 @@ export function createBuildHud(
     const below = point.y - gap;
     const width = ring.offsetWidth;
     const left = x - width / 2;
-    const clear = (y: number) =>
-      y >= EDGE_MARGIN &&
-      y + height <= window.innerHeight - EDGE_MARGIN &&
-      !guide?.overlaps(new DOMRect(left, y, width, height));
+    const hudBounds = hudPanels.map((panel) => panel.getBoundingClientRect());
+    const clear = (y: number) => {
+      if (y < EDGE_MARGIN || y + height > window.innerHeight - EDGE_MARGIN) return false;
+      const rect = new DOMRect(left, y, width, height);
+      return (
+        !guide?.overlaps(rect) &&
+        !hudBounds.some(
+          (panel) =>
+            panel.left < rect.right &&
+            panel.right > rect.left &&
+            panel.top < rect.bottom &&
+            panel.bottom > rect.top,
+        )
+      );
+    };
     const alternatives = managing ? [below] : [below, point.y + gap, point.y + 2 * gap];
     const clearBelow = !clear(above) ? alternatives.find(clear) : undefined;
     const placeBelow = above < EDGE_MARGIN || clearBelow !== undefined;

@@ -8,7 +8,8 @@ export const torchPositions: readonly GridPoint[] = [
 
 /** 雙岸平原的城堡側樹叢與入口彎道石群。 */
 export const castleTrees = [
-  { x: 3.45, y: 15.25, scale: 1 },
+  // The canopy clips one corner of the empty high platform from the overview.
+  { x: 3.45, y: 13.95, scale: 1 },
   { x: 4.55, y: 16.15, scale: 1.15 },
   { x: 3.35, y: 16.55, scale: 0.8 },
 ] as const;
