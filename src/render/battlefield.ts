@@ -46,7 +46,6 @@ export function createBattlefield(
     enemies.group,
     builds.group,
     shots.group,
-    combat.group,
   );
 
   function onEvents(

@@ -736,7 +736,9 @@ test('plays impact and death with the final kill before opening the victory dial
     expect.stringContaining('bone-break-3'),
   ]);
   await expect(victory).toBeHidden();
-  await page.clock.runFor(230);
+  await page.clock.runFor(1000);
+  await expect(victory).toBeHidden();
+  await page.clock.runFor(440);
   await expect(victory).toBeVisible();
 });
 

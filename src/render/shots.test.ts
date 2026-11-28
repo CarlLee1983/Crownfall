@@ -1,13 +1,29 @@
-import { Mesh, PerspectiveCamera, Vector3 } from 'three';
+import {
+  AnimationClip,
+  BoxGeometry,
+  Group,
+  Mesh,
+  MeshStandardMaterial,
+  NumberKeyframeTrack,
+  PerspectiveCamera,
+  Vector3,
+} from 'three';
 import { expect, it } from 'vitest';
 import { createGame, parseLevel, step } from '../core';
 import { cellIndex } from '../core/level';
 import { createBuildLayer } from './build-layer';
 import { createCombatFeedback } from './combat-feedback';
 import { createEnemyLayer } from './enemies';
+import { OVERLAY_LAYER } from './layers';
 import { createShotLayer, type PresentedImpact } from './shots';
 
-function archerBattle(layout: string[], speed = 30, damage = 12, startingLives = 10) {
+function archerBattle(
+  layout: string[],
+  speed = 30,
+  damage = 12,
+  startingLives = 10,
+  models?: Parameters<typeof createEnemyLayer>[1],
+) {
   let previous = createGame(
     {
       enemies: { grunt: { speed, hp: 12, bounty: 5, leakDamage: 1 } },
@@ -28,7 +44,7 @@ function archerBattle(layout: string[], speed = 30, damage = 12, startingLives =
   let current = step(previous, [{ type: 'startWave', tick: 0 }]).state;
   const target = current.enemies[0];
   if (target === undefined) throw new Error('No archer target');
-  const enemies = createEnemyLayer(new PerspectiveCamera());
+  const enemies = createEnemyLayer(new PerspectiveCamera(), models);
   const combat = createCombatFeedback(enemies);
   const sounds: PresentedImpact[] = [];
   const shots = createShotLayer(enemies, createBuildLayer().towerHeight, combat, {
@@ -73,31 +89,64 @@ function archerBattle(layout: string[], speed = 30, damage = 12, startingLives =
   };
 }
 
-it('keeps a defeated enemy and its health visible until the arrow lands', () => {
-  const battle = archerBattle(['S=G', '...']);
-  const { enemies, sounds, target, combat, shots } = battle;
+it('keeps the enemy visible until impact, then collapses and sinks it in place', () => {
+  const scene = new Group();
+  const bone = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+  bone.name = 'bone';
+  scene.add(bone);
+  const walk = new AnimationClip('Walking_A', 2, []);
+  const death = new AnimationClip('Death_C_Skeletons', 2, [
+    new NumberKeyframeTrack('bone.position[x]', [0, 2], [0, 2]),
+  ]);
+  const battle = archerBattle(['S=G', '...'], 30, 12, 10, { grunt: { scene, walk, death } });
+  const { enemies, sounds, target, shots } = battle;
+  const hasHealthBar = () => {
+    let visible = false;
+    enemies.group.traverseVisible((object) => {
+      visible ||= object.layers.isEnabled(OVERLAY_LAYER);
+    });
+    return visible;
+  };
   expect(battle.advance(100, [1, 1]).enemies).toEqual([]);
   expect(battle.draw(150).bounties).toEqual([]);
   expect(enemies.targetPosition(target.id, new Vector3())).toBeDefined();
   expect(shots.displayHp(target.id)).toBe(12);
+  expect(hasHealthBar()).toBe(true);
   expect(sounds).toEqual([]);
 
   const impact = battle.draw(192);
   expect(impact.bounties.map(({ text }) => text)).toEqual(['+5']);
   expect(impact.hitFlash(target.id)).toBeCloseTo(0.36);
-  expect(impact.reaction(target.id)?.recoil.length()).toBeCloseTo(0.035);
-  expect(impact.reaction(target.id)?.hp).toBe(0);
+  expect(hasHealthBar()).toBe(false);
+  expect(shots.group.children).toHaveLength(0);
+  expect(enemies.group.children).toHaveLength(1);
+  const fixedPosition = enemies.targetPosition(target.id, new Vector3());
+  expect(fixedPosition?.toArray()).toEqual([1, 0.25, 0]);
   expect(sounds).toMatchObject([
     { towerKind: 'basic', target: { id: target.id, kind: 'grunt' }, lethal: true },
   ]);
   expect(battle.draw(263).hitFlash(target.id)).toBeGreaterThan(0);
   expect(battle.draw(264).hitFlash(target.id)).toBe(0);
-  expect(battle.draw(277).bounties.map(({ text }) => text)).toEqual(['+5']);
+  const visibleBone = enemies.group.getObjectByName('bone');
+  expect(battle.draw(692, 0.25).bounties.map(({ text }) => text)).toEqual(['+5']);
+  expect(visibleBone?.position.x).toBeCloseTo(1);
+  expect(enemies.targetPosition(target.id, new Vector3())).toEqual(fixedPosition);
+  battle.draw(1192, 0.75);
+  expect(visibleBone?.position.x).toBeCloseTo(2);
+  expect(enemies.targetPosition(target.id, new Vector3())).toEqual(fixedPosition);
+  battle.draw(1342);
+  expect(visibleBone?.position.x).toBeCloseTo(2);
+  expect(enemies.targetPosition(target.id, new Vector3())?.toArray()).toEqual([
+    1,
+    expect.closeTo(-0.05),
+    0,
+  ]);
+  expect(hasHealthBar()).toBe(false);
+  expect(battle.draw(1491).settling).toBe(true);
+  expect(enemies.targetPosition(target.id, new Vector3())).toBeDefined();
+  expect(battle.draw(1492).settling).toBe(false);
   expect(enemies.targetPosition(target.id, new Vector3())).toBeUndefined();
   expect(sounds).toHaveLength(1);
-  expect(combat.group.children).toHaveLength(3);
-  battle.draw(422);
-  expect(combat.group.children).toHaveLength(0);
 });
 
 it.each([
@@ -211,6 +260,10 @@ it.each(['basic', 'sniper'])(
     expect(recoil?.x).toBeGreaterThan(0);
     expect(recoil?.z).toBeLessThan(0);
     expect((recoil?.x ?? 0) / -(recoil?.z ?? 1)).toBeCloseTo(0.84936, 4);
+    expect(battle.draw(263).hitFlash(battle.target.id)).toBeGreaterThan(0);
+    expect(battle.draw(264).hitFlash(battle.target.id)).toBe(0);
+    expect(battle.draw(365).reaction(battle.target.id)?.recoil.length()).toBeGreaterThan(0);
+    expect(battle.draw(366).reaction(battle.target.id)).toBeUndefined();
     expect(battle.sounds.map(({ lethal }) => lethal)).toEqual([false]);
   },
 );
@@ -352,6 +405,7 @@ it('presents a spell orb’s wounded and defeated targets together on arrival', 
   expect(battle.draw(321).hitFlash(survivor.id)).toBeGreaterThan(0);
   expect(battle.draw(322).hitFlash(survivor.id)).toBe(0);
   expect(battle.draw(335).bounties.map(({ text }) => text)).toEqual(['+3']);
+  battle.draw(1550);
   expect(enemies.targetPosition(defeated.id, new Vector3())).toBeUndefined();
 });
 
@@ -420,6 +474,7 @@ it('presents secondary splash damage before the nearer arrow that kills that ene
     ['basic', survivor.id, true],
   ]);
   expect(battle.draw(725).bounties.map(({ id }) => id)).toEqual([defeated.id, survivor.id]);
+  battle.draw(1940);
   expect(enemies.targetPosition(survivor.id, new Vector3())).toBeUndefined();
 });
 

@@ -31,8 +31,10 @@ export async function buildEnemyModels(io: NodeIO): Promise<void> {
     const animations = root.listAnimations();
     const walk = animations.find((clip) => clip.getName() === 'Walking_A');
     if (walk === undefined) throw new Error(`${id} 原檔缺少 Walking_A`);
+    const death = animations.find((clip) => clip.getName() === 'Death_C_Skeletons');
+    if (death === undefined) throw new Error(`${id} 原檔缺少 Death_C_Skeletons`);
     for (const clip of animations) {
-      if (clip === walk) continue;
+      if (clip === walk || clip === death) continue;
       // Discard the subproperties too, so their accessors become eligible for pruning.
       for (const channel of clip.listChannels()) channel.dispose();
       for (const sampler of clip.listSamplers()) sampler.dispose();
