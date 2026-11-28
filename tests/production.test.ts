@@ -468,6 +468,8 @@ test('retries defeat music and drops pending effects on restart', async ({ page 
 for (const download of ['succeeds', 'fails', 'stalls']) {
   test(`sequences interface cues when the error download ${download}`, async ({ page }) => {
     const readAudio = await installAudioProbe(page);
+    const testTime = new Date('2026-01-01T00:00:00Z');
+    await page.clock.install({ time: testTime });
     let releaseError = () => {};
     const errorDownload = new Promise<void>((resolve) => {
       releaseError = resolve;
@@ -498,18 +500,20 @@ for (const download of ['succeeds', 'fails', 'stalls']) {
         .getByRole('region', { name: '建造環' })
         .getByRole('button', { name: /弓箭塔/ });
 
-      // Submit both HUD actions in the same frame to produce a real audio backlog.
+      // Control the UI queue deadline while keeping the native audio clock and decoder.
+      await page.clock.pauseAt(testTime.getTime() + 3_600_000);
       await build.evaluate((button) => {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
         (button as HTMLButtonElement).click();
       });
+      await page.clock.runFor(32);
       await expect(page.locator('#build-balance')).toHaveText('50');
+      expect(await uiSounds()).toEqual([]);
 
       if (download === 'stalls') {
-        // The confirmation must sound while the earlier fetch is still held.
-        await expect.poll(uiSounds, { timeout: 1000 }).toHaveLength(1);
-      } else {
-        expect(await uiSounds()).toEqual([]);
+        // The confirmation sounds after the grace period while the fetch is still held.
+        await page.clock.runFor(300);
+        await expect.poll(uiSounds).toHaveLength(1);
       }
     } finally {
       releaseError();
