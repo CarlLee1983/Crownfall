@@ -2,9 +2,8 @@ import { expect, type Page, test } from '@playwright/test';
 import { build } from 'vite';
 import manifest from '../docs/art/asset-manifest.json' with { type: 'json' };
 import { installAudioProbe } from './audio-probe';
+import { accelerateWaves, openTile } from './game-fixture';
 
-// An open tile in the initial 1280×720 view.
-const openTile = { x: 654, y: 395 };
 // Upper section of the archer tower built on that tile.
 const archerUpperBody = { x: 654, y: 334 };
 // The unbuildable entrance tile in the same view.
@@ -375,10 +374,7 @@ for (const delay of [0.3, 2.1]) {
 test('retries defeat music and drops pending effects on restart', async ({ page }) => {
   test.slow();
   const readAudio = await installAudioProbe(page);
-  await page.addInitScript(() => {
-    const request = window.requestAnimationFrame.bind(window);
-    window.requestAnimationFrame = (callback) => request((time) => callback(time * 30));
-  });
+  await accelerateWaves(page);
 
   let releaseHorn = () => {};
   const hornDownload = new Promise<void>((resolve) => {
@@ -597,10 +593,7 @@ test('starts preparation music after restart renews an exhausted retry budget', 
 }) => {
   test.slow();
   const readAudio = await installAudioProbe(page);
-  await page.addInitScript(() => {
-    const request = window.requestAnimationFrame.bind(window);
-    window.requestAnimationFrame = (callback) => request((time) => callback(time * 30));
-  });
+  await accelerateWaves(page);
 
   let requests = 0;
   await page.route(/\/assets\/catacombs-[\w-]+\.opus$/, async (route) => {

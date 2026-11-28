@@ -47,6 +47,14 @@ export function createCamera(level: Level) {
     camera.updateMatrixWorld();
   };
 
+  const frameOverview = (): void => {
+    if (distance === overviewDistance && targetX === centerX && targetZ === centerZ) return;
+    distance = overviewDistance;
+    targetX = centerX;
+    targetZ = centerZ;
+    updatePosition();
+  };
+
   const resize = (aspect: number): void => {
     const verticalSlope = Math.tan((FOV_DEGREES * Math.PI) / 360);
     const horizontalSlope = verticalSlope * aspect;
@@ -78,16 +86,13 @@ export function createCamera(level: Level) {
       else lowerDistance = middle;
     }
     overviewDistance = upperDistance;
-    distance = overviewDistance;
-    targetX = centerX;
-    targetZ = centerZ;
     camera.far = overviewDistance + radius * 2;
-    const bounds = projectedBounds(distance);
+    const bounds = projectedBounds(overviewDistance);
     // 在維持視角大小與朝向的前提下，把投影外框移到畫面中央。
     const offsetX = ((bounds.left + bounds.right) * aspect) / 4;
     const offsetY = -(bounds.bottom + bounds.top) / 4;
     camera.setViewOffset(aspect, 1, offsetX, offsetY, aspect, 1);
-    updatePosition();
+    frameOverview();
   };
 
   const pan = (deltaX: number, deltaZ: number): void => {
@@ -114,5 +119,5 @@ export function createCamera(level: Level) {
   };
 
   resize(1);
-  return { camera, resize, pan, zoom };
+  return { camera, resize, pan, zoom, frameOverview };
 }

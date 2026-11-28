@@ -119,6 +119,7 @@ function startGame(models: LoadedModels): void {
       placeTower: (cell, kind) =>
         loop.enqueue((tick) => ({ type: 'placeTower', cell, kind, tick })),
       manageTower: (cell, type) => loop.enqueue((tick) => ({ type, cell, tick })),
+      frameOverview: cameraView.frameOverview,
     },
     builds.towerStructure,
   );
