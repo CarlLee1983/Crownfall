@@ -3,6 +3,12 @@ import sharp, { type Region } from 'sharp';
 import { installAudioProbe } from './audio-probe';
 import { accelerateWaves } from './game-fixture';
 
+declare global {
+  interface Window {
+    advanceFrames(count: number): Promise<void>;
+  }
+}
+
 async function selectBuildCell(page: Page) {
   await page.getByLabel('Crownfall 關卡').click({ position: { x: 622, y: 229 } });
   const ring = page.getByRole('region', { name: '建造環' });
@@ -100,11 +106,7 @@ test('a barricade built while enemies approach attacks as a normal tower', async
     });
   });
   const advanceFrames = (frames: number) =>
-    page.evaluate(
-      (count) =>
-        (window as Window & { advanceFrames(count: number): Promise<void> }).advanceFrames(count),
-      frames,
-    );
+    page.evaluate((count) => window.advanceFrames(count), frames);
   const readAudio = await installAudioProbe(page);
   await page.goto('./');
   await page.getByRole('button', { name: '開始遊戲' }).click();
