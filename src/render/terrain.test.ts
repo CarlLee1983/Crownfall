@@ -29,6 +29,15 @@ it('keeps the entrance and a tall castle entirely in the default overview', () =
   }
 });
 
+it('draws the campaign terrain with at most a dozen meshes', () => {
+  const model = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+  const terrain = createTerrain(campaign, { entrance: model, castle: model });
+  const ground = terrain.group.children.filter((object) => object instanceof Mesh);
+
+  expect(ground.length).toBeGreaterThan(0);
+  expect(ground.length).toBeLessThanOrEqual(12);
+});
+
 it('lights only the castle model red after a leak and restores it when the flash ends', () => {
   const level = parseLevel(['S=G']);
   const modelMaterial = new MeshStandardMaterial({

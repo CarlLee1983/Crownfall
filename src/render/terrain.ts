@@ -10,6 +10,7 @@ import {
   type Object3D,
   SRGBColorSpace,
 } from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { type CellIndex, cellAt, cellPoint, type Level, rampDirection } from '../core';
 import { neighbors } from '../core/level';
 import { WORLD_LAYER } from './layers';
@@ -96,6 +97,7 @@ export function createTerrain(
     ]),
   ) as Record<Palette, MeshLambertMaterial>;
 
+  const geometryByMaterial = new Map<MeshLambertMaterial, BufferGeometry[]>();
   for (let i = 0; i < level.cells.length; i++) {
     const index = i as CellIndex;
     const { x, y } = cellPoint(level, index);
@@ -103,16 +105,24 @@ export function createTerrain(
     const direction = rampDirection(level, index);
     const top = cell.layer * LAYER_HEIGHT;
 
-    let mesh: Mesh;
+    let geometry: BufferGeometry;
+    let material: MeshLambertMaterial;
     if (direction !== undefined) {
-      mesh = new Mesh(rampGeometry(direction.dx, direction.dy), materials.laneLow);
-      mesh.position.set(x, LAYER_HEIGHT / 2, y);
+      geometry = rampGeometry(direction.dx, direction.dy).translate(x, LAYER_HEIGHT / 2, y);
+      material = materials.laneLow;
     } else {
       // 地表至少厚一層，平地才不會是零厚度的面。
       const thickness = Math.max(top, LAYER_HEIGHT);
-      mesh = new Mesh(new BoxGeometry(1, thickness, 1), materials[paletteOf(level, index)]);
-      mesh.position.set(x, top - thickness / 2, y);
+      geometry = new BoxGeometry(1, thickness, 1).translate(x, top - thickness / 2, y);
+      material = materials[paletteOf(level, index)];
     }
+    const batch = geometryByMaterial.get(material);
+    if (batch === undefined) geometryByMaterial.set(material, [geometry]);
+    else batch.push(geometry);
+  }
+
+  for (const [material, geometries] of geometryByMaterial) {
+    const mesh = new Mesh(mergeGeometries(geometries), material);
     mesh.layers.set(WORLD_LAYER);
     group.add(mesh);
   }
