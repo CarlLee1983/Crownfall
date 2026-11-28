@@ -33,6 +33,16 @@
         </section>
       </div>
       <p id="wave-feedback" role="status"></p>
+      <section id="game-audio" aria-label="音訊">
+        <button id="mute-audio" type="button" aria-pressed="false">靜音</button>
+        <button id="open-audio-levels" type="button" popovertarget="audio-levels">音量設定</button>
+        <fieldset id="audio-levels" aria-labelledby="open-audio-levels" popover>
+          <label for="music-volume">音樂音量</label>
+          <input id="music-volume" type="range" min="0" max="100" />
+          <label for="effects-volume">音效音量</label>
+          <input id="effects-volume" type="range" min="0" max="100" />
+        </fieldset>
+      </section>
       <dialog id="game-help" aria-labelledby="help-title">
         <h1 id="help-title">操作說明</h1>
         <ul>

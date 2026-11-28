@@ -1,5 +1,6 @@
 import warHornsUrl from './clips/war-horns.opus?url';
 import type { SoundCommand } from './director';
+import { type AudioSettings, DEFAULT_AUDIO_SETTINGS } from './settings';
 
 const DUCK_GAIN = 10 ** (-12 / 20);
 
@@ -9,18 +10,24 @@ async function loadHorn(context: AudioContext): Promise<AudioBuffer> {
   return context.decodeAudioData(await response.arrayBuffer());
 }
 
-function connectMixer(context: AudioContext) {
+function connectMixer(context: AudioContext, initialVolumes: AudioSettings) {
   const master = context.createGain();
   const music = context.createGain();
   const ducking = context.createGain();
   const effects = context.createGain();
   const ui = context.createGain();
   master.connect(context.destination);
-  music.gain.value = 0.6;
   music.connect(ducking).connect(master);
   effects.connect(master);
   ui.gain.value = 0.7;
   ui.connect(master);
+
+  function setVolumes(volumes: AudioSettings): void {
+    master.gain.value = volumes.muted ? 0 : 1;
+    music.gain.value = volumes.music;
+    effects.gain.value = volumes.effects;
+  }
+  setVolumes(initialVolumes);
 
   let hornLoad: Promise<AudioBuffer> | undefined;
   let horn: AudioBuffer | undefined;
@@ -69,6 +76,7 @@ function connectMixer(context: AudioContext) {
       play(pending.splice(0));
     },
     play,
+    setVolumes,
     reset(): void {
       pending.length = 0;
       for (const source of playing) source.stop();
@@ -83,16 +91,21 @@ function connectMixer(context: AudioContext) {
 
 export function createMixer() {
   let mixer: ReturnType<typeof connectMixer> | undefined;
+  let volumes = DEFAULT_AUDIO_SETTINGS;
 
   return {
     async unlock(): Promise<void> {
       try {
         // Construction and resume both happen synchronously inside the Start Game gesture.
-        mixer ??= connectMixer(new AudioContext());
+        mixer ??= connectMixer(new AudioContext(), volumes);
         await mixer.unlock();
       } catch (error) {
         console.warn('音訊無法啟用。', error);
       }
+    },
+    setVolumes(settings: AudioSettings): void {
+      volumes = settings;
+      mixer?.setVolumes(settings);
     },
     play(commands: readonly SoundCommand[]): void {
       if (commands.length > 0) mixer?.play(commands);
