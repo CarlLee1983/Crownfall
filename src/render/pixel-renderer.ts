@@ -13,6 +13,7 @@ import {
   WebGLRenderTarget,
 } from 'three';
 import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
+import { READ } from './read';
 
 // PROTOTYPE #103: ?px=3|2|1 switches pixel size.
 const PIXEL_SIZE = Number(new URLSearchParams(location.search).get('px') ?? 3);
@@ -36,6 +37,7 @@ export function createPixelRenderer(renderer: WebGLRenderer, scene: Scene, camer
         worldSize: { value: worldSize },
         cssSize: { value: cssSize },
         pixelSize: { value: PIXEL_SIZE },
+        outline: { value: READ === 'outline' ? 1 : 0 },
       },
       vertexShader: `
         varying vec2 screenUv;
@@ -49,6 +51,7 @@ export function createPixelRenderer(renderer: WebGLRenderer, scene: Scene, camer
         uniform vec2 worldSize;
         uniform vec2 cssSize;
         uniform float pixelSize;
+        uniform float outline;
         varying vec2 screenUv;
         void main() {
           // Evaluate the vignette at the world texel center so it shares the pixel grid.
@@ -56,9 +59,21 @@ export function createPixelRenderer(renderer: WebGLRenderer, scene: Scene, camer
           vec2 pixelUv = (floor(cssPosition / pixelSize) + 0.5) / worldSize;
           pixelUv.y = 1.0 - pixelUv.y;
           vec4 color = texture2D(world, pixelUv);
+          if (outline > 0.5) {
+            // PROTOTYPE #107: enemy pixels carry an id in alpha (< 1); the world is 1.0.
+            // Darken a pixel when a 4-neighbour has a lower alpha, i.e. outline the enemy
+            // silhouette from outside and separate overlapping enemies.
+            vec2 texel = 1.0 / worldSize;
+            float a = color.a;
+            float m = min(min(texture2D(world, pixelUv + vec2(texel.x, 0.0)).a,
+                              texture2D(world, pixelUv - vec2(texel.x, 0.0)).a),
+                          min(texture2D(world, pixelUv + vec2(0.0, texel.y)).a,
+                              texture2D(world, pixelUv - vec2(0.0, texel.y)).a));
+            if (m < a - 0.03) color.rgb = vec3(0.01, 0.012, 0.02);
+          }
           float edge = smoothstep(0.35, 0.85, distance(pixelUv, vec2(0.5)));
           // Variant D uses linear world values as display values for its dark grade.
-          gl_FragColor = vec4(color.rgb * (1.0 - edge * 0.55), color.a);
+          gl_FragColor = vec4(color.rgb * (1.0 - edge * 0.55), 1.0);
         }
       `,
       depthTest: false,

@@ -1,4 +1,12 @@
-import { DirectionalLight, FogExp2, HemisphereLight, Scene, Vector3, WebGLRenderer } from 'three';
+import {
+  DirectionalLight,
+  FogExp2,
+  HemisphereLight,
+  Scene,
+  SkinnedMesh,
+  Vector3,
+  WebGLRenderer,
+} from 'three';
 import {
   directCommandSound,
   directImpact,
@@ -12,6 +20,7 @@ import { level } from './content/level';
 import { cellAt, createGame } from './core';
 import { cellIndex } from './core/level';
 import './render/fx';
+import './render/read';
 import { connectAudioHud } from './render/audio-hud';
 import { createBuildHud } from './render/build-hud';
 import { createBuildLayer } from './render/build-layer';
@@ -204,6 +213,41 @@ function startGame(models: LoadedModels): void {
   Object.assign(window, {
     heldEnemies: () => enemies.group.children.length - [...enemies.routeMotions()].length,
     liveEnemies: () => [...enemies.routeMotions()].length,
+    // PROTOTYPE #107: pause / resume and per-enemy screen-space bounds.
+    setSpeed: (speed: number) => loop.setSpeed(speed),
+    measureEnemies: () => {
+      const out: { kind: string; w: number; h: number; x: number; y: number }[] = [];
+      const v = new Vector3();
+      for (const child of enemies.group.children) {
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        // Project every skinned vertex so the bounds are the real silhouette, not a 3D box.
+        (child.children[0] ?? child).traverse((object) => {
+          if (!(object instanceof SkinnedMesh) || !object.visible) return;
+          object.updateWorldMatrix(true, false);
+          const count = object.geometry.getAttribute('position').count;
+          for (let i = 0; i < count; i++) {
+            object.getVertexPosition(i, v).applyMatrix4(object.matrixWorld).project(camera);
+            const sx = ((v.x + 1) / 2) * window.innerWidth;
+            const sy = ((1 - v.y) / 2) * window.innerHeight;
+            minX = Math.min(minX, sx);
+            maxX = Math.max(maxX, sx);
+            minY = Math.min(minY, sy);
+            maxY = Math.max(maxY, sy);
+          }
+        });
+        out.push({
+          kind: String(child.userData.kind),
+          w: maxX - minX,
+          h: maxY - minY,
+          x: (minX + maxX) / 2,
+          y: (minY + maxY) / 2,
+        });
+      }
+      return out;
+    },
   });
   if (stress !== null) {
     const candidates: { index: ReturnType<typeof cellIndex>; x: number; y: number }[] = [];

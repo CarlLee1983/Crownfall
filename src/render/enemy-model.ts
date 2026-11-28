@@ -3,6 +3,10 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import type { LoadedEnemyModel } from './enemy-model-assets';
 import { FX } from './fx';
 import { WORLD_LAYER } from './layers';
+import { READ } from './read';
+
+// PROTOTYPE #107: each enemy gets its own alpha so the blit can find silhouette edges.
+let nextEnemy = 0;
 
 const MODEL_SCALE = 0.39;
 const GLOW_INTENSITY = 0.22;
@@ -18,6 +22,7 @@ export function createEnemyModel(
   model.scale.setScalar(scale);
   model.position.y = footHeight;
   const glowColor = new Color(glow);
+  const idAlpha = 0.15 + 0.7 * ((nextEnemy++ * 0.6180339) % 1);
   const materials = new Map<MeshStandardMaterial, MeshStandardMaterial>();
   const ownMaterial = (source: unknown) => {
     if (!(source instanceof MeshStandardMaterial)) {
@@ -27,6 +32,29 @@ export function createEnemyModel(
     if (existing !== undefined) return existing;
     const material = source.clone();
     material.emissiveMap ??= material.map;
+    if (READ === 'rim' || READ === 'outline') {
+      material.customProgramCacheKey = () => `read-${READ}`;
+      material.onBeforeCompile = (shader) => {
+        if (READ === 'rim') {
+          // Fresnel rim, neutral cool white.
+          shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <opaque_fragment>',
+            `float rimK = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.5);
+             outgoingLight += vec3(0.78, 0.88, 1.0) * rimK * 0.9;
+             #include <opaque_fragment>`,
+          );
+        } else {
+          // Write a per-enemy id into the alpha channel of the world target.
+          shader.uniforms.idAlpha = { value: idAlpha };
+          shader.fragmentShader = shader.fragmentShader
+            .replace('void main() {', 'uniform float idAlpha;\nvoid main() {')
+            .replace(
+              '#include <opaque_fragment>',
+              '#include <opaque_fragment>\n gl_FragColor.a = idAlpha;',
+            );
+        }
+      };
+    }
     materials.set(source, material);
     return material;
   };

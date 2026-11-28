@@ -34,6 +34,7 @@ import type { LoadedEnemyModel } from './enemy-model-assets';
 import { type EnemyMotion, enemyHeading, enemyMotion, sampleEnemyMotion } from './enemy-motion';
 import { DEATH_CLIP_MS, DYING, SINK_MS } from './fx';
 import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
+import { ACCENT, READ } from './read';
 import { LAYER_HEIGHT } from './terrain';
 
 interface Look {
@@ -60,7 +61,11 @@ const BAR_HEIGHT = 0.14;
 const BAR_GAP = 0.08;
 
 function enemyLook(kind: string): Look {
-  return LOOKS.get(kind) ?? DEFAULT_LOOK;
+  const look = LOOKS.get(kind) ?? DEFAULT_LOOK;
+  // PROTOTYPE #107: per-kind tint for read=accent.
+  return READ === 'accent' && ACCENT[kind] !== undefined
+    ? { ...look, glowColor: ACCENT[kind] }
+    : look;
 }
 
 export function enemyGlowColor(kind: string): number {
@@ -294,6 +299,7 @@ export function createEnemyLayer(
 
     const enemyGroup = new Group();
     enemyGroup.add(body, bar);
+    enemyGroup.userData.kind = kind;
     const view = { group: enemyGroup, body, bar, fill, barWidth, visual, lichFeet };
     views.set(id, view);
     group.add(enemyGroup);
