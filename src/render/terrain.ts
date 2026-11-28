@@ -19,7 +19,7 @@ import { placeableScenery } from './scenery-model';
 export const LAYER_HEIGHT = 0.6;
 
 const COLOURS = {
-  low: 0x5f774a,
+  low: 0x8fb070,
   high: 0xabaeba,
   laneLow: 0xc0b1a0,
   laneHigh: 0x9194a3,

@@ -44,14 +44,14 @@ interface Look {
 }
 
 const LOOKS: ReadonlyMap<string, Look> = new Map([
-  ['grunt', { size: 0.5, glowColor: 0xe0ac4f }],
-  ['runner', { size: 0.4, glowColor: 0xb5ec69 }],
-  ['tank', { size: 0.8, glowColor: 0xffad73, cornerCut: 0.1 }],
+  ['grunt', { size: 0.5, glowColor: 0xffffff }],
+  ['runner', { size: 0.4, glowColor: 0xffffff }],
+  ['tank', { size: 0.8, glowColor: 0xffffff, cornerCut: 0.1 }],
   // The equipped walk has a native diameter of 2.71; scale it to the one-cell proxy.
-  ['boss', { size: 1, glowColor: 0xf37b55, round: true, modelScale: 0.37 }],
+  ['boss', { size: 1, glowColor: 0xffffff, round: true, modelScale: 0.5 }],
 ]);
-const DEFAULT_LOOK: Look = { size: 0.5, glowColor: 0xbbbbbb };
-const GLOW_INTENSITY = 0.55;
+const DEFAULT_LOOK: Look = { size: 0.5, glowColor: 0xffffff };
+const GLOW_INTENSITY = 0.3;
 const WHITE = new Color(0xffffff);
 const UP = new Vector3(0, 1, 0);
 const BACK = new Vector3(0, 0, 1);

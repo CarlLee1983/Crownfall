@@ -21,7 +21,7 @@ export const content = {
     boss: { speed: 0.7, hp: 3250, bounty: 0, leakDamage: 'defeat' },
   },
   waves: [
-    { groups: [{ enemy: 'grunt', count: 8, interval: 1, delay: 0 }] },
+    { groups: [{ enemy: 'grunt', count: 1, interval: 1, delay: 0 }, { enemy: 'runner', count: 1, interval: 1, delay: 1.2 }, { enemy: 'tank', count: 1, interval: 1, delay: 2.4 }, { enemy: 'boss', count: 1, interval: 1, delay: 3.6 }] },
     {
       groups: [
         { enemy: 'grunt', count: 8, interval: 0.47, delay: 0 },
