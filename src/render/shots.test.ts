@@ -1,5 +1,6 @@
 import {
   AnimationClip,
+  Box3,
   BoxGeometry,
   Group,
   Mesh,
@@ -128,21 +129,29 @@ it('keeps the enemy visible until impact, then collapses and sinks it in place',
   expect(battle.draw(263).hitFlash(target.id)).toBeGreaterThan(0);
   expect(battle.draw(264).hitFlash(target.id)).toBe(0);
   const visibleBone = enemies.group.getObjectByName('bone');
+  if (visibleBone === undefined) throw new Error('Missing collapsing enemy');
+  const bounds = new Box3();
+  const top = () => {
+    enemies.group.updateMatrixWorld(true);
+    return bounds.setFromObject(visibleBone).max.y;
+  };
   expect(battle.draw(692, 0.25).bounties.map(({ text }) => text)).toEqual(['+5']);
-  expect(visibleBone?.position.x).toBeCloseTo(1);
+  expect(visibleBone.position.x).toBeCloseTo(1);
   expect(enemies.targetPosition(target.id, new Vector3())).toEqual(fixedPosition);
   battle.draw(1192, 0.75);
-  expect(visibleBone?.position.x).toBeCloseTo(2);
+  expect(visibleBone.position.x).toBeCloseTo(2);
   expect(enemies.targetPosition(target.id, new Vector3())).toEqual(fixedPosition);
+  const collapseTop = top();
   battle.draw(1342);
-  expect(visibleBone?.position.x).toBeCloseTo(2);
-  expect(enemies.targetPosition(target.id, new Vector3())?.toArray()).toEqual([
-    1,
-    expect.closeTo(-0.05),
-    0,
-  ]);
+  const midSinkTop = top();
+  expect(midSinkTop).toBeGreaterThan(0);
+  expect(midSinkTop).toBeLessThan(collapseTop);
+  expect(visibleBone.position.x).toBeCloseTo(2);
+  const sinkPosition = enemies.targetPosition(target.id, new Vector3());
+  expect(sinkPosition).toMatchObject({ x: 1, z: 0 });
   expect(hasHealthBar()).toBe(false);
   expect(battle.draw(1491).settling).toBe(true);
+  expect(top()).toBeLessThanOrEqual(0);
   expect(enemies.targetPosition(target.id, new Vector3())).toBeDefined();
   expect(battle.draw(1492).settling).toBe(false);
   expect(enemies.targetPosition(target.id, new Vector3())).toBeUndefined();
