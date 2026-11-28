@@ -186,3 +186,78 @@ test('horizontal pan stops at the map edge without drifting vertically', async (
   await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
   expect(await anchorPosition()).toEqual(edge);
 });
+
+test('unlocks audio on Start Game and plays the first wave horn', async ({ page }) => {
+  const hornAsset = /\/assets\/war-horns-[\w-]+\.opus$/;
+  const hornRequests: string[] = [];
+  page.on('request', (request) => {
+    if (hornAsset.test(new URL(request.url()).pathname)) hornRequests.push(request.url());
+  });
+
+  await page.addInitScript(() => {
+    const contexts: AudioContext[] = [];
+    const scheduled: AudioBuffer[] = [];
+    const NativeAudioContext = window.AudioContext;
+    window.AudioContext = class extends NativeAudioContext {
+      constructor(options?: AudioContextOptions) {
+        super(options);
+        contexts.push(this);
+      }
+
+      override createBufferSource(): AudioBufferSourceNode {
+        const source = super.createBufferSource();
+        const start = source.start.bind(source);
+        source.start = (...args) => {
+          start(...args);
+          if (source.buffer !== null) scheduled.push(source.buffer);
+        };
+        return source;
+      }
+    };
+    Object.defineProperty(window, 'audioProbe', {
+      value: () => ({
+        contexts: contexts.map((context) => context.state),
+        scheduled: scheduled.map((buffer) => buffer.duration),
+      }),
+    });
+  });
+
+  const readAudio = () =>
+    page.evaluate(() => {
+      const probe = window as Window & {
+        audioProbe?(): { contexts: AudioContextState[]; scheduled: number[] };
+      };
+      if (probe.audioProbe === undefined) throw new Error('Audio probe did not initialize');
+      return probe.audioProbe();
+    });
+
+  let releaseHorn = () => {};
+  const hornDownload = new Promise<void>((resolve) => {
+    releaseHorn = resolve;
+  });
+  await page.route(hornAsset, async (route) => {
+    await hornDownload;
+    await route.continue();
+  });
+
+  await page.goto('./');
+  const startGame = page.getByRole('button', { name: '開始遊戲' });
+  await expect(startGame).toBeEnabled();
+  expect(hornRequests).toEqual([]);
+  expect(await readAudio()).toEqual({ contexts: [], scheduled: [] });
+
+  try {
+    await startGame.click();
+    await expect.poll(async () => (await readAudio()).contexts).toEqual(['running']);
+    await expect.poll(() => hornRequests.length).toBe(1);
+    const openWave = page.getByRole('button', { name: /開波/ });
+    await openWave.click();
+    await expect(openWave).toBeDisabled();
+    expect((await readAudio()).scheduled).toEqual([]);
+  } finally {
+    releaseHorn();
+  }
+
+  await expect.poll(async () => (await readAudio()).scheduled).toEqual([expect.any(Number)]);
+  expect((await readAudio()).scheduled[0]).toBeCloseTo(4.5, 1);
+});

@@ -1,4 +1,6 @@
 import { DirectionalLight, FogExp2, HemisphereLight, Scene, Vector3, WebGLRenderer } from 'three';
+import { directSound } from './audio/director';
+import { createMixer } from './audio/mixer';
 import { content } from './content/content';
 import { torchPositions } from './content/decor';
 import { level } from './content/level';
@@ -25,6 +27,9 @@ const start = element('start-game');
 if (!(help instanceof HTMLDialogElement) || !(start instanceof HTMLButtonElement)) {
   throw new Error('開始遊戲的 HTML 元素類型錯誤');
 }
+const audio = createMixer();
+start.addEventListener('click', () => void audio.unlock());
+
 const loading = element('model-loading');
 const error = element('model-error');
 help.addEventListener('cancel', (event) => {
@@ -113,12 +118,14 @@ function startGame(models: LoadedModels): void {
       enemies.reset();
       combat.reset();
       combatHud.reset();
+      audio.reset();
       loop.reset(createGame(content, level));
     },
   });
   const loop = startLoop({
     initial,
     onEvents: (events, previous, current, time) => {
+      audio.play(directSound(events, previous, current));
       hud.onEvents(events);
       waveHud.onEvents(events, time.wallMs);
       shots.onEvents(events, current, time.gameMs);

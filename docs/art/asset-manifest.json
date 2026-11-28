@@ -350,6 +350,25 @@
         "technical_checks_passed": true,
         "approved_by": ""
       }
+    },
+    {
+      "id": "war-horns",
+      "role": "開戰號角",
+      "path": "src/audio/clips/war-horns.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/node/153572",
+        "creator": "Eldritch Grim",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "war_horns.wav, processed by scripts/build-audio.ts"
+      }
     }
   ]
 }
