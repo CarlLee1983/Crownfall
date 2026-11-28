@@ -49,8 +49,31 @@
       }
     },
     {
+      "id": "decor-barrier",
+      "role": "高台胸牆",
+      "path": "src/render/models/decor-barrier.glb",
+      "status": "implemented",
+      "technical": {
+        "format": "glb",
+        "dimensions": "0.88 tile wide × 0.24 tile high at placement",
+        "origin": "bottom-center at placement",
+        "up": "+Y",
+        "max_triangles": 90,
+        "max_texture": "128x128",
+        "filtering": "nearest"
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://github.com/KayKit-Game-Assets/KayKit-Dungeon-Remastered-1.0",
+        "commit": "b0ca9bd96a8072ab36a3a5464f00ed1e06a16d07",
+        "creator": "Kay Lousberg",
+        "license": "CC0-1.0",
+        "prompt_or_source_record": "addons/kaykit_dungeon_remastered/Assets/gltf/barrier.gltf.glb"
+      }
+    },
+    {
       "id": "decor-rubble",
-      "role": "外圍帶碎石",
+      "role": "外圍帶與峭壁腳碎石",
       "path": "src/render/models/decor-rubble.glb",
       "status": "implemented",
       "technical": {
@@ -58,7 +81,7 @@
         "dimensions": "≤0.16 tile height on the near side",
         "origin": "bottom-center at placement",
         "up": "+Y",
-        "max_triangles": 500,
+        "max_triangles": 310,
         "max_texture": "128x128",
         "filtering": "nearest"
       },

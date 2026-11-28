@@ -1,6 +1,7 @@
 import { LoadingManager, type Object3D } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { loadEnemyModels } from './enemy-model-assets';
+import barrierUrl from './models/decor-barrier.glb?url';
 import brokenWallUrl from './models/decor-broken-wall.glb?url';
 import gravemarkerUrl from './models/decor-gravemarker.glb?url';
 import gravestoneUrl from './models/decor-gravestone.glb?url';
@@ -45,6 +46,7 @@ export async function loadModels(source?: Pick<GLTFLoader, 'loadAsync'>): Promis
     entrance,
     castle,
     torch,
+    barrier,
     gravestone,
     gravemarker,
     rubble,
@@ -57,6 +59,7 @@ export async function loadModels(source?: Pick<GLTFLoader, 'loadAsync'>): Promis
     loader.loadAsync(entranceUrl),
     loader.loadAsync(castleUrl),
     loader.loadAsync(torchUrl),
+    loader.loadAsync(barrierUrl),
     loader.loadAsync(gravestoneUrl),
     loader.loadAsync(gravemarkerUrl),
     loader.loadAsync(rubbleUrl),
@@ -71,6 +74,7 @@ export async function loadModels(source?: Pick<GLTFLoader, 'loadAsync'>): Promis
       splash: prepareTowerModel(mage.scene),
     },
     outskirts: {
+      barrier: barrier.scene,
       gravestone: gravestone.scene,
       gravemarker: gravemarker.scene,
       rubble: rubble.scene,

@@ -46,10 +46,16 @@ it.each([
     120,
   ],
   [
+    'decor-barrier',
+    'KayKit-Dungeon-Remastered-1.0',
+    'b0ca9bd96a8072ab36a3a5464f00ed1e06a16d07',
+    90,
+  ],
+  [
     'decor-rubble',
     'KayKit-Dungeon-Remastered-1.0',
     'b0ca9bd96a8072ab36a3a5464f00ed1e06a16d07',
-    500,
+    310,
   ],
   [
     'decor-broken-wall',

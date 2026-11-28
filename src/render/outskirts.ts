@@ -7,15 +7,18 @@ import {
   MeshBasicMaterial,
   type Object3D,
 } from 'three';
-import type { Level } from '../core';
+import { type CellIndex, cellPoint, type Level } from '../core';
+import { cellIndex } from '../core/level';
 import { createDecorInstances, type DecorPlacement } from './decor-instances';
 import { WORLD_LAYER } from './layers';
+import { LAYER_HEIGHT } from './terrain';
 
 const WIDTH = 3;
 const GROUND_HEIGHT = -0.18;
 const SEED = 106;
 
 export interface OutskirtsModels {
+  readonly barrier: Object3D;
   readonly gravestone: Object3D;
   readonly gravemarker: Object3D;
   readonly rubble: Object3D;
@@ -64,11 +67,48 @@ function cemeteryGround(level: Level, backdrop: Color): Mesh {
   return ground;
 }
 
+function cliffPlacements(level: Level) {
+  const parapets: DecorPlacement[] = [];
+  const feet: DecorPlacement[] = [];
+  const edges = [
+    [0, -1],
+    [-1, 0],
+    [0, 1],
+    [1, 0],
+  ] as const;
+  for (const [index, cell] of level.cells.entries()) {
+    if (cell.layer === 0 || cell.ramp) continue;
+    const { x, y } = cellPoint(level, index as CellIndex);
+    for (const [dx, dz] of edges) {
+      const nextX = x + dx;
+      const nextZ = y + dz;
+      const inside = nextX >= 0 && nextX < level.width && nextZ >= 0 && nextZ < level.height;
+      const neighbor = inside ? level.cells[cellIndex(level.width, nextX, nextZ)] : undefined;
+      if (neighbor?.ramp || (neighbor?.layer ?? 0) >= cell.layer) continue;
+      const edge = {
+        x: x + dx / 2,
+        z: y + dz / 2,
+        rotation: dx === 0 ? 0 : Math.PI / 2,
+      };
+      // The camera looks from +X/+Z. Those sides stay open above the cliff.
+      if (dx < 0 || dz < 0) {
+        parapets.push({ ...edge, y: cell.layer * LAYER_HEIGHT - 0.01, scale: 0.22 });
+      } else if (neighbor !== undefined && (dx === 0 ? x : y) % 2 === 0) {
+        // Nestle little piles into the face every other tile, away from the low tile center.
+        feet.push({ ...edge, y: neighbor.layer * LAYER_HEIGHT - 0.03, scale: 0.043 });
+      }
+    }
+  }
+  return { parapets, feet };
+}
+
 export function createOutskirts(level: Level, models: OutskirtsModels, backdrop: Color): Group {
   const group = new Group();
-  group.name = 'cemetery';
-  group.add(cemeteryGround(level, backdrop));
-  const placements: Record<keyof OutskirtsModels, DecorPlacement[]> = {
+  const cemetery = new Group();
+  cemetery.name = 'cemetery';
+  cemetery.add(cemeteryGround(level, backdrop));
+  group.add(cemetery);
+  const placements: Record<Exclude<keyof OutskirtsModels, 'barrier'>, DecorPlacement[]> = {
     gravestone: [],
     gravemarker: [],
     rubble: [],
@@ -100,10 +140,19 @@ export function createOutskirts(level: Level, models: OutskirtsModels, backdrop:
       });
     }
   }
+  const { parapets, feet } = cliffPlacements(level);
+  placements.rubble.push(...feet);
   for (const kind of ['gravestone', 'gravemarker', 'rubble', 'brokenWall'] as const) {
     if (placements[kind].length > 0) {
-      group.add(createDecorInstances(models[kind], placements[kind]));
+      const batch = createDecorInstances(models[kind], placements[kind]);
+      batch.name = kind;
+      cemetery.add(batch);
     }
+  }
+  if (parapets.length > 0) {
+    const batch = createDecorInstances(models.barrier, parapets);
+    batch.name = 'parapets';
+    group.add(batch);
   }
   return group;
 }
