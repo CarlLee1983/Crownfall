@@ -264,7 +264,8 @@ body {
 #game-version,
 #wave-feedback:where(:not(:empty)),
 #game-help,
-#game-result {
+#game-result,
+#audio-levels {
   padding: 5px 12px;
   background: #172029;
   border: 1px solid #536373;
@@ -348,6 +349,7 @@ body {
 }
 
 #game-controls button,
+#game-audio button,
 #game-help button,
 #game-result button {
   padding: 3px 8px;
@@ -359,10 +361,44 @@ body {
   cursor: pointer;
 }
 
-#game-controls button {
+#game-controls button,
+#game-audio button {
   min-inline-size: 24px;
   min-block-size: 24px;
   white-space: nowrap;
+}
+
+#game-audio {
+  position: fixed;
+  inset: 12px 12px auto auto;
+  display: flex;
+  gap: 4px;
+}
+
+#audio-levels {
+  inset: 46px 12px auto auto;
+  margin: 0;
+  color: inherit;
+  color-scheme: dark;
+}
+
+#audio-levels:popover-open {
+  display: grid;
+  grid-template-columns: auto minmax(0, 8rem);
+  align-items: center;
+  gap: 4px 8px;
+}
+
+#audio-levels input {
+  width: 100%;
+  min-height: 24px;
+  margin: 0;
+  accent-color: #f1b595;
+}
+
+#mute-audio[aria-pressed="true"] {
+  border-color: #f1b595;
+  color: #ffe0a2;
 }
 
 #game-help button {
