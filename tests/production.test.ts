@@ -502,10 +502,15 @@ for (const download of ['succeeds', 'fails', 'stalls']) {
 
       // Control the UI queue deadline while keeping the native audio clock and decoder.
       await page.clock.pauseAt(testTime.getTime() + 3_600_000);
-      await build.evaluate((button) => {
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
-        (button as HTMLButtonElement).click();
-      });
+      await build.evaluate(
+        (button, rejections) => {
+          for (let i = 0; i < rejections; i++) {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+          }
+          (button as HTMLButtonElement).click();
+        },
+        download === 'succeeds' ? 3 : 1,
+      );
       await page.clock.runFor(32);
       await expect(page.locator('#build-balance')).toHaveText('50');
       expect(await uiSounds()).toEqual([]);
@@ -519,17 +524,22 @@ for (const download of ['succeeds', 'fails', 'stalls']) {
       releaseError();
     }
 
-    const expected = download === 'succeeds' ? ['ui-error-03', 'place-plank'] : ['place-plank'];
+    const expected =
+      download === 'succeeds'
+        ? ['ui-error-03', 'ui-error-03', 'ui-error-03', 'place-plank']
+        : ['place-plank'];
     await expect
       .poll(async () => (await uiSounds()).map(({ path }) => path))
       .toEqual(expected.map((sound) => expect.stringContaining(sound)));
     if (download === 'succeeds') {
-      const [error, placement] = await uiSounds();
-      if (error?.at === undefined || placement?.at === undefined) {
-        throw new Error('Missing playback timestamps for queued interface cues');
+      const starts = (await uiSounds()).map(({ at }) => at);
+      for (const [index, at] of starts.slice(1).entries()) {
+        const previous = starts[index];
+        if (at === undefined || previous === undefined) {
+          throw new Error('Missing playback timestamps for queued interface cues');
+        }
+        expect(at - previous).toBeCloseTo(0.06);
       }
-      expect(placement.at - error.at).toBeGreaterThanOrEqual(0.04);
-      expect(placement.at - error.at).toBeLessThanOrEqual(0.12);
     } else if (download === 'stalls') {
       await expect
         .poll(async () => (await readAudio()).decoded.map(({ path }) => path))

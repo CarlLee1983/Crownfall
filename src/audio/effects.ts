@@ -37,7 +37,6 @@ const RELEASE_TIME_CONSTANT = 0.1;
 const VOICE_LIMIT = 4;
 const UI_WAIT_MS = 250;
 const UI_CUE_SPACING_SECONDS = 0.06;
-const UI_MAX_START_DELAY_SECONDS = 0.12;
 
 interface EffectBank {
   buffers?: readonly AudioBuffer[];
@@ -135,10 +134,7 @@ export function connectEffects(
       pendingUi.shift();
       if (bank?.loadedAt === undefined || bank.loadedAt > cue.waitUntil) continue;
 
-      const now = context.currentTime;
-      const startAt = Math.max(now, nextUiStart);
-      // Give catch-up cues separate onsets without building a long playback backlog.
-      if (startAt > now + UI_MAX_START_DELAY_SECONDS) continue;
+      const startAt = Math.max(context.currentTime, nextUiStart);
       playVoice(bank, cue.command, startAt);
       nextUiStart = startAt + UI_CUE_SPACING_SECONDS;
     }
