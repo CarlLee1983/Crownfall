@@ -1,16 +1,35 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  closeSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { combatClips } from './combat-audio';
+
+export interface Clip {
+  readonly name: string;
+  readonly download: string;
+  readonly rawFile?: string;
+  readonly archiveMember?: string;
+  readonly edit?: string;
+  readonly gainDb?: number;
+}
 
 // War Horns by Eldritch Grim (CC0), https://opengameart.org/node/153572
-const clips = [
+const clips: readonly Clip[] = [
   {
     name: 'war-horns',
     download: 'https://opengameart.org/sites/default/files/war_horns.wav',
     edit: 'atrim=start=0.2:end=4.7,asetpts=PTS-STARTPTS,afade=t=out:st=3.8:d=0.7',
   },
+  ...combatClips,
 ];
 
 const targetLufs = -21;
@@ -18,8 +37,8 @@ const peakHeadroom = -2;
 const maximumTruePeak = -1;
 const outputDir = fileURLToPath(new URL('../src/audio/clips/', import.meta.url));
 
-function run(command: string, args: string[]): string {
-  const result = spawnSync(command, args, { encoding: 'utf8' });
+function run(command: string, args: string[], stdout: 'pipe' | number = 'pipe'): string {
+  const result = spawnSync(command, args, { encoding: 'utf8', stdio: ['ignore', stdout, 'pipe'] });
   if (result.error !== undefined) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr);
   return result.stderr;
@@ -48,52 +67,85 @@ function measure(input: string, edit = ''): { lufs: number; truePeak: number } {
   return { lufs, truePeak };
 }
 
-function buildClip({ name, download, edit }: (typeof clips)[number]): void {
-  const workspace = mkdtempSync(join(tmpdir(), 'crownfall-audio-'));
-  const output = join(outputDir, `${name}.opus`);
-  mkdirSync(dirname(output), { recursive: true });
+function sourceFor(clip: Clip, workspace: string): string {
+  const downloadName = basename(new URL(clip.download).pathname);
+  const rawName = clip.rawFile ?? downloadName;
+  const rawDirectory = process.env.CROWNFALL_AUDIO_SOURCES;
+  const localSource = rawDirectory === undefined ? undefined : join(rawDirectory, rawName);
+  if (localSource !== undefined && existsSync(localSource)) return localSource;
+
+  const downloaded = join(workspace, downloadName);
   try {
-    const source = join(workspace, 'source.wav');
-    run('curl', [
-      '--fail',
-      '--silent',
-      '--show-error',
-      '--location',
-      '--max-time',
-      '120',
-      '--output',
-      source,
-      download,
-    ]);
-
-    const { lufs, truePeak } = measure(source, edit);
-    const gain = Math.min(targetLufs - lufs, peakHeadroom - truePeak);
-    const prepared = join(workspace, `${name}.opus`);
-    ffmpeg(source, [
-      '-af',
-      `${edit},volume=${gain}dB`,
-      '-ar',
-      '48000',
-      '-c:a',
-      'libopus',
-      '-b:a',
-      '96k',
-      '-map_metadata',
-      '-1',
-      '-fflags',
-      '+bitexact',
-      prepared,
-    ]);
-
-    const decoded = measure(prepared);
-    if (decoded.truePeak > maximumTruePeak) {
-      throw new Error(`${name} exceeded ${maximumTruePeak} dBTP after encoding`);
+    if (!existsSync(downloaded)) {
+      run('curl', [
+        '--fail',
+        '--silent',
+        '--show-error',
+        '--location',
+        '--max-time',
+        '120',
+        '--output',
+        downloaded,
+        clip.download,
+      ]);
     }
-    copyFileSync(prepared, output);
-    console.log(`${name}: ${decoded.lufs} LUFS, ${decoded.truePeak} dBTP`);
-  } finally {
-    rmSync(workspace, { recursive: true, force: true });
+    if (clip.archiveMember === undefined) return downloaded;
+
+    const extracted = join(workspace, rawName);
+    const output = openSync(extracted, 'w');
+    try {
+      if (downloadName.endsWith('.7z')) {
+        run('bsdtar', ['-xOf', downloaded, clip.archiveMember], output);
+      } else {
+        run('unzip', ['-p', downloaded, clip.archiveMember], output);
+      }
+    } finally {
+      closeSync(output);
+    }
+    return extracted;
+  } catch (error) {
+    throw new Error(
+      `Could not get ${rawName} from ${clip.download}. Extract "${clip.archiveMember ?? rawName}" into CROWNFALL_AUDIO_SOURCES and rerun.`,
+      { cause: error },
+    );
   }
 }
 
-for (const clip of clips) buildClip(clip);
+function buildClip(clip: Clip, workspace: string): void {
+  const { name, edit = '', gainDb = 0 } = clip;
+  const output = join(outputDir, `${name}.opus`);
+  mkdirSync(dirname(output), { recursive: true });
+  const source = sourceFor(clip, workspace);
+  const { lufs, truePeak } = measure(source, edit);
+  const gain = Math.min(targetLufs - lufs, peakHeadroom - truePeak) + gainDb;
+  const prepared = join(workspace, `${name}.opus`);
+  ffmpeg(source, [
+    '-af',
+    `${edit ? `${edit},` : ''}volume=${gain}dB`,
+    '-ar',
+    '48000',
+    '-c:a',
+    'libopus',
+    '-b:a',
+    '96k',
+    '-map_metadata',
+    '-1',
+    '-fflags',
+    '+bitexact',
+    prepared,
+  ]);
+
+  const decoded = measure(prepared);
+  if (decoded.truePeak > maximumTruePeak) {
+    throw new Error(`${name} exceeded ${maximumTruePeak} dBTP after encoding`);
+  }
+  copyFileSync(prepared, output);
+  console.log(`${name}: ${decoded.lufs} LUFS, ${decoded.truePeak} dBTP`);
+}
+
+const workspace = mkdtempSync(join(tmpdir(), 'crownfall-audio-'));
+try {
+  for (const clip of clips) buildClip(clip, workspace);
+} finally {
+  rmSync(workspace, { recursive: true, force: true });
+}

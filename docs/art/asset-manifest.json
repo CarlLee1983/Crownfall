@@ -369,6 +369,141 @@
         "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
         "prompt_or_source_record": "war_horns.wav, processed by scripts/build-audio.ts"
       }
+    },
+    {
+      "id": "longbow-soft",
+      "role": "弓箭塔發射",
+      "path": "src/audio/clips/longbow-soft.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/medieval-sound-effects-weapon-textures",
+        "creator": "Ben Jaszczak / Brian Nelson",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "English Longbow Shoot.wav, second shot, softened, processed by scripts/build-audio.ts",
+        "archived_creator_terms_url": "https://web.archive.org/web/20220331020630/https://www.stillnorthmedia.com/libraries"
+      }
+    },
+    {
+      "id": "crossbow-1",
+      "role": "弩砲塔發射",
+      "path": "src/audio/clips/crossbow-1.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/medieval-sound-effects-weapon-textures",
+        "creator": "Ben Jaszczak / Brian Nelson",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "Crossbow Shoot.wav, first shot, processed by scripts/build-audio.ts",
+        "archived_creator_terms_url": "https://web.archive.org/web/20220331020630/https://www.stillnorthmedia.com/libraries"
+      }
+    },
+    {
+      "id": "archer-hit-soft",
+      "role": "弓箭塔命中",
+      "path": "src/audio/clips/archer-hit-soft.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/impact-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "impactSoft_medium_002.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "ballista-hit-plate",
+      "role": "弩砲塔命中",
+      "path": "src/audio/clips/ballista-hit-plate.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://kenney.nl/assets/impact-sounds",
+        "creator": "Kenney",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "impactPlate_heavy_001.ogg, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "spell-fire-2",
+      "role": "法師塔命中",
+      "path": "src/audio/clips/spell-fire-2.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://lentikula.itch.io/freecc0-basic-spell-impacts-sfx",
+        "creator": "lentikula",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "Fire Spell Impact 2_s06.wav, 150 Game Effect Sounds CC0 compilation, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "bone-break-3",
+      "role": "一般敵人死亡",
+      "path": "src/audio/clips/bone-break-3.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/deep-bone-crackbreak-sfx",
+        "creator": "Zane Little Music",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "Deep Break 3.wav, processed by scripts/build-audio.ts"
+      }
+    },
+    {
+      "id": "lich-shade-1",
+      "role": "巫妖死亡",
+      "path": "src/audio/clips/lich-shade-1.opus",
+      "status": "implemented",
+      "technical": {
+        "format": "Ogg Opus",
+        "sample_rate_hz": 48000,
+        "maximum_true_peak_dbtp": -1
+      },
+      "source": {
+        "kind": "licensed-pack",
+        "url_or_tool": "https://opengameart.org/content/rpg-sound-pack",
+        "creator": "artisticdude",
+        "license": "CC0-1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "prompt_or_source_record": "RPG Sound Pack/NPC/shade/shade1.wav, processed by scripts/build-audio.ts"
+      }
     }
   ]
 }

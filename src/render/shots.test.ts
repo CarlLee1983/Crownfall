@@ -55,12 +55,13 @@ function fire(
         ]
       : []),
   ]);
-  shots.onEvents(events, state, 100);
+  const hits = shots.onEvents(events, state, 100);
   const line = shots.group.children.find((child) => child instanceof Line2);
   if (line === undefined) throw new Error('No shot line');
   const end = line.geometry.getAttribute('instanceEnd');
   return {
     enemies,
+    hits,
     shots,
     before,
     state,
@@ -153,4 +154,12 @@ it('targets the inclined model and anchors splash at the simulation impact on th
   );
   expect(ring?.position.toArray()).toEqual([0.75, expect.closeTo(0.365, 5), 0]);
   expect(ring?.scale.toArray()).toEqual([0.8, 1, 0.8]);
+});
+
+it('presents repeated impacts in damage order and marks only the killing shot as lethal', () => {
+  const { hits } = fire(6, { twoTowers: true });
+  expect(hits).toEqual([
+    { towerKind: 'basic', target: { id: 1, kind: 'grunt' }, lethal: false },
+    { towerKind: 'basic', target: { id: 1, kind: 'grunt' }, lethal: true },
+  ]);
 });

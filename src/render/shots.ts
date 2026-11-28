@@ -2,6 +2,7 @@ import { Group, Mesh, MeshBasicMaterial, RingGeometry, Vector3 } from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import type { HitPresentation } from '../audio/director';
 import {
   cellPoint,
   type EnemyId,
@@ -17,15 +18,6 @@ import { LAYER_HEIGHT } from './terrain';
 const SHOT_DURATION_MS = 180;
 const SPLASH_DURATION_MS = 300;
 const SPLASH_COLOR = 0xf395ff;
-
-function killsTarget(events: readonly GameEvent[], shotIndex: number, target: EnemyId): boolean {
-  for (let index = shotIndex + 1; index < events.length; index++) {
-    const result = events[index];
-    if (result?.type === 'shot') break;
-    if (result?.type === 'killed' && result.enemyId === target) return true;
-  }
-  return false;
-}
 
 export function createShotLayer(
   enemies: Pick<EnemyLayer, 'impactPosition' | 'targetPosition'>,
@@ -53,7 +45,12 @@ export function createShotLayer(
     active.delete(shot);
   }
 
-  function onEvents(events: readonly GameEvent[], state: GameState, frameTime: number): void {
+  function onEvents(
+    events: readonly GameEvent[],
+    state: GameState,
+    frameTime: number,
+  ): readonly HitPresentation[] {
+    const hits: HitPresentation[] = [];
     for (const [index, event] of events.entries()) {
       if (event.type !== 'shot') continue;
       const tower = state.towers.find(({ cell }) => cell === event.towerCell);
@@ -89,9 +86,26 @@ export function createShotLayer(
         ring.scale.set(event.splashRadius, 1, event.splashRadius);
         group.add(ring);
       }
-      const killed = killsTarget(events, index, event.target.id);
-      active.add({ start: frameTime, target: killed ? undefined : event.target.id, line, ring });
+      let lethal = false;
+      const splashKills: { id: EnemyId; kind: string }[] = [];
+      // Each shot is followed by its kills before the next tower resolves damage.
+      for (let resultIndex = index + 1; resultIndex < events.length; resultIndex++) {
+        const result = events[resultIndex];
+        if (result?.type === 'shot') break;
+        if (result?.type !== 'killed') continue;
+        if (result.enemyId === event.target.id) lethal = true;
+        else splashKills.push({ id: result.enemyId, kind: result.enemyKind });
+      }
+      const { id, kind } = event.target;
+      hits.push({
+        towerKind: tower.kind,
+        target: { id, kind },
+        lethal,
+        ...(splashKills.length > 0 && { splashKills }),
+      });
+      active.add({ start: frameTime, target: lethal ? undefined : id, line, ring });
     }
+    return hits;
   }
 
   function update(frameTime: number): void {

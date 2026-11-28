@@ -54,7 +54,9 @@ bun run test:smoke
 
 ## 音訊前處理
 
-安裝 curl 和含 libopus 的 FFmpeg 後，執行 `bun run audio` 會下載原始素材、裁切與正規化響度，並把通過峰值檢查的 Ogg Opus 檔寫到 `src/audio/clips/`。
+安裝 curl、unzip、支援 7z 的 bsdtar 和含 libopus 的 FFmpeg 後，執行 `bun run audio` 會下載原始素材、裁切與正規化響度，並把通過峰值檢查的 Ogg Opus 檔寫到 `src/audio/clips/`。
+
+若下載受限，從[資產清單](docs/art/asset-manifest.json)的來源取得原始檔，依[戰鬥音效處理配方](scripts/combat-audio.ts)的 `rawFile` 檔名放入同一個目錄，再執行 `CROWNFALL_AUDIO_SOURCES=/path/to/originals bun run audio`。
 
 ## 授權
 
