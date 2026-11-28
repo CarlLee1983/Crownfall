@@ -1,5 +1,10 @@
 import { DirectionalLight, FogExp2, HemisphereLight, Scene, Vector3, WebGLRenderer } from 'three';
-import { directCommandSound, directInitialSound, directSound } from './audio/director';
+import {
+  directCommandSound,
+  directImpact,
+  directInitialSound,
+  directSound,
+} from './audio/director';
 import { createMixer } from './audio/mixer';
 import { content } from './content/content';
 import { torchPositions } from './content/decor';
@@ -67,8 +72,10 @@ function startGame(models: LoadedModels): void {
   connectCameraControls(canvas, cameraView);
   const enemies = createEnemyLayer(camera, models.enemies);
   const builds = createBuildLayer(models.towers);
-  const shots = createShotLayer(enemies, builds.towerHeight);
   const combat = createCombatFeedback(enemies);
+  const shots = createShotLayer(enemies, builds.towerHeight, combat, {
+    onImpact: (impact) => audio.play(directImpact(impact)),
+  });
   const combatHud = createCombatHud(canvas, camera);
   const allowShake = window.matchMedia('(prefers-reduced-motion: no-preference)');
   const cameraPosition = new Vector3();
@@ -144,12 +151,13 @@ function startGame(models: LoadedModels): void {
       }
       hud.onEvents(events);
       waveHud.onEvents(events, time.wallMs);
-      const hits = shots.onEvents(events, current, time.gameMs);
-      audio.play(directSound(events, previous, current, hits));
-      combat.onEvents(events, previous, time.gameMs);
+      audio.play(directSound(events, previous, current));
+      const immediate = shots.onEvents(events, current, previous, time.gameMs);
+      combat.onEvents(immediate, previous, time.gameMs);
       enemies.observe(current);
     },
     draw: (previous, current, alpha, time) => {
+      shots.advanceFlights(time.gameMs, previous === current ? 1 : alpha);
       const feedback = combat.update(time.gameMs, !allowShake.matches);
       terrain.setCastleFlash(feedback.castleFlash);
       const shaking = feedback.shake.lengthSq() > 0;
@@ -159,9 +167,17 @@ function startGame(models: LoadedModels): void {
         camera.translateY(feedback.shake.y);
         camera.updateMatrixWorld();
       }
-      enemies.update(previous, current, alpha, feedback.hitFlash, time.gameMs);
+      enemies.update(previous, current, alpha, feedback.hitFlash, time.gameMs, {
+        hp: shots.displayHp,
+        reaction: feedback.reaction,
+      });
       builds.update(previous, current, alpha, hud.update(current), enemies.routeMotions());
-      waveHud.update(current, time.wallMs);
+      // A loss is caused by a leak, so only the castle pulse gates its dialog.
+      const resultReady =
+        current.phase === 'defeat'
+          ? feedback.castleFlash === 0
+          : !shots.hasFlights() && !feedback.settling;
+      waveHud.update(current, time.wallMs, resultReady);
       shots.update(time.gameMs);
       combatHud.update(feedback);
       torches.update(time.gameMs / 1000);

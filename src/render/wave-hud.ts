@@ -162,7 +162,7 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
         }
       }
     },
-    update(state: GameState, now: number): void {
+    update(state: GameState, now: number, resultReady: boolean): void {
       updateText(lives, String(state.lives));
       const displayedWave =
         state.endless && state.phase === 'preparation' ? state.waveNumber + 1 : state.waveNumber;
@@ -185,7 +185,7 @@ export function createWaveHud(canvas: HTMLCanvasElement, camera: Camera, actions
 
       if (state.phase === 'victory' || state.phase === 'defeat') {
         flag.hidden = true;
-        if (result.open) return;
+        if (result.open || !resultReady) return;
         continueButton.hidden = continueRejection(state) !== undefined;
         const outcome = state.phase === 'victory' ? '勝利' : '敗北';
         updateText(resultTitle, outcome);

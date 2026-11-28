@@ -3,7 +3,7 @@ import { content } from '../content/content';
 import { level } from '../content/level';
 import { applyCommands, createGame, parseLevel, step } from '../core';
 import { cellIndex } from '../core/level';
-import { directCommandSound, directSound } from './director';
+import { directCommandSound, directImpact, directSound } from './director';
 
 it('plays a horn that ducks music when a startWave command opens a wave', () => {
   const preparation = createGame(content, level);
@@ -124,7 +124,7 @@ it.each([
   ['splash', 'spell-fire-2'],
 ])('plays the %s impact when the shot layer presents it', (towerKind, sound) => {
   const hit = { towerKind, target: grunt, lethal: false };
-  expect(directSound([], combatOpened.state, combatOpened.state, [hit])).toEqual([effect(sound)]);
+  expect(directImpact(hit)).toEqual([effect(sound)]);
 });
 
 it.each([
@@ -136,10 +136,7 @@ it.each([
   const killed = { type: 'killed' as const, enemyId: grunt.id, enemyKind, bounty: 5 };
   const hit = { towerKind: 'basic', target: { id: grunt.id, kind: enemyKind }, lethal: true };
   expect(directSound([killed], combatOpened.state, combatOpened.state)).toEqual([]);
-  expect(directSound([killed], combatOpened.state, combatOpened.state, [hit])).toEqual([
-    effect('archer-hit-soft'),
-    effect(sound, pitch),
-  ]);
+  expect(directImpact(hit)).toEqual([effect('archer-hit-soft'), effect(sound, pitch)]);
 });
 
 it('plays one spell impact and the death sound for each lethal splash recipient', () => {
@@ -149,8 +146,5 @@ it('plays one spell impact and the death sound for each lethal splash recipient'
     lethal: false,
     splashKills: [runner],
   };
-  expect(directSound([], combatOpened.state, combatOpened.state, [hit])).toEqual([
-    effect('spell-fire-2'),
-    effect('bone-break-3', 2),
-  ]);
+  expect(directImpact(hit)).toEqual([effect('spell-fire-2'), effect('bone-break-3', 2)]);
 });

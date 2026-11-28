@@ -203,6 +203,13 @@ interface EnemyView {
   readonly lichFeet: readonly SkinnedMesh[];
 }
 
+interface EnemyPresentation {
+  readonly hp: (id: EnemyId) => number | undefined;
+  readonly reaction: (
+    id: EnemyId,
+  ) => { readonly recoil: Vector3; readonly scale: number; readonly hp?: number } | undefined;
+}
+
 export interface EnemyLayer {
   readonly group: Group;
   routeMotions(): Iterable<EnemyMotion>;
@@ -215,7 +222,11 @@ export interface EnemyLayer {
     alpha: number,
     hitFlash?: (id: EnemyId) => number,
     gameMs?: number,
+    presentation?: EnemyPresentation,
   ): void;
+  hold(enemy: Enemy, state: GameState): void;
+  release(id: EnemyId): void;
+  aimPosition(id: EnemyId, alpha: number, output: Vector3): Vector3 | undefined;
   targetPosition(id: EnemyId, output: Vector3): Vector3 | undefined;
   impactPosition(state: GameState, enemy: Enemy, output: Vector3): Vector3;
   spawnPosition(state: GameState, kind: string, output: Vector3): Vector3;
@@ -237,6 +248,7 @@ export function createEnemyLayer(
   const views = new Map<EnemyId, EnemyView>();
   let motions = new Map<EnemyId, EnemyMotion>();
   let observed: GameState | undefined;
+  const held = new Map<EnemyId, EnemyMotion>();
   const barGeometry = new PlaneGeometry(1, 1);
   const barBackground = new MeshBasicMaterial({ color: 0x1c1d22 });
   const barFill = new MeshBasicMaterial({ color: 0x7ee081 });
@@ -305,19 +317,27 @@ export function createEnemyLayer(
     views.delete(id);
   };
 
-  const update: EnemyLayer['update'] = (previous, current, alpha, hitFlash, gameMs = 0) => {
+  const update: EnemyLayer['update'] = (
+    previous,
+    current,
+    alpha,
+    hitFlash,
+    gameMs = 0,
+    presentation,
+  ) => {
     if (observed === undefined || observed.tick < previous.tick) observe(previous);
     observe(current);
     cameraUp.copy(UP).applyQuaternion(camera.quaternion);
     cameraBack.copy(BACK).applyQuaternion(camera.quaternion);
-    for (const enemy of current.enemies) {
-      const motion = motions.get(enemy.id);
-      if (motion === undefined) continue;
+    for (const motion of [...motions.values(), ...held.values()]) {
+      const { enemy } = motion;
       const progress = previous === current ? 1 : alpha;
       const point = sampleEnemyMotion(motion, progress);
       const look = enemyLook(enemy.kind);
       const view = viewFor(enemy, look);
       const flash = hitFlash?.(enemy.id) ?? 0;
+      const reaction = presentation?.reaction(enemy.id);
+      view.group.scale.setScalar(reaction?.scale ?? 1);
       if (view.visual === undefined) {
         const glow = look.glowColor;
         view.body.material.color.setHex(glow).multiplyScalar(0.36).lerp(WHITE, flash);
@@ -364,6 +384,7 @@ export function createEnemyLayer(
         }
         model.position.y += flatClearance - clearance;
       }
+      if (reaction !== undefined) view.group.position.add(reaction.recoil);
       view.bar.quaternion.copy(camera.quaternion);
       // Project the tilted body bounds onto the camera's up axis to clear its silhouette.
       bodyTransform.setFromMatrix4(view.body.matrix).transpose();
@@ -388,14 +409,15 @@ export function createEnemyLayer(
         .addScaledVector(cameraUp, bodyTop * perspectiveScale + BAR_GAP + BAR_HEIGHT / 2);
 
       const { maxHp } = enemy;
-      const ratio = maxHp > 0 ? Math.min(1, Math.max(0, enemy.hp / maxHp)) : 0;
+      const hp = reaction?.hp ?? presentation?.hp(enemy.id) ?? enemy.hp;
+      const ratio = maxHp > 0 ? Math.min(1, Math.max(0, hp / maxHp)) : 0;
       view.fill.visible = ratio > 0;
       view.fill.scale.x = view.barWidth * ratio;
       view.fill.position.x = (view.fill.scale.x - view.barWidth) / 2;
     }
 
     for (const [id, view] of views) {
-      if (motions.has(id)) continue;
+      if (motions.has(id) || held.has(id)) continue;
       remove(id, view);
     }
   };
@@ -410,6 +432,17 @@ export function createEnemyLayer(
     routeMotions: () => motions.values(),
     observe,
     update,
+    hold: (enemy, state) => {
+      const motion = enemyMotion(state, enemy, motions.get(enemy.id));
+      held.set(enemy.id, { ...motion, start: motion.end });
+    },
+    release: (id) => held.delete(id),
+    aimPosition: (id, alpha, output) => {
+      const motion = motions.get(id) ?? held.get(id);
+      return motion === undefined || observed === undefined
+        ? undefined
+        : bodyPosition(observed.level, sampleEnemyMotion(motion, alpha), motion.enemy.kind, output);
+    },
     targetPosition: (id, output) => {
       const view = views.get(id);
       return view === undefined
@@ -426,6 +459,7 @@ export function createEnemyLayer(
     reset: () => {
       for (const [id, view] of views) remove(id, view);
       motions.clear();
+      held.clear();
       observed = undefined;
     },
   };

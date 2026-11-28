@@ -27,6 +27,7 @@ export {
   queryTower,
   queryWave,
   type RejectionReason,
+  type ShotImpact,
   type StepResult,
   step,
   type Tower,

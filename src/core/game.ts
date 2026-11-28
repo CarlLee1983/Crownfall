@@ -105,11 +105,20 @@ export type Command =
   | { readonly type: 'startWave'; readonly tick: number }
   | { readonly type: 'continueEndless'; readonly tick: number };
 
+export interface ShotImpact {
+  readonly target: Enemy;
+  readonly hp: number;
+  /** Defined only for a lethal impact, including kills with no reward. */
+  readonly bounty?: number;
+}
+
 export type GameEvent =
   | {
       readonly type: 'shot';
       readonly towerCell: CellIndex;
+      readonly towerKind: string;
       readonly target: Enemy;
+      readonly impacts: readonly ShotImpact[];
       readonly splashRadius: number | undefined;
     }
   | {
@@ -469,7 +478,8 @@ function attack(state: GameState): StepResult {
     const damage = towerDamage(state, tower, definition);
     const { splashRadius } = definition;
     const impact = enemyPosition(state, target);
-    events.push({ type: 'shot', towerCell: tower.cell, target, splashRadius });
+    const impacts: ShotImpact[] = [];
+    const kills: Extract<GameEvent, { type: 'killed' }>[] = [];
     enemies = enemies.flatMap((enemy) => {
       if (enemy.id !== target.id) {
         if (splashRadius === undefined) return [enemy];
@@ -477,13 +487,26 @@ function attack(state: GameState): StepResult {
         if (Math.hypot(point.x - impact.x, point.y - impact.y) > splashRadius) return [enemy];
       }
       const hp = enemy.hp - damage;
-      if (hp > 0) return [{ ...enemy, hp }];
+      if (hp > 0) {
+        impacts.push({ target: enemy, hp });
+        return [{ ...enemy, hp }];
+      }
 
       const { bounty } = enemyRulesFor(state, enemy.kind);
+      impacts.push({ target: enemy, hp: 0, bounty });
       money += bounty;
-      events.push({ type: 'killed', enemyId: enemy.id, enemyKind: enemy.kind, bounty });
+      kills.push({ type: 'killed', enemyId: enemy.id, enemyKind: enemy.kind, bounty });
       return [];
     });
+    events.push({
+      type: 'shot',
+      towerCell: tower.cell,
+      towerKind: tower.kind,
+      target,
+      impacts,
+      splashRadius,
+    });
+    events.push(...kills);
     // 從連續射擊的起點換算 tick，避免每一發取整後累積誤差。
     const resumed = state.tick > tower.nextShotTick;
     const firingStartTick = resumed ? state.tick : tower.firingStartTick;

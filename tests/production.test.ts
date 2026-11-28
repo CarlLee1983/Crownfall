@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { build } from 'vite';
 import manifest from '../docs/art/asset-manifest.json' with { type: 'json' };
 import { installAudioProbe } from './audio-probe';
 
@@ -629,4 +630,146 @@ test('starts preparation music after restart renews an exhausted retry budget', 
   await expect
     .poll(async () => (await readAudio()).scheduledPaths)
     .toContainEqual(expect.stringContaining('catacombs'));
+});
+
+async function startOneEnemyCampaign(
+  page: Page,
+  baseURL: string | undefined,
+  contentOverrides: string,
+  beforeWave?: () => Promise<void>,
+): Promise<void> {
+  // Exercise the normal production entry and map with deterministic combat data.
+  const bundled = await build({
+    build: { write: false },
+    plugins: [
+      {
+        name: 'one-enemy-campaign',
+        transform(code, id) {
+          if (!id.endsWith('/src/content/content.ts')) return;
+          return `${code}
+            ${contentOverrides}
+            content.waves.splice(0, content.waves.length, {
+              groups: [{ enemy: 'grunt', count: 1, interval: 1, delay: 0 }]
+            });
+          `;
+        },
+      },
+    ],
+  });
+  if (!('output' in bundled)) throw new Error('Expected a single production bundle');
+  const output = new Map(bundled.output.map((asset) => [asset.fileName, asset]));
+  const mount = new URL('./', baseURL);
+  await page.route(`${mount.href}**`, async (route) => {
+    const path = new URL(route.request().url()).pathname.slice(mount.pathname.length);
+    const asset = output.get(path || 'index.html');
+    if (asset === undefined) return route.fulfill({ status: 404 });
+    const contentTypes: Readonly<Record<string, string>> = {
+      wasm: 'application/wasm',
+      css: 'text/css',
+      js: 'text/javascript',
+      glb: 'model/gltf-binary',
+      opus: 'audio/ogg',
+    };
+    const extension = path.split('.').at(-1) ?? '';
+    const contentType = contentTypes[extension] ?? 'text/html';
+    const source = asset.type === 'chunk' ? asset.code : asset.source;
+    await route.fulfill({
+      contentType,
+      body: typeof source === 'string' ? source : Buffer.from(source),
+    });
+  });
+
+  const startTime = new Date('2026-01-01T00:00:00Z');
+  await page.clock.install({ time: startTime });
+  await page.clock.pauseAt(new Date(startTime.getTime() + 1_000));
+  await page.goto('./');
+  const startGame = page.getByRole('button', { name: '開始遊戲' });
+  await expect(startGame).toBeEnabled();
+  await startGame.press('Enter');
+  await page.clock.runFor(16);
+
+  await page.getByLabel('Crownfall 關卡').dispatchEvent('click', {
+    clientX: openTile.x,
+    clientY: openTile.y,
+    button: 0,
+  });
+  const ring = page.getByRole('region', { name: '建造環' });
+  await page.clock.runFor(16);
+  await ring.getByRole('button', { name: /弓箭塔/ }).dispatchEvent('click');
+  await page.clock.runFor(48);
+
+  await beforeWave?.();
+  const startWave = page.getByRole('button', { name: /開波/ });
+  await startWave.dispatchEvent('click');
+}
+
+test('plays impact and death with the final kill before opening the victory dialog', async ({
+  page,
+  baseURL,
+}) => {
+  const readAudio = await installAudioProbe(page);
+  const combatSounds = async () =>
+    (await readAudio()).scheduledPaths.filter((path) =>
+      /longbow-soft|archer-hit-soft|bone-break-3/.test(path),
+    );
+  await startOneEnemyCampaign(
+    page,
+    baseURL,
+    'Object.assign(content.towers.basic, { range: 20, damage: 100 });',
+    async () => {
+      await expect
+        .poll(async () => (await readAudio()).decoded.map(({ path }) => path))
+        .toEqual(
+          expect.arrayContaining([
+            expect.stringContaining('longbow-soft'),
+            expect.stringContaining('archer-hit-soft'),
+            expect.stringContaining('bone-break-3'),
+          ]),
+        );
+    },
+  );
+  await page.clock.runFor(64);
+  const victory = page.getByRole('dialog', { name: '勝利' });
+  await expect(page.locator('#wave-feedback')).toContainText('清波獎勵');
+  await expect(victory).toBeHidden();
+  const bounty = page.locator('.combat-bounty');
+  await expect(bounty).toHaveCount(0);
+  expect(await combatSounds()).toEqual([expect.stringContaining('longbow-soft')]);
+  await page.clock.runFor(128);
+  await expect(bounty).toHaveText('+5');
+  expect(await combatSounds()).toEqual([
+    expect.stringContaining('longbow-soft'),
+    expect.stringContaining('archer-hit-soft'),
+    expect.stringContaining('bone-break-3'),
+  ]);
+  await expect(victory).toBeHidden();
+  await page.clock.runFor(230);
+  await expect(victory).toBeVisible();
+});
+
+test('shows defeat after the castle pulse while many shots are still queued', async ({
+  page,
+  baseURL,
+}) => {
+  await startOneEnemyCampaign(
+    page,
+    baseURL,
+    `
+      content.startingLives = 1;
+      Object.assign(content.enemies.grunt, { hp: 100, speed: 100 });
+      Object.assign(content.towers.basic, { range: 200, damage: 1, shotsPerSecond: 30 });
+    `,
+  );
+  const lives = page.locator('#game-lives');
+  for (let elapsed = 0; elapsed < 1_000; elapsed += 16) {
+    await page.clock.runFor(16);
+    if ((await lives.textContent()) === '0') break;
+  }
+  const defeat = page.getByRole('dialog', { name: '敗北' });
+  await expect(lives).toHaveText('0');
+  expect(await lives.evaluate((element) => Number(element.style.scale))).toBeGreaterThan(1);
+  await expect(defeat).toBeHidden();
+
+  await page.clock.runFor(250);
+  await expect(defeat).toBeVisible();
 });

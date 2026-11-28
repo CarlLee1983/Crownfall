@@ -102,15 +102,13 @@ export function directSound(
   events: readonly GameEvent[],
   previous: GameState,
   current: GameState,
-  hits: readonly HitPresentation[] = [],
 ): readonly SoundCommand[] {
   const commands: SoundCommand[] = [];
   const wonThisTick = events.some(({ type }) => type === 'victory');
   for (const event of events) {
     switch (event.type) {
       case 'shot': {
-        const tower = current.towers.find(({ cell }) => cell === event.towerCell);
-        const fire = tower === undefined ? undefined : towerSounds[tower.kind]?.fire;
+        const fire = towerSounds[event.towerKind]?.fire;
         if (fire !== undefined) commands.push(combatEffect(fire));
         break;
       }
@@ -126,19 +124,21 @@ export function directSound(
     }
   }
 
-  for (const hit of hits) {
-    const impact = towerSounds[hit.towerKind]?.impact;
-    if (impact !== undefined) commands.push(combatEffect(impact));
-    if (hit.lethal) {
-      const death = deathSound(hit.target.kind);
-      if (death !== undefined) commands.push(death);
-    }
-    for (const victim of hit.splashKills ?? []) {
-      const death = deathSound(victim.kind);
-      if (death !== undefined) commands.push(death);
-    }
-  }
-
   if (current.phase !== previous.phase) commands.push(musicForPhase(current));
+  return commands;
+}
+
+export function directImpact(hit: HitPresentation): readonly EffectCommand[] {
+  const commands: EffectCommand[] = [];
+  const impact = towerSounds[hit.towerKind]?.impact;
+  if (impact !== undefined) commands.push(combatEffect(impact));
+  if (hit.lethal) {
+    const death = deathSound(hit.target.kind);
+    if (death !== undefined) commands.push(death);
+  }
+  for (const victim of hit.splashKills ?? []) {
+    const death = deathSound(victim.kind);
+    if (death !== undefined) commands.push(death);
+  }
   return commands;
 }
