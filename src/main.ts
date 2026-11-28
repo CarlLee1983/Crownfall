@@ -19,8 +19,9 @@ import { createCombatFeedback } from './render/combat-feedback';
 import { createCombatHud } from './render/combat-hud';
 import { createEnemyLayer } from './render/enemies';
 import { element } from './render/hud-dom';
-import { startLoop } from './render/loop';
+import { type LoopSession, startLoop } from './render/loop';
 import { type LoadedModels, loadModels } from './render/models';
+import { createDecor, DECOR_VARIANT } from './render/prototype-decor';
 import { createPixelRenderer } from './render/pixel-renderer';
 import { createShotLayer } from './render/shots';
 import { createTerrain } from './render/terrain';
@@ -66,6 +67,7 @@ function startGame(models: LoadedModels): void {
   renderer.setClearColor(0x0a0d0a);
 
   const terrain = createTerrain(level, models.scenery);
+  const decor = createDecor(level, models.decor, DECOR_VARIANT);
   const torches = createTorches(level, torchPositions, models.scenery.torch);
   const cameraView = createCamera(level);
   const { camera, resize } = cameraView;
@@ -88,6 +90,7 @@ function startGame(models: LoadedModels): void {
     new HemisphereLight(0xcfdcff, 0x2e2a22, 0.9),
     sun,
     terrain.group,
+    decor.group,
     torches.group,
     enemies.group,
     builds.group,
@@ -106,7 +109,15 @@ function startGame(models: LoadedModels): void {
   window.addEventListener('resize', onResize);
   onResize();
 
-  const initial = createGame(content, level);
+  // PROTOTYPE #106: enough money to build every tower type.
+  const initial = { ...createGame(content, level), money: 2000 };
+  // PROTOTYPE #106: label + hooks for the capture scripts.
+  const label = document.createElement('div');
+  label.textContent = `DECOR ${DECOR_VARIANT.toUpperCase()}`;
+  label.style.cssText =
+    'position:fixed;left:8px;bottom:8px;z-index:50;padding:2px 8px;font:bold 14px monospace;color:#fff;background:#000a;pointer-events:none';
+  document.body.append(label);
+  Object.assign(window, { renderer, decorStats: decor.stats, cameraView });
   start.addEventListener('click', () => {
     void audio.unlock();
     audio.play(directInitialSound(initial));
@@ -123,6 +134,7 @@ function startGame(models: LoadedModels): void {
     },
     builds.towerStructure,
   );
+  Object.assign(window, { enqueue: (...a: Parameters<LoopSession['enqueue']>) => loop.enqueue(...a) });
   const waveHud = createWaveHud(canvas, camera, {
     startWave: () => loop.enqueue((tick) => ({ type: 'startWave', tick })),
     continueEndless: () => loop.enqueue((tick) => ({ type: 'continueEndless', tick })),
@@ -143,7 +155,7 @@ function startGame(models: LoadedModels): void {
       audio.play(directInitialSound(restarted));
     },
   });
-  const loop = startLoop({
+  const loop: LoopSession = startLoop({
     initial,
     onEvents: (events, previous, current, time, commands) => {
       for (const { command, events: commandEvents } of commands) {
@@ -181,6 +193,7 @@ function startGame(models: LoadedModels): void {
       waveHud.update(current, time.wallMs, resultReady);
       shots.update(time.gameMs);
       combatHud.update(feedback);
+      decor.update(current);
       torches.update(time.gameMs / 1000);
       pixelRenderer.render();
       if (shaking) {

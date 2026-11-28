@@ -1,5 +1,6 @@
 import { LoadingManager, type Object3D } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { type DecorModels, loadDecorModels } from './prototype-decor';
 import { loadEnemyModels } from './enemy-model-assets';
 import castleUrl from './models/prop-castle.glb?url';
 import entranceUrl from './models/prop-entrance.glb?url';
@@ -10,6 +11,7 @@ import mageUrl from './models/tower-mage.glb?url';
 import { type LoadedTowerModel, prepareTowerModel } from './tower-model';
 
 export interface LoadedModels {
+  readonly decor: DecorModels;
   readonly enemies: Readonly<Awaited<ReturnType<typeof loadEnemyModels>>>;
   readonly towers: {
     readonly basic: LoadedTowerModel;
@@ -31,6 +33,7 @@ export async function loadModels(): Promise<LoadedModels> {
     resourceFailed = true;
   };
   const loader = new GLTFLoader(manager);
+  const decor = await loadDecorModels(loader);
   const [enemies, archer, ballista, mage, entrance, castle, torch] = await Promise.all([
     loadEnemyModels(loader),
     loader.loadAsync(archerUrl),
@@ -42,6 +45,7 @@ export async function loadModels(): Promise<LoadedModels> {
   ]);
   if (resourceFailed) throw new Error('3D 模型資源載入失敗');
   return {
+    decor,
     enemies,
     towers: {
       basic: prepareTowerModel(archer.scene),

@@ -29,13 +29,13 @@ const COLOURS = {
 
 type Palette = keyof typeof COLOURS;
 
-function terrainColor(hex: number): Color {
+export function terrainColor(hex: number): Color {
   const color = new Color(hex);
   const { h, s, l } = color.getHSL({ h: 0, s: 0, l: 0 });
   return color.setHSL(h, s * 0.35, l * 0.85);
 }
 
-function terrainTexture(moss: boolean, rim = true): DataTexture {
+export function terrainTexture(moss: boolean, rim = true): DataTexture {
   const size = 16;
   const pixels = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) {
