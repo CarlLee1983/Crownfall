@@ -9,7 +9,9 @@ import { createMixer } from './audio/mixer';
 import { content } from './content/content';
 import { torchPositions } from './content/decor';
 import { level } from './content/level';
-import { createGame } from './core';
+import { cellAt, createGame } from './core';
+import { cellIndex } from './core/level';
+import './render/fx';
 import { connectAudioHud } from './render/audio-hud';
 import { createBuildHud } from './render/build-hud';
 import { createBuildLayer } from './render/build-layer';
@@ -63,12 +65,14 @@ function startGame(models: LoadedModels): void {
   if (!(canvas instanceof HTMLCanvasElement)) throw new Error('找不到 #game 畫布');
 
   const renderer = new WebGLRenderer({ canvas, antialias: true });
+  Object.assign(window, { renderer }); // PROTOTYPE #105: perf probe
   renderer.setClearColor(0x0a0d0a);
 
   const terrain = createTerrain(level, models.scenery);
   const torches = createTorches(level, torchPositions, models.scenery.torch);
   const cameraView = createCamera(level);
   const { camera, resize } = cameraView;
+  Object.assign(window, { cameraView }); // PROTOTYPE #105
   connectCameraControls(canvas, cameraView);
   const enemies = createEnemyLayer(camera, models.enemies);
   const builds = createBuildLayer(models.towers);
@@ -106,6 +110,14 @@ function startGame(models: LoadedModels): void {
   window.addEventListener('resize', onResize);
   onResize();
 
+  // PROTOTYPE #105: ?stress=8|9 swaps wave 1 for the wave's groups and buys many towers.
+  const stress = new URLSearchParams(location.search).get('stress');
+  if (stress !== null) {
+    const source = content.waves[Number(stress) - 1];
+    if (source === undefined) throw new Error('stress 只接受 1 到 10');
+    Object.assign(content.waves[0] ?? {}, { groups: source.groups });
+    Object.assign(content, { startingMoney: 100000 });
+  }
   const initial = createGame(content, level);
   start.addEventListener('click', () => {
     void audio.unlock();
@@ -189,4 +201,45 @@ function startGame(models: LoadedModels): void {
       }
     },
   });
+  Object.assign(window, {
+    heldEnemies: () => enemies.group.children.length - [...enemies.routeMotions()].length,
+    liveEnemies: () => [...enemies.routeMotions()].length,
+  });
+  if (stress !== null) {
+    const candidates: { index: ReturnType<typeof cellIndex>; x: number; y: number }[] = [];
+    for (let y = 0; y < level.height; y++) {
+      for (let x = 0; x < level.width; x++) {
+        const index = cellIndex(level.width, x, y);
+        if (cellAt(level, index).lane) continue;
+        const nearLane = [-1, 0, 1].some((dy) =>
+          [-1, 0, 1].some((dx) => {
+            const nx = x + dx;
+            const ny = y + dy;
+            return (
+              nx >= 0 &&
+              ny >= 0 &&
+              nx < level.width &&
+              ny < level.height &&
+              cellAt(level, cellIndex(level.width, nx, ny)).lane
+            );
+          }),
+        );
+        if (nearLane) candidates.push({ index, x, y });
+      }
+    }
+    // ?n=K keeps only the K cells nearest the entrance, for the up-close capture.
+    const spawnX = level.spawn % level.width;
+    const spawnY = Math.floor(level.spawn / level.width);
+    candidates.sort(
+      (a, b) => Math.hypot(a.x - spawnX, a.y - spawnY) - Math.hypot(b.x - spawnX, b.y - spawnY),
+    );
+    const limit = Number(new URLSearchParams(location.search).get('n') ?? candidates.length);
+    candidates.slice(0, limit).forEach(({ index }, order) => {
+      const kind = order % 3 === 0 ? 'splash' : 'basic';
+      loop.enqueue((tick) => ({ type: 'placeTower', cell: index, kind, tick }));
+    });
+    Object.assign(window, {
+      startStress: () => loop.enqueue((tick) => ({ type: 'startWave', tick })),
+    });
+  }
 }

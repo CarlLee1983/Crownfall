@@ -32,6 +32,7 @@ import { cellIndex, neighbors } from '../core/level';
 import { createEnemyModel } from './enemy-model';
 import type { LoadedEnemyModel } from './enemy-model-assets';
 import { type EnemyMotion, enemyHeading, enemyMotion, sampleEnemyMotion } from './enemy-motion';
+import { DEATH_CLIP_MS, DYING, SINK_MS } from './fx';
 import { OVERLAY_LAYER, WORLD_LAYER } from './layers';
 import { LAYER_HEIGHT } from './terrain';
 
@@ -205,9 +206,15 @@ interface EnemyView {
 
 interface EnemyPresentation {
   readonly hp: (id: EnemyId) => number | undefined;
-  readonly reaction: (
-    id: EnemyId,
-  ) => { readonly recoil: Vector3; readonly scale: number; readonly hp?: number } | undefined;
+  readonly reaction: (id: EnemyId) =>
+    | {
+        readonly recoil: Vector3;
+        readonly scale: number;
+        readonly hp?: number;
+        readonly start: number;
+        readonly death: boolean;
+      }
+    | undefined;
 }
 
 export interface EnemyLayer {
@@ -349,7 +356,13 @@ export function createEnemyLayer(
             ? (current.enemyRules[enemy.kind]?.speedPerTick ?? 0) * TICKS_PER_SECOND
             : 0;
         view.visual.model.rotation.y = enemyHeading(motion, progress);
-        view.visual.update(gameMs, walkingSpeed, flash);
+        view.visual.update(
+          gameMs,
+          walkingSpeed,
+          flash,
+          reaction?.start,
+          DYING && reaction?.death === true,
+        );
       }
       const half = look.size / 2;
       const ground = supportBody(current.level, point, look, normal, view.body.position);
@@ -383,6 +396,12 @@ export function createEnemyLayer(
           }
         }
         model.position.y += flatClearance - clearance;
+      }
+      if (view.visual !== undefined && DYING && reaction?.death === true) {
+        // PROTOTYPE #105: after the death clip, sink the corpse into the ground.
+        if (view.lichFeet.length === 0) view.visual.model.position.y = -half;
+        const sink = Math.min(1, Math.max(0, (gameMs - reaction.start - DEATH_CLIP_MS) / SINK_MS));
+        view.visual.model.position.y -= sink * sink * look.size * 1.4;
       }
       if (reaction !== undefined) view.group.position.add(reaction.recoil);
       view.bar.quaternion.copy(camera.quaternion);

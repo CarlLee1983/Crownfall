@@ -20,6 +20,11 @@ const enemies = [
   { id: 'enemy-lich', ratio: 0.85, lift: 0.06 },
 ];
 
+// PROTOTYPE #105: ENEMY_CLIPS=Walking_A,Death_A overrides which source clips are kept.
+const keptClips = (process.env.ENEMY_CLIPS ?? 'Walking_A,Hit_A,Death_A,Death_C_Skeletons').split(
+  ',',
+);
+
 export async function buildEnemyModels(io: NodeIO): Promise<void> {
   for (const { id, ratio, lift } of enemies) {
     const asset = manifest.assets.find((item) => item.id === id);
@@ -29,10 +34,13 @@ export async function buildEnemyModels(io: NodeIO): Promise<void> {
     const document = await io.read(pinnedModelUrl(source));
     const root = document.getRoot();
     const animations = root.listAnimations();
-    const walk = animations.find((clip) => clip.getName() === 'Walking_A');
-    if (walk === undefined) throw new Error(`${id} 原檔缺少 Walking_A`);
+    for (const name of keptClips) {
+      if (!animations.some((clip) => clip.getName() === name)) {
+        throw new Error(`${id} 原檔缺少 ${name}`);
+      }
+    }
     for (const clip of animations) {
-      if (clip === walk) continue;
+      if (keptClips.includes(clip.getName())) continue;
       // Discard the subproperties too, so their accessors become eligible for pruning.
       for (const channel of clip.listChannels()) channel.dispose();
       for (const sampler of clip.listSamplers()) sampler.dispose();

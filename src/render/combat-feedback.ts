@@ -10,6 +10,7 @@ import {
 } from 'three';
 import type { EnemyId, GameEvent, GameState, ShotImpact } from '../core';
 import { type EnemyLayer, enemyGlowColor } from './enemies';
+import { DEATH_CLIP_MS, DYING, SINK_MS } from './fx';
 import { WORLD_LAYER } from './layers';
 
 const HIT_FLASH_MS = 100;
@@ -28,7 +29,7 @@ const PRESET_A_FLASH_GAP_MS = 16;
 const PRESET_A_FLASH_STRENGTH = 0.36;
 const PRESET_A_RECOIL = 0.035;
 const RECOIL_MS = 174;
-const DEATH_MS = 85;
+const DEATH_MS = DYING ? DEATH_CLIP_MS + SINK_MS : 85; // PROTOTYPE #105
 const PRESET_A_SHARDS = 3;
 const PRESET_A_SHARD_MS = 230;
 const PRESET_A_SCATTER = 0.34;
@@ -95,6 +96,7 @@ export function createCombatFeedback(
     start: number,
     usesPresetA = false,
   ): void {
+    if (DYING) return; // PROTOTYPE #105: no shards when the death clip plays
     removeExpiredFragments(start);
     const count = usesPresetA ? PRESET_A_SHARDS : FRAGMENTS_PER_KILL;
     if (!usesPresetA && fragments.size + count > MAX_FRAGMENTS) return;
@@ -279,8 +281,14 @@ export function createCombatFeedback(
               ? PRESET_A_RECOIL * Math.max(0, 1 - age / RECOIL_MS) ** 2
               : 0,
           );
-        const scale = reaction.death ? Math.max(0.05, 1 - (age / DEATH_MS) ** 2) : 1;
-        return { recoil, scale, ...(reaction.hp === undefined ? {} : { hp: reaction.hp }) };
+        const scale = reaction.death && !DYING ? Math.max(0.05, 1 - (age / DEATH_MS) ** 2) : 1;
+        return {
+          recoil,
+          scale,
+          start: reaction.start,
+          death: reaction.death,
+          ...(reaction.hp === undefined ? {} : { hp: reaction.hp }),
+        };
       },
       settling: fragments.size > 0 || leak > 0 || hasHeldReaction,
       castleFlash,
