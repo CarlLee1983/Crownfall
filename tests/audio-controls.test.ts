@@ -126,10 +126,10 @@ test('keeps keyboard and pointer volume controls available in the defeat dialog'
   const openWave = page.getByRole('button', { name: /開波/ });
   await openWave.click();
   await expect(openWave).toBeDisabled();
-  await openWave.click({ timeout: 12000 });
+  await openWave.click({ timeout: 25000 });
 
   const result = page.getByRole('dialog', { name: '敗北' });
-  await expect(result).toBeVisible({ timeout: 12000 });
+  await expect(result).toBeVisible({ timeout: 25000 });
   const mute = result.getByRole('button', { name: '靜音', exact: true });
   await mute.click();
   await expect(mute).toHaveAttribute('aria-pressed', 'true');

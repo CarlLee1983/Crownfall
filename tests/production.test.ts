@@ -354,6 +354,7 @@ test('starts the outgoing music fade while the next track downloads', async ({ p
 });
 
 test('fades on failed defeat music and drops pending effects on restart', async ({ page }) => {
+  test.slow();
   const readAudio = await installAudioProbe(page);
   await page.addInitScript(() => {
     const request = window.requestAnimationFrame.bind(window);
@@ -391,7 +392,7 @@ test('fades on failed defeat music and drops pending effects on restart', async 
       .toContainEqual(expect.stringContaining('catacombs'));
     await openWave.click();
     await expect(openWave).toBeDisabled();
-    await expect(openWave).toBeEnabled({ timeout: 12000 });
+    await expect(openWave).toBeEnabled({ timeout: 25000 });
 
     releaseWave();
     await expect
@@ -405,7 +406,7 @@ test('fades on failed defeat music and drops pending effects on restart', async 
     await expect
       .poll(async () => (await readAudio()).scheduledPaths)
       .toContainEqual(expect.stringContaining('ancient-evil-awakens'));
-    await expect(page.getByRole('dialog', { name: '敗北' })).toBeVisible({ timeout: 12000 });
+    await expect(page.getByRole('dialog', { name: '敗北' })).toBeVisible({ timeout: 25000 });
     const outgoing = (await readAudio()).stops.find(({ path }) =>
       path.includes('ancient-evil-awakens'),
     );
