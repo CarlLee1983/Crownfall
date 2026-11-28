@@ -23,28 +23,28 @@ const FRAGMENTS_PER_KILL = 6;
 const MAX_FRAGMENTS = 48;
 const BOUNTY_MS = 720;
 const BOUNTY_HEIGHT = 0.55;
-const ARROW_FLASH_MS = 72;
-const ARROW_FLASH_STRENGTH = 0.36;
-const ARROW_RECOIL = 0.035;
+const PRESET_A_FLASH_MS = 72;
+const PRESET_A_FLASH_STRENGTH = 0.36;
+const PRESET_A_RECOIL = 0.035;
 const RECOIL_MS = 174;
 const DEATH_MS = 85;
-const ARROW_SHARDS = 3;
-const ARROW_SHARD_MS = 230;
-const ARROW_SCATTER = 0.34;
+const PRESET_A_SHARDS = 3;
+const PRESET_A_SHARD_MS = 230;
+const PRESET_A_SCATTER = 0.34;
 
 export function createCombatFeedback(
   enemies: Pick<EnemyLayer, 'impactPosition' | 'spawnPosition' | 'targetPosition' | 'release'>,
 ) {
   const group = new Group();
   const geometry = new BoxGeometry(0.14, 0.14, 0.14);
-  const arrowShardGeometry = new OctahedronGeometry(0.09);
+  const presetAShardGeometry = new OctahedronGeometry(0.09);
   const materials = new Map<number, MeshLambertMaterial>();
-  const arrowShardMaterials = new Map<number, MeshBasicMaterial>();
+  const presetAShardMaterials = new Map<number, MeshBasicMaterial>();
   const fragments = new Set<{
     readonly mesh: Mesh;
     readonly origin: Vector3;
     readonly heading: number;
-    readonly archer: boolean;
+    readonly usesPresetA: boolean;
     readonly speed: number;
     readonly start: number;
   }>();
@@ -55,7 +55,7 @@ export function createCombatFeedback(
       readonly start: number;
       readonly direction: Vector3;
       readonly death: boolean;
-      readonly archer: boolean;
+      readonly usesPresetA: boolean;
     }
   >();
   let leakStart = -Infinity;
@@ -70,7 +70,8 @@ export function createCombatFeedback(
 
   function removeExpiredFragments(gameTime: number): void {
     for (const fragment of fragments) {
-      if (gameTime - fragment.start < (fragment.archer ? ARROW_SHARD_MS : FRAGMENT_MS)) continue;
+      if (gameTime - fragment.start < (fragment.usesPresetA ? PRESET_A_SHARD_MS : FRAGMENT_MS))
+        continue;
       group.remove(fragment.mesh);
       fragments.delete(fragment);
     }
@@ -81,31 +82,31 @@ export function createCombatFeedback(
     id: EnemyId,
     origin: Vector3,
     start: number,
-    archer = false,
+    usesPresetA = false,
   ): void {
     removeExpiredFragments(start);
-    const count = archer ? ARROW_SHARDS : FRAGMENTS_PER_KILL;
-    if (!archer && fragments.size + count > MAX_FRAGMENTS) return;
+    const count = usesPresetA ? PRESET_A_SHARDS : FRAGMENTS_PER_KILL;
+    if (!usesPresetA && fragments.size + count > MAX_FRAGMENTS) return;
     const color = enemyGlowColor(kind);
-    const palette = archer ? arrowShardMaterials : materials;
+    const palette = usesPresetA ? presetAShardMaterials : materials;
     let material = palette.get(color);
     if (material === undefined) {
-      if (archer) {
+      if (usesPresetA) {
         material = new MeshBasicMaterial({ color });
-        arrowShardMaterials.set(color, material);
+        presetAShardMaterials.set(color, material);
       } else {
         material = new MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.45 });
         materials.set(color, material);
       }
     }
     for (let index = 0; index < count; index++) {
-      const mesh = new Mesh(archer ? arrowShardGeometry : geometry, material);
+      const mesh = new Mesh(usesPresetA ? presetAShardGeometry : geometry, material);
       mesh.layers.set(WORLD_LAYER);
       group.add(mesh);
-      const heading = archer
+      const heading = usesPresetA
         ? (index / count) * Math.PI * 2 + id
         : ((index + id * 0.37) * Math.PI) / 3;
-      fragments.add({ mesh, origin, heading, archer, speed: 0.6 + 0.4 * (index / 2), start });
+      fragments.add({ mesh, origin, heading, usesPresetA, speed: 0.6 + 0.4 * (index / 2), start });
     }
   }
 
@@ -138,12 +139,17 @@ export function createCombatFeedback(
     direction: Vector3,
     gameTime: number,
   ): void {
-    const archer = towerKind === 'basic';
+    const usesPresetA = towerKind === 'basic' || towerKind === 'sniper';
     hits.delete(target.id);
-    reactions.set(target.id, { start: gameTime, direction, death: bounty !== undefined, archer });
+    reactions.set(target.id, {
+      start: gameTime,
+      direction,
+      death: bounty !== undefined,
+      usesPresetA,
+    });
     if (bounty !== undefined) {
-      shatter(target.kind, target.id, position, gameTime, archer);
-      bountyAt(target.id, bounty, position, gameTime, archer ? 690 : BOUNTY_MS);
+      shatter(target.kind, target.id, position, gameTime, usesPresetA);
+      bountyAt(target.id, bounty, position, gameTime, usesPresetA ? 690 : BOUNTY_MS);
     }
   }
 
@@ -193,7 +199,7 @@ export function createCombatFeedback(
       if (reaction.death && age >= DEATH_MS) {
         enemies.release(id);
         reactions.delete(id);
-      } else if (age >= (reaction.archer ? RECOIL_MS : HIT_FLASH_MS)) {
+      } else if (age >= (reaction.usesPresetA ? RECOIL_MS : HIT_FLASH_MS)) {
         reactions.delete(id);
       }
     }
@@ -206,24 +212,27 @@ export function createCombatFeedback(
     }
     const castleFlash = leak * LEAK_FLASH_STRENGTH;
     removeExpiredFragments(gameTime);
-    for (const { mesh, origin, heading, archer, speed, start } of fragments) {
-      const progress = (gameTime - start) / (archer ? ARROW_SHARD_MS : FRAGMENT_MS);
-      const distance = archer ? (0.05 + ARROW_SCATTER * progress) * speed : 0.12 + 0.62 * progress;
+    for (const { mesh, origin, heading, usesPresetA, speed, start } of fragments) {
+      const progress = (gameTime - start) / (usesPresetA ? PRESET_A_SHARD_MS : FRAGMENT_MS);
+      const distance = usesPresetA
+        ? (0.05 + PRESET_A_SCATTER * progress) * speed
+        : 0.12 + 0.62 * progress;
       mesh.position.set(
         origin.x + Math.cos(heading) * distance,
-        origin.y + progress * (archer ? 1.9 - 2.6 * progress : 1.7 - 2.3 * progress),
+        origin.y + progress * (usesPresetA ? 1.9 - 2.6 * progress : 1.7 - 2.3 * progress),
         origin.z + Math.sin(heading) * distance,
       );
-      if (archer) mesh.rotation.set(heading + 6 * progress, 7 * progress, heading - 4 * progress);
+      if (usesPresetA)
+        mesh.rotation.set(heading + 6 * progress, 7 * progress, heading - 4 * progress);
       else mesh.rotation.set(heading + 3 * progress, 6 * progress, 3 * progress);
-      mesh.scale.setScalar((archer ? speed : 1) * (1 - progress * progress));
+      mesh.scale.setScalar((usesPresetA ? speed : 1) * (1 - progress * progress));
     }
     return {
       hitFlash: (id: EnemyId) => {
         const reaction = reactions.get(id);
         if (reaction !== undefined) {
-          const duration = reaction.archer ? ARROW_FLASH_MS : HIT_FLASH_MS;
-          const strength = reaction.archer ? ARROW_FLASH_STRENGTH : HIT_FLASH_STRENGTH;
+          const duration = reaction.usesPresetA ? PRESET_A_FLASH_MS : HIT_FLASH_MS;
+          const strength = reaction.usesPresetA ? PRESET_A_FLASH_STRENGTH : HIT_FLASH_STRENGTH;
           return strength * Math.max(0, 1 - (gameTime - reaction.start) / duration);
         }
         const start = hits.get(id)?.start;
@@ -238,8 +247,8 @@ export function createCombatFeedback(
         const recoil = reaction.direction
           .clone()
           .multiplyScalar(
-            reaction.archer && !reducedMotion
-              ? ARROW_RECOIL * Math.max(0, 1 - age / RECOIL_MS) ** 2
+            reaction.usesPresetA && !reducedMotion
+              ? PRESET_A_RECOIL * Math.max(0, 1 - age / RECOIL_MS) ** 2
               : 0,
           );
         const scale = reaction.death ? Math.max(0.05, 1 - (age / DEATH_MS) ** 2) : 1;

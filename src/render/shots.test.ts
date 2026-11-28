@@ -20,7 +20,7 @@ function fire(
     enemies: { grunt: { speed: 7.5, hp: 12, bounty: 5, leakDamage: 1 } },
     waves: [{ groups: [{ enemy: 'grunt', count: 1, interval: 1, delay: 0 }] }],
     towers: {
-      [splashRadius === undefined ? 'sniper' : 'splash']: {
+      [splashRadius === undefined ? 'legacy' : 'splash']: {
         name: 'Legacy',
         cost: 10,
         range: 2,
@@ -43,7 +43,7 @@ function fire(
   const second = step(first, []).state;
   const before = step(second, []).state;
   enemies.observe(before);
-  const kind = splashRadius === undefined ? 'sniper' : 'splash';
+  const kind = splashRadius === undefined ? 'legacy' : 'splash';
   const { state, events } = step(before, [
     { type: 'placeTower', kind, cell: cellIndex(3, 0, 1), tick: before.tick },
     ...(twoTowers
@@ -250,6 +250,37 @@ it('keeps a defeated enemy and its health visible until the arrow lands', () => 
   expect(combat.group.children).toHaveLength(0);
 });
 
+it('shows a distant bolt’s damage before a nearer arrow kills the same enemy', () => {
+  const battle = archerBattle(['S=====G', '.......'], 0, 6);
+  const { sounds, target, shots } = battle;
+  const damaged = battle.advance(100, [6, 1], 'sniper');
+  expect(damaged.enemies[0]?.hp).toBe(6);
+  expect(damaged.money).toBe(90);
+  const defeated = battle.advance(133, [0, 1]);
+  expect(defeated.enemies).toEqual([]);
+  expect(defeated.money).toBe(85);
+  expect(defeated.lives).toBe(10);
+
+  // The near arrow's 92ms flight ends while the distant bolt is still in the air.
+  expect(battle.draw(240).bounties).toEqual([]);
+  expect(shots.displayHp(target.id)).toBe(12);
+  expect(sounds).toEqual([]);
+
+  const boltImpact = battle.draw(280);
+  expect(boltImpact.bounties).toEqual([]);
+  expect(boltImpact.hitFlash(target.id)).toBeCloseTo(0.36);
+  expect(boltImpact.reaction(target.id)?.recoil.length()).toBeCloseTo(0.035);
+  expect(shots.displayHp(target.id)).toBe(6);
+  expect(sounds.map(({ towerKind, lethal }) => [towerKind, lethal])).toEqual([['sniper', false]]);
+  expect(battle.draw(317).bounties).toEqual([]);
+  expect(battle.draw(318).bounties.map(({ text }) => text)).toEqual(['+5']);
+  expect(battle.draw(350).bounties.map(({ text }) => text)).toEqual(['+5']);
+  expect(sounds.map(({ towerKind, lethal }) => [towerKind, lethal])).toEqual([
+    ['sniper', false],
+    ['basic', true],
+  ]);
+});
+
 it('shows the first arrow’s damage before the nearer second arrow kills the same enemy', () => {
   const battle = archerBattle(['S=====G', '.......'], 0, 6);
   const { sounds, target, shots } = battle;
@@ -268,27 +299,30 @@ it('shows the first arrow’s damage before the nearer second arrow kills the sa
   expect(sounds.map(({ lethal }) => lethal)).toEqual([false, true]);
 });
 
-it('aims at the rounded position the moving enemy draws at the moment of impact', () => {
-  const battle = archerBattle(['S=.', '.G.'], 7.5, 4);
-  battle.advance(0);
-  battle.advance(33);
-  battle.advance(100, [0, 1]);
-  const pose = battle.draw(150, 0.25);
-  expect(pose.hitFlash(battle.target.id)).toBe(0);
-  expect(battle.enemies.targetPosition(battle.target.id, new Vector3())?.toArray()).toEqual([
-    expect.closeTo(0.735698, 5),
-    expect.closeTo(0.25, 5),
-    expect.closeTo(0.059039, 5),
-  ]);
-  const impact = battle.draw(192, 0.5);
-  const recoil = impact.reaction(battle.target.id)?.recoil;
-  expect(recoil?.x).toBeGreaterThan(0);
-  expect(recoil?.z).toBeLessThan(0);
-  expect((recoil?.x ?? 0) / -(recoil?.z ?? 1)).toBeCloseTo(0.84936, 4);
-  expect(battle.sounds.map(({ lethal }) => lethal)).toEqual([false]);
-});
+it.each(['basic', 'sniper'])(
+  '%s projectile aims at the rounded position of the moving enemy at impact',
+  (kind) => {
+    const battle = archerBattle(['S=.', '.G.'], 7.5, 4);
+    battle.advance(0);
+    battle.advance(33);
+    battle.advance(100, [0, 1], kind);
+    const pose = battle.draw(150, 0.25);
+    expect(pose.hitFlash(battle.target.id)).toBe(0);
+    expect(battle.enemies.targetPosition(battle.target.id, new Vector3())?.toArray()).toEqual([
+      expect.closeTo(0.735698, 5),
+      expect.closeTo(0.25, 5),
+      expect.closeTo(0.059039, 5),
+    ]);
+    const impact = battle.draw(192, 0.5);
+    const recoil = impact.reaction(battle.target.id)?.recoil;
+    expect(recoil?.x).toBeGreaterThan(0);
+    expect(recoil?.z).toBeLessThan(0);
+    expect((recoil?.x ?? 0) / -(recoil?.z ?? 1)).toBeCloseTo(0.84936, 4);
+    expect(battle.sounds.map(({ lethal }) => lethal)).toEqual([false]);
+  },
+);
 
-it('presenting a legacy shot cannot skip earlier damage from an airborne arrow', () => {
+it('shows a distant arrow’s damage before a nearer bolt kills the same enemy', () => {
   const battle = archerBattle(['S=====G', '.......'], 0, 6);
   battle.advance(100, [6, 1]);
   battle.advance(133, [0, 1], 'sniper');
