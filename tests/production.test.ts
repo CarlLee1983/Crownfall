@@ -5,15 +5,15 @@ import { installAudioProbe } from './audio-probe';
 import { accelerateWaves, openTile } from './game-fixture';
 
 // Upper section of the archer tower built on that tile.
-const archerUpperBody = { x: 655, y: 376 };
+const archerUpperBody = { x: 745, y: 211 };
 // The unbuildable entrance tile in the same view.
-const spawnTile = { x: 655, y: 586 };
-const tileBesideSpawn = { x: 709, y: 541 };
+const spawnTile = { x: 1016, y: 279 };
+const tileBesideSpawn = { x: 921, y: 278 };
 const archerAsset = /\/assets\/tower-archer-[\w-]+\.glb$/;
 const skeletonAsset = /\/assets\/enemy-skeleton-[\w-]+\.glb$/;
 
 // The entrance and first stretch of lane at the configured viewport.
-const entrance = { x: 580, y: 505, width: 100, height: 96 };
+const entrance = { x: 950, y: 223, width: 95, height: 77 };
 
 async function entranceBrightness(page: Page): Promise<number[]> {
   const screenshot = await page.screenshot({ clip: entrance, scale: 'css' });
@@ -47,7 +47,7 @@ function hasBrighterBody(baseline: readonly number[], current: readonly number[]
       if ((current[index] ?? 0) - (baseline[index] ?? 0) >= 45) brightPixels++;
     }
     // A body occupies a taller patch than the thin health bar.
-    consecutiveBrightRows = brightPixels >= 6 ? consecutiveBrightRows + 1 : 0;
+    consecutiveBrightRows = brightPixels >= 4 ? consecutiveBrightRows + 1 : 0;
     if (consecutiveBrightRows >= 10) return true;
   }
   return false;
@@ -194,7 +194,7 @@ test('horizontal pan stops at the map edge without drifting vertically', async (
   const edge = await anchorPosition();
   // The nearer map edge limits diagonal movement from the initial center.
   const steps = (initial.x - edge.x) / (initial.x - first.x);
-  expect(steps).toBeCloseTo(7.07, 1);
+  expect(steps).toBeCloseTo(15.56, 1);
   expect(edge.y).toBeCloseTo(initial.y, 0);
   await page.keyboard.press('ArrowRight');
   await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
@@ -261,7 +261,7 @@ test('unlocks audio on Start Game, changes music, and plays the first wave horn'
       (await readAudio()).scheduledPaths.filter((path) => path.includes('ui-error-03')).length;
     const canvas = page.getByLabel('Crownfall 關卡');
     await canvas.click({ position: spawnTile });
-    await expect(page.locator('#build-feedback')).toHaveText('入口、城堡與坡道不能建塔');
+    await expect(page.locator('#build-feedback')).toHaveText('這格不能建塔');
     await expect.poll(errorsPlayed, { timeout: 2000 }).toBe(1);
 
     await canvas.click({ position: tileBesideSpawn });
@@ -563,7 +563,7 @@ test('drops combat impacts that miss their playback time', async ({ page }) => {
     await page.goto('./');
     await page.getByRole('button', { name: '開始遊戲' }).click();
     const canvas = page.getByLabel('Crownfall 關卡');
-    for (const position of [tileBesideSpawn, { x: 596, y: 636 }]) {
+    for (const position of [tileBesideSpawn, { x: 1032, y: 217 }]) {
       await canvas.click({ position });
       await page
         .getByRole('region', { name: '建造環' })
@@ -728,7 +728,11 @@ test('plays impact and death with the final kill before opening the victory dial
   const bounty = page.locator('.combat-bounty');
   await expect(bounty).toHaveCount(0);
   expect(await combatSounds()).toEqual([expect.stringContaining('longbow-soft')]);
-  await page.clock.runFor(128);
+  // The arrow takes longer to reach the entrance from the high platform.
+  for (let elapsed = 0; elapsed < 1_000; elapsed += 16) {
+    await page.clock.runFor(16);
+    if ((await bounty.count()) > 0) break;
+  }
   await expect(bounty).toHaveText('+5');
   expect(await combatSounds()).toEqual([
     expect.stringContaining('longbow-soft'),

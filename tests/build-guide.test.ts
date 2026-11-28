@@ -1,20 +1,43 @@
 import { expect, type Page, test } from '@playwright/test';
-import { accelerateWaves, openTile } from './game-fixture';
+import type { Region } from 'sharp';
+import { installAudioProbe } from './audio-probe';
+import { accelerateWaves, installFrameClock } from './game-fixture';
+import { countPixels, routeDots } from './route-pixels';
 
 async function selectBuildCell(page: Page) {
-  await page.getByLabel('Crownfall 關卡').click({ position: openTile });
+  await page.getByLabel('Crownfall 關卡').click({ position: { x: 622, y: 229 } });
   const ring = page.getByRole('region', { name: '建造環' });
   await expect(ring).toBeVisible();
   return ring;
 }
 
-test('demonstrates a real lane detour and dismisses the guide after building', async ({ page }) => {
+// Midpoints of the two separate banks in the default 1280 × 720 overview.
+const rightBank = { left: 784, top: 256, width: 48, height: 48 };
+const leftBank = { left: 497, top: 100, width: 48, height: 48 };
+
+function enemyHealthPixels(screenshot: Buffer, region: Region) {
+  // Bright green health fills belong to live enemies.
+  return countPixels(
+    screenshot,
+    region,
+    (red, green, blue) => green > 195 && red > 95 && red < 145 && blue > 95 && blue < 145,
+  );
+}
+
+test('previews and builds a detour before attackers reach the castle via the other bank', async ({
+  page,
+}, testInfo) => {
+  test.slow();
+  const advanceFrames = await installFrameClock(page);
   await page.goto('./');
   await page.getByRole('button', { name: '開始遊戲' }).click();
   const lane = page.getByRole('button', { name: '路障示範格' });
   const plateau = page.getByRole('button', { name: '高台示範格' });
   await expect(lane).toBeHidden();
   await expect(plateau).toBeHidden();
+  const initial = await page.screenshot({ scale: 'css' });
+  expect(await routeDots(initial, rightBank, 'current')).toBeGreaterThan(20);
+  expect(await routeDots(initial, leftBank, 'current')).toBe(0);
 
   const ring = await selectBuildCell(page);
   await expect(lane).toBeVisible();
@@ -22,16 +45,84 @@ test('demonstrates a real lane detour and dismisses the guide after building', a
   await lane.click();
   const archer = ring.getByRole('button', { name: /弓箭塔/ });
   await archer.hover();
-  await expect(page.getByText('路線 +2 格', { exact: true })).toBeVisible();
+  await expect(page.getByText('改走另一條等長路線', { exact: true })).toBeVisible();
+  const proposed = await page.screenshot({ scale: 'css' });
+  expect(await routeDots(proposed, leftBank, 'preview')).toBeGreaterThan(20);
+  expect(await routeDots(proposed, leftBank, 'current')).toBe(0);
+  await testInfo.attach('detour preview', { body: proposed, contentType: 'image/png' });
 
   const balance = page.locator('#build-balance');
   const before = Number(await balance.textContent());
   await archer.click();
+  await advanceFrames(1);
   await expect(balance).toHaveText(String(before - 50));
-  await selectBuildCell(page);
   await expect(lane).toBeHidden();
   await expect(plateau).toBeHidden();
   await expect(page.getByRole('button', { name: '略過' })).toBeHidden();
+  const committed = await page.screenshot({ scale: 'css' });
+  expect(await routeDots(committed, leftBank, 'current')).toBeGreaterThan(20);
+  expect(await routeDots(committed, rightBank, 'current')).toBe(0);
+  await testInfo.attach('committed detour', { body: committed, contentType: 'image/png' });
+
+  // The (10, 7) platform covers the left bank only. Put the second tower there.
+  await page.getByLabel('Crownfall 關卡').click({ position: { x: 603, y: 120 } });
+  await expect(lane).toBeHidden();
+  await expect(plateau).toBeHidden();
+  await archer.click();
+  await advanceFrames(1);
+  await expect(balance).toHaveText('0');
+  await page.getByRole('button', { name: /開波/ }).click();
+  // At 19 seconds surviving enemies have reached the middle of the left bank.
+  await advanceFrames(95);
+  const wave = await page.screenshot({ scale: 'css' });
+  await testInfo.attach('enemies on the committed route', { body: wave, contentType: 'image/png' });
+  expect(await enemyHealthPixels(committed, leftBank)).toBe(0);
+  expect(await enemyHealthPixels(wave, leftBank)).toBeGreaterThan(5);
+  expect(await enemyHealthPixels(wave, rightBank)).toBe(0);
+  expect(await routeDots(wave, leftBank, 'current')).toBeGreaterThan(20);
+
+  await advanceFrames(64);
+  expect(Number(await page.locator('#game-lives').textContent())).toBeLessThan(20);
+});
+
+test('previews and builds a barricade off the current route without rerouting', async ({
+  page,
+}) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: '開始遊戲' }).click();
+  // The designated left-bank site (7, 9) in the overview.
+  await page.getByLabel('Crownfall 關卡').click({ position: { x: 521, y: 124 } });
+  const ring = page.getByRole('region', { name: '建造環' });
+  const archer = ring.getByRole('button', { name: /弓箭塔/ });
+  await archer.hover();
+  await expect(page.getByText('維持目前路線', { exact: true })).toBeVisible();
+  const preview = await page.screenshot({ scale: 'css' });
+  expect(await routeDots(preview, leftBank, 'preview')).toBe(0);
+  await archer.click();
+  await expect(page.locator('#build-balance')).toHaveText('50');
+  const committed = await page.screenshot({ scale: 'css' });
+  expect(await routeDots(committed, rightBank, 'current')).toBeGreaterThan(20);
+  expect(await routeDots(committed, leftBank, 'current')).toBe(0);
+});
+
+test('a barricade built while enemies approach attacks as a normal tower', async ({ page }) => {
+  test.slow();
+  const advanceFrames = await installFrameClock(page);
+  const readAudio = await installAudioProbe(page);
+  await page.goto('./');
+  await page.getByRole('button', { name: '開始遊戲' }).click();
+  const ring = await selectBuildCell(page);
+  await page.getByRole('button', { name: /開波/ }).click();
+
+  // Before the first skeleton reaches (22, 9), it is within bow range.
+  await advanceFrames(25);
+  await page.getByRole('button', { name: '路障示範格' }).click();
+  await ring.getByRole('button', { name: /弓箭塔/ }).click();
+  await advanceFrames(1);
+  await expect(page.locator('#build-balance')).toHaveText('50');
+  await expect
+    .poll(async () => (await readAudio()).scheduledPaths)
+    .toContainEqual(expect.stringContaining('longbow-soft'));
 });
 
 test('can build directly on the plateau and gain range against lower enemies', async ({ page }) => {
@@ -95,7 +186,7 @@ test('frames both guide cells when the first selection is zoomed in near the ent
   for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowDown');
   await page.mouse.wheel(0, -900);
   // An open tile near the entrance in the resulting close-up view.
-  await page.getByLabel('Crownfall 關卡').click({ position: { x: 655, y: 185 } });
+  await page.getByLabel('Crownfall 關卡').click({ position: { x: 561, y: 104 } });
 
   const guide = page.getByRole('region', { name: '建造引導' });
   await expect(guide.getByRole('button', { name: '路障示範格' })).toBeInViewport();
@@ -106,7 +197,7 @@ test('frames both guide cells when the first selection is zoomed in near the ent
   // The selected tile stays selected when the overview is restored.
   const bounds = await page.locator('#build-anchor').boundingBox();
   expect(bounds).not.toBeNull();
-  expect(Math.round((bounds?.y ?? 0) + (bounds?.height ?? 0) / 2)).toBe(500);
+  expect(Math.round((bounds?.y ?? 0) + (bounds?.height ?? 0) / 2)).toBe(368);
 });
 
 test('guide text leaves the unrelated board cell underneath it selectable', async ({ page }) => {
@@ -118,8 +209,8 @@ test('guide text leaves the unrelated board cell underneath it selectable', asyn
   await expect(caption).toBeInViewport({ ratio: 1 });
   await page.keyboard.press('Escape');
 
-  // A buildable lane tile behind the explanatory text, away from the pin.
-  const point = { x: 860, y: 172 };
+  // A buildable platform behind the explanatory text, away from the pin.
+  const point = { x: 920, y: 280 };
   const containsPoint = async (target: typeof pin) =>
     target.evaluate((node, { x, y }) => {
       const { left, right, top, bottom } = node.getBoundingClientRect();
@@ -131,7 +222,7 @@ test('guide text leaves the unrelated board cell underneath it selectable', asyn
   await expect(page.getByRole('region', { name: '建造環' })).toBeVisible();
   const bounds = await page.locator('#build-anchor').boundingBox();
   expect(bounds).not.toBeNull();
-  expect(Math.round((bounds?.x ?? 0) + (bounds?.width ?? 0) / 2)).toBe(860);
+  expect(Math.round((bounds?.x ?? 0) + (bounds?.width ?? 0) / 2)).toBe(921);
 });
 
 test('keeps both first-selection pins clear of the wave controls after panning', async ({
@@ -152,7 +243,7 @@ test('fits both guide captions at a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('./');
   await page.getByRole('button', { name: '開始遊戲' }).click();
-  await page.getByLabel('Crownfall 關卡').click({ position: { x: 162, y: 422 } });
+  await page.getByLabel('Crownfall 關卡').click({ position: { x: 197, y: 352 } });
   const guide = page.getByRole('region', { name: '建造引導' });
   for (const name of ['路障示範格', '高台示範格']) {
     const pin = guide.getByRole('button', { name });
@@ -167,11 +258,11 @@ test('keeps the guide caption legible while previewing a tower in a low build ri
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('./');
   await page.getByRole('button', { name: '開始遊戲' }).click();
-  // A lane tile that cannot be blocked, with the build ring below the guide.
-  await page.getByLabel('Crownfall 關卡').click({ position: { x: 232, y: 396 } });
+  await page.getByLabel('Crownfall 關卡').click({ position: { x: 197, y: 352 } });
+  await page.getByRole('button', { name: '路障示範格' }).click();
   const ring = page.getByRole('region', { name: '建造環' });
   await ring.getByRole('button', { name: /弓箭塔/ }).hover();
-  const preview = page.getByText('會讓入口到城堡斷線', { exact: true });
+  const preview = page.getByText('改走另一條等長路線', { exact: true });
   await expect(preview).toBeVisible();
   const caption = page
     .getByRole('button', { name: '路障示範格' })

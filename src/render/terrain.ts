@@ -4,6 +4,8 @@ import {
   Color,
   DataTexture,
   Group,
+  InstancedMesh,
+  Matrix4,
   Mesh,
   MeshLambertMaterial,
   NearestFilter,
@@ -12,7 +14,7 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { type CellIndex, cellAt, cellPoint, type Level, rampDirection } from '../core';
-import { neighbors } from '../core/level';
+import { neighbors, PLATFORM_HALF_WIDTH } from '../core/level';
 import { WORLD_LAYER } from './layers';
 import { placeableScenery } from './scenery-model';
 
@@ -22,8 +24,8 @@ export const LAYER_HEIGHT = 0.6;
 const COLOURS = {
   low: 0x8fb070,
   high: 0xabaeba,
-  laneLow: 0xa0a0a6,
-  laneHigh: 0x8b8e9d,
+  laneLow: 0xe6c38a,
+  laneHigh: 0xf0d19d,
   spawn: 0xad6158,
   goal: 0x648bb4,
 } as const;
@@ -34,7 +36,8 @@ const TILE_TEXELS = 16;
 const ATLAS_COLUMNS = 4;
 const PHASES = 4;
 const VARIANTS = ATLAS_COLUMNS * PHASES;
-const CLIFF_TILE = 2 * VARIANTS;
+const DIRT_TILE = 2 * VARIANTS;
+const CLIFF_TILE = 3 * VARIANTS;
 const ATLAS_WIDTH = ATLAS_COLUMNS * TILE_TEXELS;
 const ATLAS_HEIGHT = (CLIFF_TILE / ATLAS_COLUMNS + 1) * TILE_TEXELS;
 const TERRAIN_SEED = 0x78359a4b;
@@ -75,7 +78,8 @@ function atlasTileOrigin(tile: number) {
 function terrainAtlas(): DataTexture {
   const pixels = new Uint8Array(ATLAS_WIDTH * ATLAS_HEIGHT * 4);
   for (let tile = 0; tile <= CLIFF_TILE; tile++) {
-    const moss = tile >= VARIANTS && tile < CLIFF_TILE;
+    const moss = tile >= VARIANTS && tile < DIRT_TILE;
+    const dirt = tile >= DIRT_TILE && tile < CLIFF_TILE;
     const variant = tile % VARIANTS;
     const rotation = variant % ATLAS_COLUMNS;
     const swapsAxes = rotation % 2 === 1;
@@ -91,7 +95,10 @@ function terrainAtlas(): DataTexture {
         const u = ((flipX ? last - rotatedX : rotatedX) + phase * 3) % TILE_TEXELS;
         const v = ((flipY ? last - rotatedY : rotatedY) + phase * 5) % TILE_TEXELS;
         const border = tile !== CLIFF_TILE && Math.min(x, y, last - x, last - y) < BORDER_TEXELS;
-        const shade = border ? (moss ? 216 : 235) : moss ? mossShade(u, v) : stoneShade(u, v);
+        let shade: number;
+        if (dirt) shade = 218 + tileHash(u, v);
+        else if (border) shade = moss ? 216 : 235;
+        else shade = moss ? mossShade(u, v) : stoneShade(u, v);
         const offset = ((bottom + y) * ATLAS_WIDTH + left + x) * 4;
         pixels.set(
           moss ? [shade, shade + 11, shade - 21, 255] : [shade, shade, shade, 255],
@@ -136,16 +143,34 @@ export function createTerrain(
   const group = new Group();
   const map = terrainAtlas();
   const materials = Object.fromEntries(
-    Object.entries(COLOURS).map(([name, hex]) => [
-      name,
-      new MeshLambertMaterial({ color: terrainColor(hex), map }),
-    ]),
+    Object.entries(COLOURS).map(([name, hex]) => {
+      const dirt = name === 'laneLow' || name === 'laneHigh';
+      return [
+        name,
+        new MeshLambertMaterial({
+          color: dirt ? new Color(hex) : terrainColor(hex),
+          emissive: dirt ? hex : 0,
+          emissiveIntensity: 0.3,
+          map,
+        }),
+      ];
+    }),
   ) as Record<Palette, MeshLambertMaterial>;
 
   const cliff = new MeshLambertMaterial({
     color: terrainColor(0xb6bac4),
     map,
   });
+  const platformWidth = PLATFORM_HALF_WIDTH * 2;
+  const rimWidth = 0.12;
+  const rims = new InstancedMesh(
+    new BoxGeometry(1, 0.008, 1),
+    new MeshLambertMaterial({ color: 0xf0bd52 }),
+    level.cells.filter((cell) => cell.platform).length * 4,
+  );
+  rims.layers.set(WORLD_LAYER);
+  const rimTransform = new Matrix4();
+  let rimIndex = 0;
   const geometryByMaterial = new Map<MeshLambertMaterial, BufferGeometry[]>();
   const batchSurface = (source: BoxGeometry, indices: number[], material: MeshLambertMaterial) => {
     const surface = new BufferGeometry();
@@ -172,14 +197,32 @@ export function createTerrain(
     } else {
       // 地表至少厚一層，平地才不會是零厚度的面。
       const thickness = Math.max(top, LAYER_HEIGHT);
-      geometry = new BoxGeometry(1, thickness, 1).translate(x, top - thickness / 2, y);
+      const width = cell.platform ? platformWidth : 1;
+      geometry = new BoxGeometry(width, thickness, width).translate(x, top - thickness / 2, y);
+      if (cell.platform) {
+        const offset = PLATFORM_HALF_WIDTH - rimWidth / 2;
+        for (const side of [-1, 1]) {
+          rims.setMatrixAt(
+            rimIndex++,
+            rimTransform
+              .makeScale(platformWidth, 1, rimWidth)
+              .setPosition(x, top, y + side * offset),
+          );
+          rims.setMatrixAt(
+            rimIndex++,
+            rimTransform
+              .makeScale(rimWidth, 1, platformWidth - rimWidth * 2)
+              .setPosition(x + side * offset, top, y),
+          );
+        }
+      }
       palette = paletteOf(level, index);
     }
     const horizontal: number[] = [];
     const walls: number[] = [];
     const indices = geometry.getIndex();
     const uv = geometry.getAttribute('uv');
-    const topTile = tileHash(x, y) + (palette === 'low' ? VARIANTS : 0);
+    const topTile = tileHash(x, y) + (cell.lane ? DIRT_TILE : palette === 'low' ? VARIANTS : 0);
     if (indices === null) throw new Error('Expected indexed terrain geometry');
     for (const { start, count, materialIndex } of geometry.groups) {
       // BoxGeometry orders faces +X, -X, +Y, -Y, +Z, -Z. A ramp keeps those groups.
@@ -212,8 +255,25 @@ export function createTerrain(
     mesh.layers.set(WORLD_LAYER);
     group.add(mesh);
   }
+  if (rimIndex > 0) group.add(rims);
   const entrance = placeableScenery(models.entrance, 1, 0.24).group;
-  const castle = placeableScenery(models.castle, 0.9, 0.32);
+  const flag = new Group();
+  const pole = new Mesh(
+    new BoxGeometry(0.08, 1.6, 0.08),
+    new MeshLambertMaterial({ color: 0xe2cdb3 }),
+  );
+  pole.position.y = 0.8;
+  const banner = new Mesh(
+    new BoxGeometry(0.7, 0.46, 0.08),
+    new MeshLambertMaterial({ color: 0xe04739, emissive: 0x3c0904 }),
+  );
+  banner.position.set(0.35, 1.38, 0);
+  flag.add(pole, banner);
+  flag.traverse((object) => object.layers.set(WORLD_LAYER));
+  const spawn = cellPoint(level, level.spawn);
+  flag.position.set(spawn.x, cellAt(level, level.spawn).layer * LAYER_HEIGHT, spawn.y);
+  group.add(flag);
+  const castle = placeableScenery(models.castle, 1.45, 0.32);
   for (const [index, model] of [
     [level.spawn, entrance],
     [level.goal, castle.group],
@@ -246,5 +306,5 @@ export function createTerrain(
     }
   };
 
-  return { group, landmarks: [entrance, castle.group], setCastleFlash };
+  return { group, landmarks: [entrance, flag, castle.group], setCastleFlash };
 }

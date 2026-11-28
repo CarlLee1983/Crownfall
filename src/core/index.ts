@@ -54,7 +54,9 @@ export {
   type PlacementPreview,
   type PlacementRejection,
   previewPlacement,
+  queryPlacementTarget,
   type RouteSegment,
   samePlacementPreviewInputs,
+  sameRoute,
 } from './placement';
 export { groundHeight, rampDirection } from './terrain';

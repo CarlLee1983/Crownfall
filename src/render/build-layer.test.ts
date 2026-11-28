@@ -114,7 +114,7 @@ function branchLine(layer: ReturnType<typeof createBuildLayer>): LineSegments2 {
 }
 
 describe('route lines', () => {
-  it('samples the same corner for the solid and dashed lines and follows the ramp surface', () => {
+  it('samples the same corner for the current and preview lines and follows the ramp surface', () => {
     const level = parseLevel(['S==...', '..=...', '..=^+g']);
     const state = createGame(content, level);
     const route = currentRoute(state);
@@ -123,8 +123,8 @@ describe('route lines', () => {
     const lines = layer.group.children.filter((child) => child instanceof Line2);
     expect(lines).toHaveLength(2);
 
-    for (const line of lines) {
-      const lift = line.material.dashed ? 0.065 : 0.035;
+    for (const [index, line] of lines.entries()) {
+      const lift = index === 0 ? 0.035 : 0.065;
       expect(vertices(line)).toEqual(
         expect.arrayContaining([
           [expect.closeTo(1.853553, 5), expect.closeTo(lift, 5), expect.closeTo(0.146447, 5)],
@@ -135,8 +135,10 @@ describe('route lines', () => {
       );
     }
 
-    const dashed = lines.find((line) => line.material.dashed);
-    expect(dashed?.geometry.getAttribute('instanceDistanceEnd').count).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(line.material.dashed).toBe(true);
+      expect(line.geometry.getAttribute('instanceDistanceEnd').count).toBeGreaterThan(0);
+    }
   });
 
   it('rounds a branch rejoining the main route', () => {

@@ -58,8 +58,8 @@ it('draws a platform top and its cliff face with different materials', () => {
     return hit.object.material;
   };
 
-  const platform = visibleMaterial(new Vector3(4, 2, 4), new Vector3(0, -1, 0));
-  const cliff = visibleMaterial(new Vector3(4, 0.3, 5), new Vector3(0, 0, -1));
+  const platform = visibleMaterial(new Vector3(25, 2, 7), new Vector3(0, -1, 0));
+  const cliff = visibleMaterial(new Vector3(25, 0.3, 9), new Vector3(0, 0, -1));
   expect(cliff).not.toBe(platform);
 });
 

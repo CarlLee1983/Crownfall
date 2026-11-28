@@ -1,14 +1,13 @@
 import type { Camera } from 'three';
 import {
   type CellIndex,
-  cellAt,
   currentRoute,
   type GameState,
   previewPlacement,
+  queryPlacementTarget,
   samePlacementPreviewInputs,
+  sameRoute,
 } from '../core';
-import { neighbors } from '../core/level';
-import { rangeBonusForLayers } from '../core/placement';
 import { cellProjection } from './hud-dom';
 import './build-guide.css';
 
@@ -20,17 +19,16 @@ export function buildGuideCells(state: GameState, kind: string) {
   const route = currentRoute(state);
   const lane = route.find((cell) => {
     const preview = previewPlacement(state, cell, kind);
-    return preview.reason === undefined && preview.route.length > route.length;
+    return preview.reason === undefined && !sameRoute(preview.route, route);
   });
-  const plateau = state.level.cells.findIndex(({ lane, layer }, index) => {
+  const plateau = state.level.cells.findIndex(({ lane }, index) => {
     if (lane) return false;
     const cell = index as CellIndex;
-    const hasHeightAdvantage = neighbors(state.level, cell).some(
-      ({ index }) =>
-        route.includes(index) &&
-        rangeBonusForLayers(state, layer, cellAt(state.level, index).layer) > 0,
-    );
-    return hasHeightAdvantage && previewPlacement(state, cell, kind).reason === undefined;
+    if (previewPlacement(state, cell, kind).reason !== undefined) return false;
+    return route.some((target) => {
+      const reach = queryPlacementTarget(state, cell, kind, target);
+      return reach !== undefined && reach.heightBonus > 0 && reach.inRange;
+    });
   });
   return { lane, plateau: plateau < 0 ? undefined : (plateau as CellIndex) };
 }

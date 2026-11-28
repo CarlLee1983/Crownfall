@@ -5,9 +5,9 @@ test.use({ viewport: { width: 1280, height: 800 } });
 
 // Default overview, away from torch pools, the route line and tile edges.
 const patches = {
-  platform: { left: 654, top: 188, width: 10, height: 10 },
-  lane: { left: 820, top: 202, width: 10, height: 10 },
-  cliff: { left: 645, top: 201, width: 10, height: 8 },
+  platform: { left: 752, top: 254, width: 10, height: 10 },
+  lane: { left: 474, top: 143, width: 8, height: 8 },
+  cliff: { left: 751, top: 293, width: 10, height: 8 },
 };
 
 test('distinguishes the four terrain layers by brightness at the default overview', async ({
@@ -27,8 +27,8 @@ test('distinguishes the four terrain layers by brightness at the default overvie
     body: JSON.stringify({ platform, lane, moss, cliff }),
     contentType: 'application/json',
   });
-  expect(platform).toBeGreaterThan(lane);
-  expect(lane).toBeGreaterThan(moss);
+  expect(platform).toBeGreaterThan(moss);
+  expect(lane - moss).toBeGreaterThan(20);
   expect(moss - cliff).toBeGreaterThanOrEqual(10);
   expect(cliff).toBeGreaterThanOrEqual(12);
   expect(cliff).toBeLessThanOrEqual(18);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { content } from '../content/content';
-import { level } from '../content/level';
+import { level } from '../content/ramp-level.fixture';
 import { cellPoint, createGame } from '../core';
 import { runCampaign, runWave } from './simulation';
 
@@ -16,7 +16,7 @@ it('builds on every cell of the platform beside the lower lane', () => {
   expect(placements).toEqual([2, 3, 4, 5].map((x) => ({ x, y: 4 })));
 });
 
-describe('campaign balance', () => {
+describe('original ramp campaign balance', () => {
   it('rewards the reference strategy over either pure strategy across the campaign', () => {
     const initial = createGame(content, level);
     const results = {

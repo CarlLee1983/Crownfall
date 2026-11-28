@@ -13,8 +13,8 @@ test('darkens the cemetery ground from playable moss toward the far rim', async 
 
   const [moss, cemetery, rim] = await Promise.all([
     meanLuma(screenshot, mossPatch),
-    meanLuma(screenshot, { left: 540, top: 110, width: 10, height: 10 }),
-    meanLuma(screenshot, { left: 540, top: 70, width: 10, height: 10 }),
+    meanLuma(screenshot, { left: 910, top: 699, width: 10, height: 10 }),
+    meanLuma(screenshot, { left: 970, top: 740, width: 10, height: 10 }),
   ]);
   await testInfo.attach('cemetery luminance', {
     body: JSON.stringify({ moss, cemetery, rim }),

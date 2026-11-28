@@ -9,7 +9,7 @@ for (const dpr of [1, 2]) {
       await page.getByRole('button', { name: '開始遊戲' }).click();
 
       // Sample the high platform where no overlay geometry crosses it.
-      const screenshot = await page.screenshot({ clip: { x: 840, y: 204, width: 60, height: 30 } });
+      const screenshot = await page.screenshot({ clip: { x: 560, y: 352, width: 60, height: 30 } });
       const sample = await page.evaluate(
         async ({ png, blockSize }) => {
           const image = await createImageBitmap(
